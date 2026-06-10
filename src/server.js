@@ -27,6 +27,7 @@ async function main() {
   });
 
   app.use(express.json());
+  app.use(express.static('public'));
 
   // Services
   const weatherService = createWeatherService();

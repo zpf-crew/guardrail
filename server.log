@@ -1,0 +1,2 @@
+{"timestamp":"2026-06-10T14:14:29.804Z","level":"info","message":"Server started","port":"8080"}
+{"timestamp":"2026-06-10T14:14:39.307Z","level":"error","message":"LLM call failed","error":"Token exchange failed: 404"}

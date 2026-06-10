@@ -16,6 +16,7 @@ WORKDIR /app
 COPY --from=builder /app/node_modules ./node_modules
 COPY src/ ./src/
 COPY data/ ./data/
+COPY public/ ./public/
 COPY package.json .
 
 ENV PORT=8080
