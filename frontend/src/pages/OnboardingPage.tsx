@@ -93,6 +93,8 @@ export function OnboardingPage() {
   };
 
   const startScan = () => {
+    if (taskIntervalRef.current) clearInterval(taskIntervalRef.current);
+    if (logIntervalRef.current) clearInterval(logIntervalRef.current);
     setCurrentStep(3);
     setScanProgress(0);
     setScanLogIndex(0);
