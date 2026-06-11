@@ -8,7 +8,7 @@ export function createLLMService() {
   const clientId = process.env.GREENNODE_CLIENT_ID;
   const clientSecret = process.env.GREENNODE_CLIENT_SECRET;
   const model = process.env.LLM_MODEL || 'gpt-4o-mini';
-  const baseUrl = process.env.LLM_BASE_URL || 'https://maas-api.vngcloud.vn/v1';
+  const baseUrl = process.env.LLM_BASE_URL || 'https://maas-llm-aiplatform-hcm.api.vngcloud.vn/v1';
 
   async function getAccessToken() {
     const basicAuth = Buffer.from(`${clientId}:${clientSecret}`).toString('base64');
