@@ -57,16 +57,6 @@ export const planRisk: PlanRisk[] = [
   { item: 'Open AI questions', level: 'low' },
 ];
 
-export interface PlanAction {
-  action: string;
-  count: number;
-}
-
-export interface PlanRisk {
-  item: string;
-  level: 'low' | 'medium' | 'high';
-}
-
 export interface ChangeCard {
   id: string;
   title: string;

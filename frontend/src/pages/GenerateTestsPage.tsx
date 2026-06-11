@@ -38,6 +38,16 @@ export function GenerateTestsPage() {
   const [generating, setGenerating] = React.useState(false);
   const [runProgress, setRunProgress] = React.useState(0);
 
+  const timerRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
+  const intervalRef = React.useRef<ReturnType<typeof setInterval> | null>(null);
+
+  React.useEffect(() => {
+    return () => {
+      if (timerRef.current) clearTimeout(timerRef.current);
+      if (intervalRef.current) clearInterval(intervalRef.current);
+    };
+  }, []);
+
   const toggleType = (type: string) => {
     setSelectedTypes(prev => prev.includes(type) ? prev.filter(t => t !== type) : [...prev, type]);
   };
@@ -57,7 +67,7 @@ export function GenerateTestsPage() {
   const handleAnalyze = () => {
     setAnalyzing(true);
     toast('Analyzing...', 'loading');
-    setTimeout(() => {
+    timerRef.current = setTimeout(() => {
       setAnalyzing(false);
       setCurrentStep(1);
       toast('Analysis complete', 'success');
@@ -67,7 +77,7 @@ export function GenerateTestsPage() {
   const handleGeneratePlan = () => {
     setGenerating(true);
     toast('Generating test plan...', 'loading');
-    setTimeout(() => {
+    timerRef.current = setTimeout(() => {
       setGenerating(false);
       setCurrentStep(2);
       toast('Plan ready', 'success');
@@ -83,12 +93,14 @@ export function GenerateTestsPage() {
     setRunProgress(0);
     toast('Running tests...', 'loading');
     let progress = 0;
-    const interval = setInterval(() => {
+    intervalRef.current = setInterval(() => {
       progress += 5;
       setRunProgress(progress);
       if (progress >= 100) {
-        clearInterval(interval);
-        setCurrentStep(5);
+        const id = intervalRef.current;
+        if (id) clearInterval(id);
+        intervalRef.current = null;
+        setCurrentStep(4);
         toast('Tests complete', 'success');
       }
     }, 200);
