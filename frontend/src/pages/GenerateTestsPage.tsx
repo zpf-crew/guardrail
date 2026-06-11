@@ -209,7 +209,7 @@ export function GenerateTestsPage() {
               </div>
 
               <div className="flex gap-[10px]">
-                <Button variant="ghost" onClick={() => navigate('/')}>Home</Button>
+                <Button variant="ghost" onClick={() => navigate('/dashboard')}>Dashboard</Button>
                 <Button variant="primary" size="lg" onClick={handleAnalyze} disabled={analyzing}>
                   {analyzing ? 'Analyzing...' : 'Analyze'}
                 </Button>

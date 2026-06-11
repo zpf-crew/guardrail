@@ -13,7 +13,7 @@ export function LoginPage() {
           <h1 className="text-[22px] font-semibold text-[#e8ebf2]"><b className="text-white">Guard</b>rail</h1>
         </div>
         <p className="mb-6 text-[14.5px] text-[#98a1b3] leading-[1.55]">AI testing agent for your repositories.</p>
-        <Button variant="primary" className="w-full" onClick={() => navigate('/')}>Continue with GitHub</Button>
+        <Button variant="primary" className="w-full" onClick={() => navigate('/onboarding')}>Continue with GitHub</Button>
       </div>
     </div>
   );

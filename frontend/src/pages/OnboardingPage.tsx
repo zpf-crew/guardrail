@@ -141,7 +141,7 @@ export function OnboardingPage() {
             </div>
             <h1 className="text-[20px] font-semibold text-[#e8ebf2]"><b className="text-white">Guard</b>rail</h1>
           </div>
-          <Button variant="ghost" onClick={() => navigate('/')}>Skip setup</Button>
+          <Button variant="ghost" onClick={() => navigate('/dashboard')}>Skip setup</Button>
         </div>
 
         <div className="mb-[32px]">
@@ -176,7 +176,7 @@ export function OnboardingPage() {
                 </div>
 
                 <div className="flex gap-[10px]">
-                  <Button variant="ghost" onClick={() => navigate('/')}>Back</Button>
+                  <Button variant="ghost" onClick={() => navigate('/login')}>Back</Button>
                   <Button variant="primary" size="lg" onClick={() => setCurrentStep(1)}>Continue</Button>
                 </div>
               </div>
@@ -353,7 +353,7 @@ export function OnboardingPage() {
                 </div>
 
                 <div className="flex gap-[10px] justify-center">
-                  <Button variant="ghost" onClick={() => navigate('/')}>Home</Button>
+                  <Button variant="ghost" onClick={() => navigate('/dashboard')}>Dashboard</Button>
                   <Button variant="primary" size="lg" onClick={() => navigate('/dashboard')}>Open Dashboard</Button>
                 </div>
               </div>
