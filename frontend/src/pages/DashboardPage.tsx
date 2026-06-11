@@ -11,6 +11,14 @@ import { useToast } from '@/components/ui/toast';
 import { testCases, insights, modules, coverage, heatmap, heatmapCols, healthScore, statTiles } from '@/data/dashboardMockData';
 import type { TestCase, Insight } from '@/data/dashboardMockData';
 
+function FilterSelect({ value, onChange, children }: { value: string; onChange: (e: React.ChangeEvent<HTMLSelectElement>) => void; children: React.ReactNode }) {
+  return (
+    <select className="bg-[#0d0f16] border border-[rgba(255,255,255,0.07)] rounded-[8px] px-[10px] py-[7px] text-[12px] text-[#e8ebf2] outline-none" value={value} onChange={onChange}>
+      {children}
+    </select>
+  );
+}
+
 const statusBadgeVariant: Record<string, 'pass' | 'fail' | 'flaky' | 'missing' | 'suspect' | 'gray'> = {
   pass: 'pass', fail: 'fail', flaky: 'flaky', missing: 'missing', suspect: 'suspect',
 };
@@ -48,7 +56,7 @@ export function DashboardPage() {
 
   const features = [...new Set(testCases.map(tc => tc.feature))];
   const types = [...new Set(testCases.map(tc => tc.type))];
-  const statuses = ['pass', 'fail', 'flaky', 'suspect'];
+  const statuses = ['pass', 'fail', 'flaky', 'missing', 'suspect'];
 
   const filtered = testCases.filter(tc => {
     if (search && !tc.title.toLowerCase().includes(search.toLowerCase()) && !tc.id.toLowerCase().includes(search.toLowerCase())) return false;
@@ -82,7 +90,7 @@ export function DashboardPage() {
     setHighlightedTests(new Set());
   };
 
-  const hasFilters = search || filterStatus !== 'All' || filterType !== 'All' || filterRisk !== 'All' || filterFeature !== 'All';
+  const hasFilters = search || filterStatus !== 'All' || filterType !== 'All' || filterRisk !== 'All' || filterFeature !== 'All' || highlightedInsight !== null;
 
   const circumference = 2 * Math.PI * 42;
   const scoreOffset = circumference - (healthScore.score / 100) * circumference;
@@ -141,24 +149,24 @@ export function DashboardPage() {
                   value={groupBy}
                   onChange={setGroupBy}
                 />
-                <select className="bg-[#0d0f16] border border-[rgba(255,255,255,0.07)] rounded-[8px] px-[10px] py-[7px] text-[12px] text-[#e8ebf2] outline-none" value={filterStatus} onChange={e => setFilterStatus(e.target.value)}>
+                <FilterSelect value={filterStatus} onChange={e => setFilterStatus(e.target.value)}>
                   <option value="All">All Status</option>
                   {statuses.map(s => <option key={s} value={s}>{s}</option>)}
-                </select>
-                <select className="bg-[#0d0f16] border border-[rgba(255,255,255,0.07)] rounded-[8px] px-[10px] py-[7px] text-[12px] text-[#e8ebf2] outline-none" value={filterType} onChange={e => setFilterType(e.target.value)}>
+                </FilterSelect>
+                <FilterSelect value={filterType} onChange={e => setFilterType(e.target.value)}>
                   <option value="All">All Types</option>
                   {types.map(t => <option key={t} value={t}>{t}</option>)}
-                </select>
-                <select className="bg-[#0d0f16] border border-[rgba(255,255,255,0.07)] rounded-[8px] px-[10px] py-[7px] text-[12px] text-[#e8ebf2] outline-none" value={filterRisk} onChange={e => setFilterRisk(e.target.value)}>
+                </FilterSelect>
+                <FilterSelect value={filterRisk} onChange={e => setFilterRisk(e.target.value)}>
                   <option value="All">All Risk</option>
                   <option value="high">High</option>
                   <option value="medium">Medium</option>
                   <option value="low">Low</option>
-                </select>
-                <select className="bg-[#0d0f16] border border-[rgba(255,255,255,0.07)] rounded-[8px] px-[10px] py-[7px] text-[12px] text-[#e8ebf2] outline-none" value={filterFeature} onChange={e => setFilterFeature(e.target.value)}>
+                </FilterSelect>
+                <FilterSelect value={filterFeature} onChange={e => setFilterFeature(e.target.value)}>
                   <option value="All">All Features</option>
                   {features.map(f => <option key={f} value={f}>{f}</option>)}
-                </select>
+                </FilterSelect>
                 {hasFilters && <Button variant="ghost" size="default" onClick={clearFilters}>Clear</Button>}
               </div>
 
