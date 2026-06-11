@@ -33,7 +33,7 @@ export function FileRow({ name, type, size, status, onDelete }: FileRowProps) {
         </span>
       )}
       {onDelete && (
-        <button onClick={onDelete} className="bg-none border-none text-[#6b7488] cursor-pointer p-[6px] rounded-[6px] grid place-items-center hover:text-[#fb7185] hover:bg-[rgba(251,113,133,0.14)]">
+        <button aria-label="Delete file" onClick={onDelete} className="bg-transparent border-none text-[#6b7488] cursor-pointer p-[6px] rounded-[6px] grid place-items-center hover:text-[#fb7185] hover:bg-[rgba(251,113,133,0.14)]">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="w-[15px] h-[15px]"><path d="M6 6l12 12M18 6L6 18" /></svg>
         </button>
       )}
