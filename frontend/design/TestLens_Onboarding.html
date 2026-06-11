@@ -1,0 +1,1054 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>TestLens — Set up testing intelligence</title>
+<style>
+  :root {
+    --bg: #090b10;
+    --bg-grad: radial-gradient(1200px 600px at 78% -10%, rgba(124,131,255,0.10), transparent 60%),
+               radial-gradient(900px 500px at 8% 0%, rgba(34,211,238,0.06), transparent 55%),
+               #090b10;
+    --panel: #11141c;
+    --panel-2: #161a24;
+    --panel-3: #1b2030;
+    --inset: #0d0f16;
+    --border: rgba(255,255,255,0.07);
+    --border-2: rgba(255,255,255,0.12);
+    --border-glow: rgba(129,140,248,0.35);
+
+    --text: #e8ebf2;
+    --dim: #98a1b3;
+    --faint-solid: #6b7488;
+
+    --accent: #818cf8;
+    --accent-2: #22d3ee;
+    --accent-soft: rgba(129,140,248,0.14);
+
+    --pass: #3ddc97;
+    --fail: #fb7185;
+    --flaky: #fbbf24;
+    --missing: #60a5fa;
+    --suspect: #c084fc;
+    --gray: #8b94a7;
+
+    --pass-bg: rgba(61,220,151,0.13);
+    --fail-bg: rgba(251,113,133,0.14);
+    --flaky-bg: rgba(251,191,36,0.14);
+    --missing-bg: rgba(96,165,250,0.14);
+    --suspect-bg: rgba(192,132,252,0.15);
+
+    --radius: 14px;
+    --radius-sm: 10px;
+    --shadow: 0 1px 0 rgba(255,255,255,0.04) inset, 0 8px 30px rgba(0,0,0,0.45);
+    --mono: ui-monospace, "SF Mono", "JetBrains Mono", "Menlo", "Cascadia Code", monospace;
+    --sans: system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", sans-serif;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; padding: 0; }
+  body {
+    background: var(--bg-grad); background-attachment: fixed; color: var(--text);
+    font-family: var(--sans); font-size: 14px; line-height: 1.5; -webkit-font-smoothing: antialiased; letter-spacing: 0.1px;
+    min-height: 100vh;
+  }
+  ::selection { background: rgba(129,140,248,0.35); }
+  *::-webkit-scrollbar { width: 10px; height: 10px; }
+  *::-webkit-scrollbar-thumb { background: #2a3142; border-radius: 99px; border: 2px solid transparent; background-clip: padding-box; }
+  *::-webkit-scrollbar-thumb:hover { background: #39425a; background-clip: padding-box; }
+  *::-webkit-scrollbar-track { background: transparent; }
+  .mono { font-family: var(--mono); }
+
+  /* ===== TOP BAR ===== */
+  header.topbar {
+    position: sticky; top: 0; z-index: 50; display: flex; align-items: center; gap: 22px; padding: 12px 26px;
+    background: rgba(11,13,19,0.78); backdrop-filter: blur(18px) saturate(140%); border-bottom: 1px solid var(--border);
+  }
+  .brand { display: flex; align-items: center; gap: 11px; }
+  .brand .logo {
+    width: 34px; height: 34px; border-radius: 9px; flex: none;
+    background: linear-gradient(150deg, #8b93ff, #5d68f0 55%, #22d3ee); display: grid; place-items: center;
+    box-shadow: 0 4px 16px rgba(99,102,241,0.4), 0 0 0 1px rgba(255,255,255,0.12) inset;
+  }
+  .brand .logo svg { width: 19px; height: 19px; }
+  .brand .name { font-size: 16px; font-weight: 650; letter-spacing: -0.2px; }
+  .brand .name b { color: #fff; }
+  .brand .tag {
+    font-size: 9.5px; font-weight: 700; letter-spacing: 1px; text-transform: uppercase; color: var(--accent-2);
+    border: 1px solid rgba(34,211,238,0.3); background: rgba(34,211,238,0.08); padding: 2px 6px; border-radius: 5px;
+  }
+  .setup-pill {
+    display: inline-flex; align-items: center; gap: 7px; font-size: 12px; color: var(--dim);
+    border: 1px solid var(--border); background: var(--panel-2); padding: 5px 11px; border-radius: 99px; margin-left: 4px;
+  }
+  .setup-pill .live { color: var(--accent); }
+  .top-right { margin-left: auto; display: flex; align-items: center; gap: 12px; }
+  .top-right .help { font-size: 12.5px; color: var(--faint-solid); text-decoration: none; }
+  .top-right .help:hover { color: var(--dim); }
+
+  /* buttons */
+  .btn {
+    display: inline-flex; align-items: center; gap: 7px; font-family: var(--sans); font-size: 13px; font-weight: 550;
+    padding: 9px 15px; border-radius: 9px; cursor: pointer; border: 1px solid var(--border-2); background: var(--panel-2);
+    color: var(--text); transition: all 0.14s ease; white-space: nowrap;
+  }
+  .btn svg { width: 15px; height: 15px; }
+  .btn:hover { background: var(--panel-3); transform: translateY(-1px); }
+  .btn:active { transform: translateY(0); }
+  .btn.primary { background: linear-gradient(160deg, #8b93ff, #5d68f0); border-color: transparent; color: #fff; box-shadow: 0 4px 16px rgba(99,102,241,0.35); }
+  .btn.primary:hover { box-shadow: 0 6px 22px rgba(99,102,241,0.5); }
+  .btn.ghost { background: transparent; border-color: transparent; color: var(--dim); }
+  .btn.ghost:hover { background: var(--panel-2); color: var(--text); }
+  .btn.lg { padding: 12px 22px; font-size: 14.5px; font-weight: 600; border-radius: 11px; }
+  .btn:disabled { opacity: 0.4; cursor: not-allowed; transform: none; }
+
+  /* ===== LAYOUT ===== */
+  main { max-width: 1500px; margin: 0 auto; padding: 30px 26px 60px; }
+  .hero { margin: 6px 4px 26px; }
+  .hero h1 { font-size: 27px; font-weight: 680; letter-spacing: -0.6px; margin: 0 0 8px; }
+  .hero p { font-size: 14.5px; color: var(--dim); margin: 0; max-width: 720px; line-height: 1.55; }
+  .hero .grad { background: linear-gradient(110deg, #a5acff, #22d3ee); -webkit-background-clip: text; background-clip: text; color: transparent; }
+
+  .layout { display: grid; grid-template-columns: 252px minmax(0,1fr) 320px; gap: 26px; align-items: start; }
+
+  /* ===== STEPPER ===== */
+  .stepper { position: sticky; top: 80px; display: flex; flex-direction: column; gap: 2px; }
+  .stepper .prog-label { font-size: 11px; text-transform: uppercase; letter-spacing: 0.8px; color: var(--faint-solid); font-weight: 600; margin: 0 4px 14px; display: flex; justify-content: space-between; }
+  .stepper .prog-label b { color: var(--accent); }
+  .step {
+    display: flex; gap: 13px; padding: 11px 12px; border-radius: 11px; cursor: pointer; position: relative;
+    transition: background 0.14s; border: 1px solid transparent;
+  }
+  .step:hover { background: rgba(255,255,255,0.025); }
+  .step.current { background: var(--accent-soft); border-color: rgba(129,140,248,0.25); box-shadow: 0 0 0 1px rgba(129,140,248,0.15), 0 6px 20px rgba(99,102,241,0.15); }
+  .step .marker {
+    width: 28px; height: 28px; border-radius: 50%; flex: none; display: grid; place-items: center;
+    font-size: 13px; font-weight: 650; font-family: var(--mono); position: relative;
+    background: var(--inset); border: 1.5px solid var(--border-2); color: var(--faint-solid); transition: all 0.2s;
+  }
+  .step .marker svg { width: 15px; height: 15px; }
+  .step.current .marker { border-color: var(--accent); color: var(--accent); background: var(--panel); }
+  .step.current .marker::after { content: ""; position: absolute; inset: -4px; border-radius: 50%; border: 1.5px solid var(--accent); opacity: 0.35; animation: spulse 2s ease-out infinite; }
+  @keyframes spulse { 0% { transform: scale(0.85); opacity: 0.5; } 100% { transform: scale(1.45); opacity: 0; } }
+  .step.done .marker { background: var(--pass-bg); border-color: rgba(61,220,151,0.5); color: var(--pass); }
+  .step.skipped .marker { border-style: dashed; color: var(--gray); }
+  /* connector */
+  .step:not(:last-child)::before { content: ""; position: absolute; left: 25.5px; top: 40px; height: calc(100% - 28px); width: 1.5px; background: var(--border-2); z-index: 0; }
+  .step.done:not(:last-child)::before { background: rgba(61,220,151,0.4); }
+  .step .stxt { padding-top: 3px; min-width: 0; }
+  .step .stitle { font-size: 13.5px; font-weight: 600; color: var(--text); }
+  .step.current .stitle { color: #fff; }
+  .step .sstate { font-size: 11px; margin-top: 2px; color: var(--faint-solid); display: flex; align-items: center; gap: 5px; }
+  .step.done .sstate { color: var(--pass); }
+  .step.current .sstate { color: var(--accent); }
+  .step.skipped .sstate { color: var(--gray); }
+  .step .opt { font-size: 9.5px; font-weight: 700; letter-spacing: 0.5px; text-transform: uppercase; color: var(--faint-solid); border: 1px solid var(--border); border-radius: 4px; padding: 1px 5px; margin-left: 6px; }
+
+  /* ===== MAIN CONTENT ===== */
+  .content { min-width: 0; }
+  .step-panel { display: none; animation: stepin 0.35s cubic-bezier(0.2,0.8,0.3,1); }
+  .step-panel.active { display: block; }
+  @keyframes stepin { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: none; } }
+
+  .panel { background: var(--panel); border: 1px solid var(--border); border-radius: var(--radius); box-shadow: var(--shadow); }
+  .card-head { padding: 20px 22px 16px; border-bottom: 1px solid var(--border); }
+  .card-head .eyebrow { font-size: 11px; font-weight: 700; letter-spacing: 0.9px; text-transform: uppercase; color: var(--accent); display: flex; align-items: center; gap: 8px; margin-bottom: 9px; }
+  .card-head .eyebrow .opt-tag { color: var(--faint-solid); border: 1px solid var(--border); border-radius: 5px; padding: 1px 6px; letter-spacing: 0.5px; }
+  .card-head h2 { font-size: 19px; font-weight: 660; letter-spacing: -0.3px; margin: 0 0 6px; }
+  .card-head p { font-size: 13.5px; color: var(--dim); margin: 0; line-height: 1.5; max-width: 640px; }
+  .card-body { padding: 22px; }
+
+  /* footer nav */
+  .step-foot { display: flex; align-items: center; gap: 12px; padding: 16px 22px; border-top: 1px solid var(--border); }
+  .step-foot .spacer { flex: 1; }
+  .skip-link { font-size: 13px; color: var(--faint-solid); background: none; border: none; cursor: pointer; padding: 9px 8px; }
+  .skip-link:hover { color: var(--dim); text-decoration: underline; }
+
+  /* ===== STEP 1 REPO ===== */
+  .repo-pick { display: flex; align-items: center; gap: 14px; padding: 16px; background: var(--inset); border: 1px solid var(--border); border-radius: 12px; margin-bottom: 18px; }
+  .repo-pick .fic { width: 42px; height: 42px; border-radius: 10px; flex: none; display: grid; place-items: center; background: var(--accent-soft); color: var(--accent); }
+  .repo-pick .fic svg { width: 22px; height: 22px; }
+  .repo-pick .rp-info { min-width: 0; flex: 1; }
+  .repo-pick .rp-path { font-family: var(--mono); font-size: 13px; color: var(--text); }
+  .repo-pick .rp-sub { font-size: 12px; color: var(--faint-solid); margin-top: 2px; }
+  .field-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; margin-bottom: 18px; }
+  .field { background: var(--inset); border: 1px solid var(--border); border-radius: 10px; padding: 13px 15px; }
+  .field .fl { font-size: 11px; text-transform: uppercase; letter-spacing: 0.6px; color: var(--faint-solid); font-weight: 600; margin-bottom: 7px; }
+  .field .fv { font-family: var(--mono); font-size: 13.5px; color: var(--text); display: flex; align-items: center; gap: 8px; }
+  .field .fv svg { width: 14px; height: 14px; opacity: 0.7; }
+  .field .fv.branch { color: var(--accent); }
+  .stack-label { font-size: 12px; font-weight: 600; color: var(--dim); margin-bottom: 10px; display: flex; align-items: center; gap: 8px; }
+  .stack-label .auto { font-size: 10px; color: var(--pass); border: 1px solid rgba(61,220,151,0.3); background: var(--pass-bg); border-radius: 5px; padding: 1px 7px; text-transform: uppercase; letter-spacing: 0.5px; font-weight: 700; }
+  .stack { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 18px; }
+  .sbadge { display: inline-flex; align-items: center; gap: 7px; font-size: 12.5px; padding: 6px 12px; border-radius: 8px; background: var(--panel-2); border: 1px solid var(--border-2); color: var(--text); font-family: var(--mono); }
+  .sbadge .lang { width: 9px; height: 9px; border-radius: 2.5px; }
+  .warn-note, .info-note {
+    display: flex; align-items: flex-start; gap: 11px; padding: 12px 14px; border-radius: 11px; font-size: 12.5px; line-height: 1.5;
+  }
+  .warn-note { background: var(--flaky-bg); border: 1px solid rgba(251,191,36,0.25); color: #f4dca0; margin-bottom: 12px; }
+  .warn-note svg { width: 17px; height: 17px; flex: none; color: var(--flaky); margin-top: 1px; }
+  .warn-note b { color: #fbe5ac; }
+  .info-note { background: rgba(34,211,238,0.05); border: 1px solid rgba(34,211,238,0.18); color: var(--dim); }
+  .info-note svg { width: 16px; height: 16px; flex: none; color: var(--accent-2); margin-top: 1px; }
+
+  /* ===== DROPZONE ===== */
+  .dropzone {
+    border: 1.5px dashed var(--border-2); border-radius: 13px; padding: 28px 22px; text-align: center; cursor: pointer;
+    background: var(--inset); transition: all 0.16s; margin-bottom: 18px;
+  }
+  .dropzone:hover { border-color: var(--border-glow); background: rgba(129,140,248,0.04); }
+  .dropzone .dz-ic { width: 46px; height: 46px; border-radius: 12px; margin: 0 auto 12px; display: grid; place-items: center; background: var(--accent-soft); color: var(--accent); }
+  .dropzone .dz-ic svg { width: 24px; height: 24px; }
+  .dropzone .dz-title { font-size: 14.5px; font-weight: 600; margin-bottom: 5px; }
+  .dropzone .dz-sub { font-size: 12.5px; color: var(--faint-solid); }
+  .dropzone .dz-accept { font-family: var(--mono); font-size: 11px; color: var(--accent); margin-top: 9px; }
+
+  .file-list { display: flex; flex-direction: column; gap: 9px; margin-bottom: 18px; }
+  .file-row {
+    display: flex; align-items: center; gap: 12px; padding: 11px 13px; background: var(--inset);
+    border: 1px solid var(--border); border-radius: 10px; animation: stepin 0.3s ease;
+  }
+  .file-row .ftype { width: 34px; height: 34px; border-radius: 8px; flex: none; display: grid; place-items: center; font-family: var(--mono); font-size: 9.5px; font-weight: 700; letter-spacing: 0.5px; }
+  .ftype.pdf { background: var(--fail-bg); color: var(--fail); }
+  .ftype.md { background: var(--missing-bg); color: var(--missing); }
+  .ftype.txt { background: rgba(139,148,167,0.16); color: var(--gray); }
+  .ftype.csv { background: var(--pass-bg); color: var(--pass); }
+  .ftype.json { background: var(--flaky-bg); color: var(--flaky); }
+  .ftype.xlsx { background: rgba(61,220,151,0.16); color: var(--pass); }
+  .file-row .fmeta { flex: 1; min-width: 0; }
+  .file-row .fn { font-size: 13px; font-weight: 550; color: var(--text); }
+  .file-row .fsz { font-size: 11.5px; color: var(--faint-solid); margin-top: 1px; font-family: var(--mono); }
+  .file-row .fstatus { font-size: 11px; color: var(--pass); display: inline-flex; align-items: center; gap: 5px; }
+  .file-row .fstatus svg { width: 13px; height: 13px; }
+  .file-row .fdel { background: none; border: none; color: var(--faint-solid); cursor: pointer; padding: 6px; border-radius: 6px; display: grid; place-items: center; }
+  .file-row .fdel:hover { color: var(--fail); background: var(--fail-bg); }
+  .file-row .fdel svg { width: 15px; height: 15px; }
+
+  .src-input-label { font-size: 12px; font-weight: 600; color: var(--dim); margin-bottom: 9px; }
+  .text-input {
+    width: 100%; background: var(--inset); border: 1px solid var(--border); border-radius: 9px; padding: 10px 13px;
+    color: var(--text); font-family: var(--mono); font-size: 13px; outline: none; transition: border-color 0.15s, box-shadow 0.15s;
+  }
+  .text-input::placeholder { color: var(--faint-solid); }
+  .text-input:focus { border-color: var(--border-glow); box-shadow: 0 0 0 3px var(--accent-soft); }
+  .src-chips { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 11px; }
+  .src-chip { display: inline-flex; align-items: center; gap: 7px; font-size: 12px; font-family: var(--mono); padding: 5px 10px; border-radius: 7px; background: var(--panel-2); border: 1px solid var(--border); color: var(--dim); }
+  .src-chip svg { width: 12px; height: 12px; opacity: 0.7; }
+  .src-chip button { background: none; border: none; color: var(--faint-solid); cursor: pointer; padding: 0; display: grid; place-items: center; }
+  .src-chip button:hover { color: var(--fail); }
+
+  .optional-banner { display: flex; align-items: center; gap: 10px; padding: 11px 14px; background: rgba(192,132,252,0.06); border: 1px solid rgba(192,132,252,0.2); border-radius: 11px; font-size: 12.5px; color: #d9c4f5; margin-bottom: 18px; line-height: 1.5; }
+  .optional-banner svg { width: 16px; height: 16px; flex: none; color: var(--suspect); }
+  .optional-banner b { color: #e8d8fa; }
+
+  /* ===== QC TABLE ===== */
+  .qc-table-wrap { border: 1px solid var(--border); border-radius: 11px; overflow: hidden; margin-bottom: 18px; }
+  table.qc { width: 100%; border-collapse: collapse; font-size: 12.5px; }
+  table.qc th { text-align: left; font-size: 10.5px; text-transform: uppercase; letter-spacing: 0.5px; color: var(--faint-solid); font-weight: 600; padding: 10px 13px; background: var(--panel-2); border-bottom: 1px solid var(--border); }
+  table.qc td { padding: 11px 13px; border-bottom: 1px solid var(--border); color: var(--dim); vertical-align: middle; }
+  table.qc tr:last-child td { border-bottom: none; }
+  table.qc tr:hover td { background: rgba(255,255,255,0.018); }
+  table.qc .qid { font-family: var(--mono); color: var(--text); font-size: 12px; }
+  table.qc .scen { color: var(--text); }
+  .prio { font-size: 10.5px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.4px; padding: 2px 7px; border-radius: 5px; }
+  .prio.critical { background: var(--fail-bg); color: var(--fail); }
+  .prio.high { background: var(--flaky-bg); color: var(--flaky); }
+  .prio.medium { background: var(--missing-bg); color: var(--missing); }
+  .autostat { display: inline-flex; align-items: center; gap: 6px; font-size: 11.5px; font-weight: 550; }
+  .autostat .bd { width: 7px; height: 7px; border-radius: 50%; }
+  .autostat.automated { color: var(--pass); }
+  .autostat.missing { color: var(--missing); }
+  .autostat.unknown { color: var(--gray); }
+
+  /* ===== STEP 4 COMMANDS ===== */
+  .pm-row { display: flex; align-items: center; gap: 10px; margin-bottom: 20px; }
+  .pm-row .pml { font-size: 12px; color: var(--dim); }
+  .pm-seg { display: inline-flex; background: var(--inset); border: 1px solid var(--border); border-radius: 9px; padding: 3px; gap: 2px; }
+  .pm-seg button { font-family: var(--mono); font-size: 12.5px; color: var(--dim); background: none; border: none; padding: 6px 14px; border-radius: 6px; cursor: pointer; transition: all 0.13s; }
+  .pm-seg button:hover { color: var(--text); }
+  .pm-seg button.active { background: var(--panel-3); color: #fff; box-shadow: 0 1px 4px rgba(0,0,0,0.3); }
+  .pm-seg button.active .auto { color: var(--pass); font-size: 9px; }
+
+  .cmd-row { display: grid; grid-template-columns: 200px 1fr; gap: 14px; align-items: center; margin-bottom: 11px; }
+  .cmd-row .cl { font-size: 12.5px; color: var(--dim); }
+  .cmd-row .cl .opt { font-size: 10px; color: var(--faint-solid); display: block; margin-top: 1px; }
+  .cmd-input-wrap { display: flex; align-items: center; gap: 8px; background: var(--inset); border: 1px solid var(--border); border-radius: 9px; padding: 0 12px; transition: border-color 0.15s, box-shadow 0.15s; }
+  .cmd-input-wrap:focus-within { border-color: var(--border-glow); box-shadow: 0 0 0 3px var(--accent-soft); }
+  .cmd-input-wrap .prompt { color: var(--pass); font-family: var(--mono); font-size: 13px; }
+  .cmd-input-wrap input { flex: 1; background: none; border: none; outline: none; color: var(--text); font-family: var(--mono); font-size: 13px; padding: 10px 0; }
+
+  .toggles { margin-top: 22px; border-top: 1px solid var(--border); padding-top: 18px; }
+  .toggles .th { font-size: 12px; font-weight: 600; color: var(--dim); text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 14px; }
+  .toggle-row { display: flex; align-items: center; gap: 13px; padding: 9px 0; }
+  .toggle-row .tinfo { flex: 1; }
+  .toggle-row .tn { font-size: 13.5px; color: var(--text); }
+  .toggle-row .td { font-size: 11.5px; color: var(--faint-solid); margin-top: 1px; }
+  .switch { width: 40px; height: 23px; border-radius: 99px; background: var(--panel-3); border: 1px solid var(--border-2); position: relative; cursor: pointer; flex: none; transition: background 0.18s, border-color 0.18s; }
+  .switch::after { content: ""; position: absolute; top: 2px; left: 2px; width: 17px; height: 17px; border-radius: 50%; background: #cdd3e0; transition: transform 0.18s; }
+  .switch.on { background: linear-gradient(160deg, #8b93ff, #5d68f0); border-color: transparent; }
+  .switch.on::after { transform: translateX(17px); background: #fff; }
+
+  /* ===== STEP 5 SCAN ===== */
+  .scan-intro-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px 22px; margin-bottom: 20px; }
+  .scan-task { display: flex; align-items: center; gap: 11px; padding: 8px 2px; font-size: 13px; }
+  .scan-task .tk-ic { width: 22px; height: 22px; border-radius: 7px; flex: none; display: grid; place-items: center; background: var(--inset); border: 1px solid var(--border-2); color: var(--faint-solid); transition: all 0.2s; }
+  .scan-task .tk-ic svg { width: 13px; height: 13px; }
+  .scan-task.pending .tk-ic { color: var(--faint-solid); }
+  .scan-task.running .tk-ic { background: var(--accent-soft); border-color: var(--accent); color: var(--accent); }
+  .scan-task.running .tk-ic svg { animation: spin 0.8s linear infinite; }
+  .scan-task.done .tk-ic { background: var(--pass-bg); border-color: rgba(61,220,151,0.5); color: var(--pass); }
+  .scan-task.warn .tk-ic { background: var(--flaky-bg); border-color: rgba(251,191,36,0.5); color: var(--flaky); }
+  @keyframes spin { to { transform: rotate(360deg); } }
+  .scan-task .tk-label { color: var(--dim); transition: color 0.2s; }
+  .scan-task.running .tk-label, .scan-task.done .tk-label { color: var(--text); }
+  .scan-task .tk-badge { margin-left: auto; font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.4px; padding: 2px 7px; border-radius: 5px; }
+  .scan-task.pending .tk-badge { color: var(--faint-solid); }
+  .scan-task.running .tk-badge { background: var(--accent-soft); color: var(--accent); }
+  .scan-task.done .tk-badge { background: var(--pass-bg); color: var(--pass); }
+  .scan-task.warn .tk-badge { background: var(--flaky-bg); color: var(--flaky); }
+
+  .scan-progress { margin: 18px 0; }
+  .scan-progress .sp-top { display: flex; align-items: baseline; justify-content: space-between; margin-bottom: 9px; }
+  .scan-progress .sp-step { font-size: 13px; color: var(--text); font-weight: 550; }
+  .scan-progress .sp-step .pct { color: var(--accent); font-family: var(--mono); font-weight: 700; }
+  .scan-progress .sp-eta { font-size: 11.5px; color: var(--faint-solid); font-family: var(--mono); }
+  .ptrack { height: 9px; border-radius: 99px; background: var(--inset); overflow: hidden; border: 1px solid var(--border); }
+  .ptrack i { display: block; height: 100%; width: 0%; border-radius: 99px; background: linear-gradient(90deg, #5d68f0, #8b93ff, #22d3ee); transition: width 0.5s cubic-bezier(0.3,0.8,0.4,1); box-shadow: 0 0 12px rgba(129,140,248,0.5); }
+
+  .log-box { background: #07090d; border: 1px solid var(--border); border-radius: 11px; padding: 14px 16px; max-height: 230px; overflow-y: auto; font-family: var(--mono); font-size: 12.5px; line-height: 1.7; }
+  .log-line { display: flex; gap: 10px; opacity: 0; animation: logIn 0.3s ease forwards; }
+  @keyframes logIn { from { opacity: 0; transform: translateX(-6px); } to { opacity: 1; transform: none; } }
+  .log-line .lt { color: var(--faint-solid); flex: none; }
+  .log-line .lv { color: var(--dim); }
+  .log-line .tagok { color: var(--pass); }
+  .log-line .tagwarn { color: var(--flaky); }
+  .log-line .taginfo { color: var(--accent-2); }
+  .log-cursor { display: inline-block; width: 8px; height: 14px; background: var(--accent); vertical-align: text-bottom; animation: blink 1s step-end infinite; }
+  @keyframes blink { 50% { opacity: 0; } }
+
+  /* success */
+  .success-head { text-align: center; padding: 14px 0 6px; }
+  .success-head .sc-ring {
+    width: 64px; height: 64px; border-radius: 50%; margin: 0 auto 16px; display: grid; place-items: center;
+    background: var(--pass-bg); border: 1.5px solid rgba(61,220,151,0.5); color: var(--pass);
+    box-shadow: 0 0 0 6px rgba(61,220,151,0.08), 0 8px 30px rgba(61,220,151,0.2); animation: pop 0.5s cubic-bezier(0.2,0.9,0.3,1.4);
+  }
+  @keyframes pop { from { transform: scale(0.4); opacity: 0; } to { transform: scale(1); opacity: 1; } }
+  .success-head .sc-ring svg { width: 32px; height: 32px; }
+  .success-head h2 { font-size: 23px; font-weight: 680; letter-spacing: -0.4px; margin: 0 0 7px; }
+  .success-head p { font-size: 13.5px; color: var(--dim); margin: 0 auto; max-width: 460px; line-height: 1.55; }
+  .summary-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; margin: 24px 0; }
+  .sum { background: var(--inset); border: 1px solid var(--border); border-radius: 11px; padding: 14px 15px; position: relative; overflow: hidden; }
+  .sum .bar { position: absolute; left: 0; top: 0; bottom: 0; width: 3px; }
+  .sum .sv { font-size: 26px; font-weight: 700; letter-spacing: -0.8px; line-height: 1; }
+  .sum .sl { font-size: 11.5px; color: var(--dim); margin-top: 7px; display: flex; align-items: center; gap: 6px; }
+  .sum .sl .dot { width: 7px; height: 7px; border-radius: 50%; }
+
+  /* ===== RIGHT PANEL ===== */
+  .learn { position: sticky; top: 80px; display: flex; flex-direction: column; gap: 18px; }
+  .learn-card { background: var(--panel); border: 1px solid var(--border); border-radius: var(--radius); box-shadow: var(--shadow); padding: 18px; }
+  .learn-card .lc-h { font-size: 12px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.7px; color: var(--accent); display: flex; align-items: center; gap: 8px; margin-bottom: 15px; }
+  .learn-card .lc-h svg { width: 15px; height: 15px; }
+  .mental { display: flex; flex-direction: column; gap: 3px; }
+  .mm-item { display: flex; gap: 12px; padding: 11px; border-radius: 10px; transition: all 0.18s; border: 1px solid transparent; position: relative; }
+  .mm-item.on { background: var(--accent-soft); border-color: rgba(129,140,248,0.25); }
+  .mm-item .mm-ic { width: 30px; height: 30px; border-radius: 8px; flex: none; display: grid; place-items: center; background: var(--inset); border: 1px solid var(--border-2); color: var(--faint-solid); transition: all 0.18s; }
+  .mm-item.on .mm-ic { color: #fff; }
+  .mm-item.done .mm-ic { background: var(--pass-bg); border-color: rgba(61,220,151,0.4); color: var(--pass); }
+  .mm-item .mm-ic svg { width: 15px; height: 15px; }
+  .mm-item .mm-txt b { display: block; font-size: 12.5px; color: var(--text); margin-bottom: 2px; }
+  .mm-item .mm-txt span { font-size: 11.5px; color: var(--faint-solid); line-height: 1.45; }
+  .mm-item.on .mm-txt b { color: #fff; }
+
+  .synth { background: linear-gradient(150deg, rgba(129,140,248,0.1), rgba(34,211,238,0.05)); border: 1px solid rgba(129,140,248,0.25); border-radius: var(--radius); padding: 16px 18px; }
+  .synth .sh { font-size: 12px; font-weight: 650; color: #fff; margin-bottom: 9px; display: flex; align-items: center; gap: 8px; }
+  .synth .sh svg { width: 15px; height: 15px; color: var(--accent-2); }
+  .synth p { font-size: 12px; color: var(--dim); line-height: 1.6; margin: 0; }
+  .synth p b { color: var(--accent); font-weight: 600; }
+
+  /* ===== TOAST ===== */
+  .toast-wrap { position: fixed; bottom: 24px; left: 50%; transform: translateX(-50%); z-index: 100; display: flex; flex-direction: column; gap: 10px; align-items: center; pointer-events: none; }
+  .toast { display: flex; align-items: center; gap: 11px; background: var(--panel-3); border: 1px solid var(--border-2); padding: 12px 16px; border-radius: 11px; box-shadow: 0 12px 40px rgba(0,0,0,0.55); font-size: 13px; color: var(--text); animation: toastin 0.3s cubic-bezier(0.2,0.8,0.3,1); min-width: 240px; }
+  @keyframes toastin { from { opacity: 0; transform: translateY(14px) scale(0.96); } to { opacity: 1; transform: none; } }
+  .toast.out { animation: toastout 0.3s ease forwards; }
+  @keyframes toastout { to { opacity: 0; transform: translateY(10px) scale(0.97); } }
+  .toast .spin2 { width: 16px; height: 16px; border-radius: 50%; border: 2px solid rgba(129,140,248,0.3); border-top-color: var(--accent); animation: spin 0.7s linear infinite; flex: none; }
+  .toast .ok { color: var(--pass); display: grid; place-items: center; }
+  .toast .ok svg { width: 17px; height: 17px; }
+
+  @media (max-width: 1240px) {
+    .layout { grid-template-columns: 220px minmax(0,1fr); }
+    .learn { display: none; }
+  }
+  @media (max-width: 900px) {
+    .layout { grid-template-columns: 1fr; }
+    .stepper { position: static; flex-direction: row; overflow-x: auto; gap: 8px; }
+    .step:not(:last-child)::before { display: none; }
+    .field-grid, .summary-grid, .scan-intro-grid { grid-template-columns: 1fr; }
+    .summary-grid { grid-template-columns: repeat(2,1fr); }
+  }
+</style>
+</head>
+<body>
+
+<header class="topbar">
+  <div class="brand">
+    <div class="logo">
+      <svg viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="10.5" cy="10.5" r="6.5"/><path d="M15.5 15.5L21 21"/><path d="M8 10.5l1.8 1.8L13.5 8.5"/></svg>
+    </div>
+    <div class="name"><b>Test</b>Lens <span class="tag">Agent</span></div>
+  </div>
+  <span class="setup-pill"><span class="live">●</span> First-time setup</span>
+  <div class="top-right">
+    <a class="help" href="#">Docs</a>
+    <button class="btn ghost" id="skipAll">Skip &amp; explore</button>
+  </div>
+</header>
+
+<main>
+  <div class="hero">
+    <h1>Set up <span class="grad">testing intelligence</span> for your repository</h1>
+    <p>Connect your codebase, product knowledge, and QC test cases so TestLens can scan your repo and generate testing insights — missing tests, suspicious tests, flaky tests, and coverage risk.</p>
+  </div>
+
+  <div class="layout">
+    <!-- STEPPER -->
+    <nav class="stepper" id="stepper">
+      <div class="prog-label"><span>Setup progress</span><span><b id="progDone">0</b> / 5</span></div>
+    </nav>
+
+    <!-- CONTENT -->
+    <div class="content" id="content">
+
+      <!-- STEP 1: REPO -->
+      <section class="step-panel active" data-step="0">
+        <div class="panel">
+          <div class="card-head">
+            <div class="eyebrow">Step 1 — Codebase</div>
+            <h2>Select your repository</h2>
+            <p>TestLens reads your local repository to understand what code exists and which test files already cover it.</p>
+          </div>
+          <div class="card-body">
+            <div class="repo-pick">
+              <div class="fic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 7l2-3h6l2 3h6v12H3z"/></svg></div>
+              <div class="rp-info">
+                <div class="rp-path mono">/Users/dev/projects/checkout-service</div>
+                <div class="rp-sub">Local git repository · detected automatically</div>
+              </div>
+              <button class="btn" data-toast="Opening folder picker…" data-toast-done="Repository confirmed · checkout-service"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 7l2-3h6l2 3h6v12H3z"/></svg>Choose Repository</button>
+            </div>
+
+            <div class="field-grid">
+              <div class="field">
+                <div class="fl">Repository name</div>
+                <div class="fv"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 3h11l5 5v13H4z"/><path d="M15 3v5h5"/></svg>checkout-service</div>
+              </div>
+              <div class="field">
+                <div class="fl">Current branch</div>
+                <div class="fv branch"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="6" cy="6" r="2.5"/><circle cx="6" cy="18" r="2.5"/><circle cx="18" cy="8" r="2.5"/><path d="M6 8.5v7M18 10.5c0 4-6 2-6 5.5"/></svg>feature/coupon-refactor</div>
+              </div>
+            </div>
+
+            <div class="stack-label">Detected language &amp; framework <span class="auto">Auto-detected</span></div>
+            <div class="stack">
+              <span class="sbadge"><span class="lang" style="background:#3178c6"></span>TypeScript</span>
+              <span class="sbadge"><span class="lang" style="background:#61dafb"></span>React</span>
+              <span class="sbadge"><span class="lang" style="background:#3ddc97"></span>Node.js</span>
+              <span class="sbadge"><span class="lang" style="background:#fbbf24"></span>Jest</span>
+              <span class="sbadge"><span class="lang" style="background:#fb7185"></span>React Testing Library</span>
+            </div>
+
+            <div class="warn-note">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 8v5M12 16.5v.5"/><path d="M10.3 4l-7 12.5A1.5 1.5 0 004.6 19h14.8a1.5 1.5 0 001.3-2.5L13.7 4a1.5 1.5 0 00-3.4 0z"/></svg>
+              <span><b>7 uncommitted changes</b> on this branch. TestLens will scan your working tree as-is — commit or stash first if you want a clean baseline.</span>
+            </div>
+            <div class="info-note">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 8v8M12 5.5v.5"/><circle cx="12" cy="12" r="9"/></svg>
+              <span>TestLens runs locally and never uploads source code unless explicitly configured.</span>
+            </div>
+          </div>
+          <div class="step-foot">
+            <span class="spacer"></span>
+            <button class="btn primary" data-next>Continue<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14M13 6l6 6-6 6"/></svg></button>
+          </div>
+        </div>
+      </section>
+
+      <!-- STEP 2: PRODUCT KNOWLEDGE -->
+      <section class="step-panel" data-step="1">
+        <div class="panel">
+          <div class="card-head">
+            <div class="eyebrow">Step 2 — Product knowledge <span class="opt-tag">Optional</span></div>
+            <h2>Add product &amp; spec documentation</h2>
+            <p>Wiki pages, specs, and PRDs tell TestLens how the product is <em>supposed</em> to behave.</p>
+          </div>
+          <div class="card-body">
+            <div class="optional-banner">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 18h6M10 21h4M12 3a6 6 0 00-3.5 10.9c.5.4.5 1.1.5 1.6V16h6v-.5c0-.5 0-1.2.5-1.6A6 6 0 0012 3z"/></svg>
+              <span>Optional but recommended — <b>product knowledge helps TestLens detect tests that are technically passing but wrong according to the product spec.</b></span>
+            </div>
+
+            <div class="dropzone" data-upload="docs">
+              <div class="dz-ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 16V4M8 8l4-4 4 4"/><path d="M4 16v3a1 1 0 001 1h14a1 1 0 001-1v-3"/></svg></div>
+              <div class="dz-title">Upload Wiki / Specs</div>
+              <div class="dz-sub">Drag &amp; drop, or click to browse. Markdown, PDF, Confluence exports, PRDs &amp; API specs.</div>
+              <div class="dz-accept mono">.md  ·  .pdf  ·  .txt</div>
+            </div>
+
+            <div class="file-list" id="docsList"></div>
+
+            <div class="src-input-label">Or reference a documentation source by name</div>
+            <input class="text-input" id="docSrcInput" placeholder="e.g. Confluence Space: Checkout  ·  /docs/product" autocomplete="off">
+            <div class="src-chips" id="docSrcChips"></div>
+          </div>
+          <div class="step-foot">
+            <button class="btn ghost" data-back><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 12H5M11 6l-6 6 6 6"/></svg>Back</button>
+            <span class="spacer"></span>
+            <button class="skip-link" data-skip>Skip this step</button>
+            <button class="btn primary" data-next>Continue<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14M13 6l6 6-6 6"/></svg></button>
+          </div>
+        </div>
+      </section>
+
+      <!-- STEP 3: QC TEST CASES -->
+      <section class="step-panel" data-step="2">
+        <div class="panel">
+          <div class="card-head">
+            <div class="eyebrow">Step 3 — Manual QC <span class="opt-tag">Optional</span></div>
+            <h2>Import QC test cases</h2>
+            <p>Bring in your manual test cases so TestLens can compare what humans verify against what automated tests cover.</p>
+          </div>
+          <div class="card-body">
+            <div class="optional-banner">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 01-2 2H5a2 2 0 01-2-2V5a2 2 0 012-2h11"/></svg>
+              <span><b>QC test cases help TestLens find gaps</b> between manual testing and automated coverage.</span>
+            </div>
+
+            <div class="dropzone" data-upload="qc">
+              <div class="dz-ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 4h16v16H4z"/><path d="M4 9h16M9 9v11"/></svg></div>
+              <div class="dz-title">Upload QC Test Cases</div>
+              <div class="dz-sub">Drag &amp; drop, or click to browse. CSV, spreadsheets, Markdown checklists, JSON.</div>
+              <div class="dz-accept mono">.csv  ·  .xlsx  ·  .md  ·  .json  ·  .txt</div>
+            </div>
+
+            <div class="file-list" id="qcFileList"></div>
+
+            <div class="src-input-label" style="margin-top:4px;">Preview — <span class="mono" style="color:var(--accent)">qc-checkout-suite.csv</span> · 42 rows</div>
+            <div class="qc-table-wrap">
+              <table class="qc" id="qcTable"></table>
+            </div>
+          </div>
+          <div class="step-foot">
+            <button class="btn ghost" data-back><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 12H5M11 6l-6 6 6 6"/></svg>Back</button>
+            <span class="spacer"></span>
+            <button class="skip-link" data-skip>Skip this step</button>
+            <button class="btn primary" data-next>Continue<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14M13 6l6 6-6 6"/></svg></button>
+          </div>
+        </div>
+      </section>
+
+      <!-- STEP 4: COMMANDS -->
+      <section class="step-panel" data-step="3">
+        <div class="panel">
+          <div class="card-head">
+            <div class="eyebrow">Step 4 — Test commands</div>
+            <h2>Configure how tests run</h2>
+            <p>TestLens detected your scripts from <span class="mono" style="color:var(--accent)">package.json</span>. Adjust anything before the first scan.</p>
+          </div>
+          <div class="card-body">
+            <div class="pm-row">
+              <span class="pml">Package manager</span>
+              <div class="pm-seg" id="pmSeg">
+                <button class="active">npm <span class="auto">detected</span></button>
+                <button>pnpm</button>
+                <button>yarn</button>
+              </div>
+            </div>
+
+            <div id="cmdRows"></div>
+
+            <div class="toggles">
+              <div class="th">Initial scan options</div>
+              <div id="toggleRows"></div>
+            </div>
+
+            <div class="info-note" style="margin-top:18px;">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l7 3v6c0 5-3.5 7.5-7 9-3.5-1.5-7-4-7-9V6z"/><path d="M9 12l2 2 4-4"/></svg>
+              <span>TestLens will <b style="color:var(--text)">ask for approval before modifying source code</b> or creating any test files.</span>
+            </div>
+          </div>
+          <div class="step-foot">
+            <button class="btn ghost" data-back><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 12H5M11 6l-6 6 6 6"/></svg>Back</button>
+            <span class="spacer"></span>
+            <button class="btn primary" data-next>Review &amp; scan<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14M13 6l6 6-6 6"/></svg></button>
+          </div>
+        </div>
+      </section>
+
+      <!-- STEP 5: SCAN -->
+      <section class="step-panel" data-step="4">
+        <div class="panel" id="scanPanel">
+          <div class="card-head">
+            <div class="eyebrow">Step 5 — Initial scan</div>
+            <h2 id="scanTitle">Run the first repository scan</h2>
+            <p id="scanIntro">TestLens will combine your codebase, docs, and QC cases to build the dashboard. Here's everything it will do:</p>
+          </div>
+          <div class="card-body" id="scanBody">
+            <div class="scan-intro-grid" id="scanTasks"></div>
+
+            <div class="scan-progress" id="scanProgress" style="display:none;">
+              <div class="sp-top">
+                <span class="sp-step" id="spStep">Preparing…</span>
+                <span class="sp-eta" id="spEta"></span>
+              </div>
+              <div class="ptrack"><i id="pbar"></i></div>
+            </div>
+
+            <div class="log-box" id="logBox" style="display:none;"></div>
+          </div>
+          <div class="step-foot" id="scanFoot">
+            <button class="btn ghost" data-back><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 12H5M11 6l-6 6 6 6"/></svg>Back</button>
+            <span class="spacer"></span>
+            <button class="btn primary lg" id="startScan"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 3l14 9-14 9z"/></svg>Start Initial Scan</button>
+          </div>
+        </div>
+      </section>
+
+    </div>
+
+    <!-- RIGHT PANEL -->
+    <aside class="learn">
+      <div class="learn-card">
+        <div class="lc-h"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3a6 6 0 00-3.5 10.9c.5.4.5 1.1.5 1.6V16h6v-.5c0-.5 0-1.2.5-1.6A6 6 0 0012 3z"/><path d="M9 18h6M10 21h4"/></svg>What TestLens learns</div>
+        <div class="mental" id="mental"></div>
+      </div>
+      <div class="synth">
+        <div class="sh"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 4l1.6 4.4L18 10l-4.4 1.6L12 16l-1.6-4.4L6 10l4.4-1.6z"/></svg>Why all four sources?</div>
+        <p>Together they let TestLens detect <b>missing</b>, <b>suspicious</b>, and <b>flaky</b> tests — and surface the testing risks no single source can reveal on its own.</p>
+      </div>
+    </aside>
+  </div>
+</main>
+
+<div class="toast-wrap" id="toastWrap"></div>
+
+<script>
+/* ============ STEP DEFINITIONS ============ */
+const STEPS = [
+  { title:"Select Repository", optional:false },
+  { title:"Product Knowledge", optional:true },
+  { title:"QC Test Cases", optional:true },
+  { title:"Test Commands", optional:false },
+  { title:"Initial Scan", optional:false },
+];
+// state: 'todo' | 'current' | 'done' | 'skipped'
+let stepState = ["current","todo","todo","todo","todo"];
+let activeStep = 0;
+
+const MENTAL = [
+  { ic:'<path d="M8 9l-4 3 4 3M16 9l4 3-4 3M14 5l-4 14"/>', b:"Code tells it what exists", s:"Your repository's source & test files." },
+  { ic:'<path d="M7 3h7l4 4v14H7z"/><path d="M9 12h7M9 16h5M9 8h3"/>', b:"Specs tell it what should happen", s:"Product docs define expected behavior." },
+  { ic:'<path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 01-2 2H5a2 2 0 01-2-2V5a2 2 0 012-2h11"/>', b:"QC cases tell what humans verify", s:"Manual coverage from your QC team." },
+  { ic:'<path d="M5 3l14 9-14 9z"/>', b:"Test runs tell what's working", s:"Real pass/fail, coverage & flakiness." },
+];
+// which mental-model item maps to which step
+const STEP_TO_MENTAL = [0,1,2,3,3];
+
+/* ============ RENDER STEPPER ============ */
+const stepperEl = document.getElementById("stepper");
+const stateMeta = {
+  todo:    { label:"Not started", ic:null },
+  current: { label:"In progress", ic:null },
+  done:    { label:"Completed",   ic:'<path d="M5 12l4 4 10-10"/>' },
+  skipped: { label:"Skipped",     ic:'<path d="M5 12h14"/>' },
+};
+function renderStepper(){
+  // keep the progress label
+  const head = stepperEl.querySelector(".prog-label");
+  stepperEl.innerHTML = "";
+  stepperEl.appendChild(head);
+  STEPS.forEach((s,i)=>{
+    const st = stepState[i];
+    const meta = stateMeta[st];
+    const marker = st==="done" ? `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round">${meta.ic}</svg>`
+      : st==="skipped" ? `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round">${meta.ic}</svg>`
+      : (i+1);
+    const el = document.createElement("div");
+    el.className = "step " + st;
+    el.dataset.i = i;
+    el.innerHTML = `
+      <div class="marker">${marker}</div>
+      <div class="stxt">
+        <div class="stitle">${s.title}${s.optional?'<span class="opt">Opt</span>':''}</div>
+        <div class="sstate">${st==="current"?'<span style="width:5px;height:5px;border-radius:50%;background:currentColor;display:inline-block"></span>':''}${meta.label}</div>
+      </div>`;
+    el.addEventListener("click", ()=>{ if(!scanning) goToStep(i); });
+    stepperEl.appendChild(el);
+  });
+  const doneCount = stepState.filter(s=>s==="done"||s==="skipped").length;
+  document.getElementById("progDone").textContent = doneCount;
+}
+
+/* ============ RENDER MENTAL MODEL ============ */
+const mentalEl = document.getElementById("mental");
+function renderMental(){
+  const activeMM = STEP_TO_MENTAL[activeStep];
+  mentalEl.innerHTML = MENTAL.map((m,i)=>{
+    const on = i===activeMM ? "on" : (i<activeMM ? "done":"");
+    return `<div class="mm-item ${on}">
+      <div class="mm-ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">${m.ic}</svg></div>
+      <div class="mm-txt"><b>${m.b}</b><span>${m.s}</span></div>
+    </div>`;
+  }).join("");
+}
+
+/* ============ NAVIGATION ============ */
+const panels = [...document.querySelectorAll(".step-panel")];
+function goToStep(i){
+  if(i<0 || i>=STEPS.length) return;
+  // mark prior current as done if it was current and we're moving forward past it
+  activeStep = i;
+  stepState = stepState.map((s,idx)=>{
+    if(idx===i) return "current";
+    if(s==="current") return "todo"; // will be recomputed below
+    return s;
+  });
+  // recompute: any step before active that isn't skipped becomes done
+  stepState = stepState.map((s,idx)=>{
+    if(idx===i) return "current";
+    if(idx<i) return s==="skipped" ? "skipped" : "done";
+    if(s==="done"||s==="skipped") return s; // preserve forward-visited
+    return "todo";
+  });
+  panels.forEach(p=>p.classList.toggle("active", +p.dataset.step===i));
+  renderStepper();
+  renderMental();
+  window.scrollTo({ top:0, behavior:"smooth" });
+}
+function nextStep(){ goToStep(activeStep+1); }
+function skipStep(){
+  stepState[activeStep] = "skipped";
+  toast(`${STEPS[activeStep].title} skipped`, false);
+  if(activeStep < STEPS.length-1){ goToStep(activeStep+1); }
+  else renderStepper();
+}
+document.querySelectorAll("[data-next]").forEach(b=>b.addEventListener("click", nextStep));
+document.querySelectorAll("[data-back]").forEach(b=>b.addEventListener("click", ()=>goToStep(activeStep-1)));
+document.querySelectorAll("[data-skip]").forEach(b=>b.addEventListener("click", skipStep));
+document.getElementById("skipAll").addEventListener("click", ()=>{ toast("Opening dashboard…", true); setTimeout(()=>{ window.location.href = "TestLens Dashboard.html"; }, 900); });
+
+/* ============ STEP 2: DOC UPLOADS ============ */
+const MOCK_DOCS = [
+  { name:"Checkout Flow Spec.pdf", type:"pdf", size:"1.4 MB" },
+  { name:"Coupon Rules.md", type:"md", size:"22 KB" },
+  { name:"Payment Error Handling.md", type:"md", size:"18 KB" },
+];
+const EXTRA_DOCS = [
+  { name:"Order Summary PRD.pdf", type:"pdf", size:"880 KB" },
+  { name:"API Spec — Payments v2.txt", type:"txt", size:"41 KB" },
+  { name:"Session & Auth Notes.md", type:"md", size:"15 KB" },
+];
+let docs = [...MOCK_DOCS];
+let docQueue = 0;
+const docsListEl = document.getElementById("docsList");
+function renderDocs(){
+  docsListEl.innerHTML = docs.map((f,i)=>fileRow(f,i,"doc")).join("");
+  docsListEl.querySelectorAll(".fdel").forEach(b=>b.addEventListener("click", ()=>{ docs.splice(+b.dataset.i,1); renderDocs(); }));
+}
+function fileRow(f,i,kind){
+  return `<div class="file-row">
+    <div class="ftype ${f.type}">${f.type.toUpperCase()}</div>
+    <div class="fmeta"><div class="fn">${f.name}</div><div class="fsz">${f.size}</div></div>
+    <span class="fstatus"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12l4 4 10-10"/></svg>Indexed</span>
+    <button class="fdel" data-i="${i}" data-kind="${kind}"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 6l12 12M18 6L6 18"/></svg></button>
+  </div>`;
+}
+
+/* doc source chips */
+let docSources = ["Confluence Space: Checkout", "Spec folder: /docs/product"];
+const docSrcChipsEl = document.getElementById("docSrcChips");
+function renderSrcChips(){
+  docSrcChipsEl.innerHTML = docSources.map((s,i)=>`<span class="src-chip"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 12a3 3 0 003 3l3-3a3 3 0 00-4.2-4.2L11 9"/><path d="M15 12a3 3 0 00-3-3l-3 3a3 3 0 004.2 4.2L13 15"/></svg>${s}<button data-i="${i}"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" style="width:11px;height:11px"><path d="M6 6l12 12M18 6L6 18"/></svg></button></span>`).join("");
+  docSrcChipsEl.querySelectorAll("button").forEach(b=>b.addEventListener("click", ()=>{ docSources.splice(+b.dataset.i,1); renderSrcChips(); }));
+}
+const docSrcInput = document.getElementById("docSrcInput");
+docSrcInput.addEventListener("keydown", e=>{
+  if(e.key==="Enter" && e.target.value.trim()){ docSources.push(e.target.value.trim()); e.target.value=""; renderSrcChips(); }
+});
+
+/* simulate doc upload */
+document.querySelector('[data-upload="docs"]').addEventListener("click", ()=>{
+  if(docQueue < EXTRA_DOCS.length){ docs.push(EXTRA_DOCS[docQueue++]); renderDocs(); toast(`Uploaded ${docs[docs.length-1].name}`, false); }
+  else toast("All sample docs added", false);
+});
+
+/* ============ STEP 3: QC ============ */
+const QC_ROWS = [
+  { id:"QC-101", feat:"Coupon", scen:"Apply valid coupon", exp:"Discount is applied", prio:"high", auto:"automated" },
+  { id:"QC-102", feat:"Coupon", scen:"Expired coupon", exp:"Shows expired coupon error", prio:"high", auto:"missing" },
+  { id:"QC-118", feat:"Coupon", scen:"Stacking blocked", exp:"Second coupon rejected", prio:"medium", auto:"missing" },
+  { id:"QC-205", feat:"Payment", scen:"API timeout", exp:"User can retry payment", prio:"critical", auto:"missing" },
+  { id:"QC-211", feat:"Payment", scen:"Declined card", exp:"Retry prompt shown 3×", prio:"critical", auto:"automated" },
+  { id:"QC-301", feat:"Checkout", scen:"Duplicate submit", exp:"Prevents double order", prio:"critical", auto:"unknown" },
+  { id:"QC-307", feat:"Checkout", scen:"Incomplete address", exp:"Inline validation error", prio:"high", auto:"automated" },
+  { id:"QC-402", feat:"Order Summary", scen:"Multi-currency total", exp:"Banker's rounding applied", prio:"medium", auto:"unknown" },
+];
+const AUTO_COLOR = { automated:"var(--pass)", missing:"var(--missing)", unknown:"var(--gray)" };
+const AUTO_LABEL = { automated:"Automated", missing:"Missing", unknown:"Unknown" };
+document.getElementById("qcTable").innerHTML = `
+  <tr><th>Test Case ID</th><th>Feature</th><th>Scenario</th><th>Expected Result</th><th>Priority</th><th>Automation</th></tr>
+  ${QC_ROWS.map(r=>`<tr>
+    <td class="qid">${r.id}</td>
+    <td>${r.feat}</td>
+    <td class="scen">${r.scen}</td>
+    <td>${r.exp}</td>
+    <td><span class="prio ${r.prio}">${r.prio}</span></td>
+    <td><span class="autostat ${r.auto}"><span class="bd" style="background:${AUTO_COLOR[r.auto]}"></span>${AUTO_LABEL[r.auto]}</span></td>
+  </tr>`).join("")}`;
+
+let qcFiles = [{ name:"qc-checkout-suite.csv", type:"csv", size:"86 KB" }];
+const qcFileListEl = document.getElementById("qcFileList");
+function renderQcFiles(){
+  qcFileListEl.innerHTML = qcFiles.map((f,i)=>fileRow(f,i,"qc")).join("");
+  qcFileListEl.querySelectorAll(".fdel").forEach(b=>b.addEventListener("click", ()=>{ qcFiles.splice(+b.dataset.i,1); renderQcFiles(); }));
+}
+const QC_EXTRA = [{ name:"payment-edge-cases.json", type:"json", size:"12 KB" },{ name:"regression-checklist.md", type:"md", size:"9 KB" }];
+let qcQueue = 0;
+document.querySelector('[data-upload="qc"]').addEventListener("click", ()=>{
+  if(qcQueue < QC_EXTRA.length){ qcFiles.push(QC_EXTRA[qcQueue++]); renderQcFiles(); toast(`Imported ${qcFiles[qcFiles.length-1].name}`, false); }
+  else toast("All sample QC files added", false);
+});
+
+/* ============ STEP 4: COMMANDS ============ */
+const CMDS = [
+  { key:"test", label:"Test command", opt:"", val:"npm test" },
+  { key:"related", label:"Related test command", opt:"runs affected tests serially", val:"npm test -- --runInBand" },
+  { key:"coverage", label:"Coverage command", opt:"", val:"npm run test:coverage" },
+  { key:"typecheck", label:"Typecheck command", opt:"optional", val:"npm run typecheck" },
+  { key:"lint", label:"Lint command", opt:"optional", val:"npm run lint" },
+];
+const cmdRowsEl = document.getElementById("cmdRows");
+function renderCmds(){
+  cmdRowsEl.innerHTML = CMDS.map(c=>`
+    <div class="cmd-row">
+      <div class="cl">${c.label}${c.opt?`<span class="opt">${c.opt}</span>`:''}</div>
+      <div class="cmd-input-wrap"><span class="prompt">$</span><input value="${c.val}" data-key="${c.key}" spellcheck="false"></div>
+    </div>`).join("");
+  cmdRowsEl.querySelectorAll("input").forEach(inp=>inp.addEventListener("change", e=>{
+    const c = CMDS.find(x=>x.key===e.target.dataset.key); c.val = e.target.value;
+  }));
+}
+// package manager switch rewrites command prefixes
+const pmSeg = document.getElementById("pmSeg");
+pmSeg.addEventListener("click", e=>{
+  const b = e.target.closest("button"); if(!b) return;
+  pmSeg.querySelectorAll("button").forEach(x=>{ x.classList.remove("active"); });
+  b.classList.add("active");
+  const pm = b.textContent.trim().split(" ")[0];
+  const map = { npm:"npm run", pnpm:"pnpm", yarn:"yarn" };
+  const testMap = { npm:"npm test", pnpm:"pnpm test", yarn:"yarn test" };
+  CMDS.forEach(c=>{
+    if(c.key==="test") c.val = testMap[pm];
+    else if(c.key==="related") c.val = `${testMap[pm]} -- --runInBand`;
+    else c.val = `${map[pm]} ${c.key==="coverage"?"test:coverage":c.key}`;
+  });
+  renderCmds();
+  toast(`Commands updated for ${pm}`, false);
+});
+
+const TOGGLES = [
+  { key:"full", label:"Run full test suite during initial scan", desc:"Execute every test, not just a sample.", on:true },
+  { key:"cov", label:"Run coverage during initial scan", desc:"Parse line & branch coverage.", on:true },
+  { key:"type", label:"Run typecheck", desc:"Catch type errors across the repo.", on:true },
+  { key:"lint", label:"Run lint", desc:"Surface lint failures alongside tests.", on:false },
+  { key:"flaky", label:"Detect flaky tests by re-running failures", desc:"Re-run failed tests up to 3× to spot intermittency.", on:true },
+  { key:"gen", label:"Allow TestLens to generate test files after scan", desc:"Drafts stay staged until you approve.", on:false },
+];
+const toggleRowsEl = document.getElementById("toggleRows");
+function renderToggles(){
+  toggleRowsEl.innerHTML = TOGGLES.map((t,i)=>`
+    <div class="toggle-row">
+      <div class="tinfo"><div class="tn">${t.label}</div><div class="td">${t.desc}</div></div>
+      <div class="switch ${t.on?'on':''}" data-i="${i}"></div>
+    </div>`).join("");
+  toggleRowsEl.querySelectorAll(".switch").forEach(sw=>sw.addEventListener("click", ()=>{
+    const t = TOGGLES[+sw.dataset.i]; t.on = !t.on; sw.classList.toggle("on", t.on);
+  }));
+}
+
+/* ============ STEP 5: SCAN ============ */
+const SCAN_TASKS = [
+  "Analyze repository structure",
+  "Detect test framework",
+  "Discover existing test cases",
+  "Parse product / wiki documents",
+  "Import QC test cases",
+  "Map source files to test files",
+  "Run test command",
+  "Run coverage command",
+  "Detect missing tests",
+  "Detect suspicious tests",
+  "Generate initial testing insights",
+];
+const scanTasksEl = document.getElementById("scanTasks");
+function renderScanTasks(){
+  scanTasksEl.innerHTML = SCAN_TASKS.map((t,i)=>`
+    <div class="scan-task pending" data-i="${i}">
+      <div class="tk-ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/></svg></div>
+      <span class="tk-label">${t}</span>
+      <span class="tk-badge">Pending</span>
+    </div>`).join("");
+}
+const SCAN_LOG = [
+  { t:0,   tag:"info", msg:"Analyzing repository structure — 2,418 files across 6 feature modules" },
+  { t:1,   tag:"ok",   msg:"Detected Jest and React Testing Library" },
+  { t:2,   tag:"ok",   msg:"Found 186 automated test cases" },
+  { t:3,   tag:"ok",   msg:"Parsed 8 product documents (Checkout, Coupon, Payment, Session)" },
+  { t:4,   tag:"ok",   msg:"Imported 42 QC test cases" },
+  { t:5,   tag:"ok",   msg:"Mapped 31 QC scenarios to existing automated tests" },
+  { t:6,   tag:"info", msg:"Running test suite — npm test -- --runInBand" },
+  { t:6.5, tag:"warn", msg:"5 tests failed, 2 flaky across re-runs" },
+  { t:7,   tag:"info", msg:"Coverage report parsed: 74% line coverage, 46% branch coverage" },
+  { t:8,   tag:"warn", msg:"Found 9 missing high-priority test cases" },
+  { t:9,   tag:"warn", msg:"Detected 3 suspicious tests inconsistent with product specs" },
+  { t:10,  tag:"ok",   msg:"Generated initial testing insights — dashboard is ready" },
+];
+const SUMMARY = [
+  { v:"186", l:"Automated tests found", c:"var(--accent)" },
+  { v:"42",  l:"QC test cases imported", c:"var(--accent-2)" },
+  { v:"8",   l:"Product docs indexed", c:"var(--missing)" },
+  { v:"9",   l:"Missing recommended", c:"var(--missing)" },
+  { v:"3",   l:"Suspicious tests", c:"var(--suspect)" },
+  { v:"5",   l:"Failed tests", c:"var(--fail)" },
+  { v:"2",   l:"Flaky tests", c:"var(--flaky)" },
+  { v:"74%", l:"Line coverage", c:"var(--pass)" },
+];
+let scanning = false;
+const logBox = document.getElementById("logBox");
+function logTime(){ const d=new Date(); return d.toTimeString().slice(0,8); }
+function addLog(item){
+  const line = document.createElement("div");
+  line.className = "log-line";
+  const tagCls = item.tag==="ok"?"tagok":item.tag==="warn"?"tagwarn":"taginfo";
+  const tagTxt = item.tag==="ok"?"✓":item.tag==="warn"?"!":"›";
+  line.innerHTML = `<span class="lt">${logTime()}</span><span class="lv"><span class="${tagCls}">${tagTxt}</span> ${item.msg}</span>`;
+  logBox.appendChild(line);
+  logBox.scrollTop = logBox.scrollHeight;
+}
+
+document.getElementById("startScan").addEventListener("click", runScan);
+function runScan(){
+  if(scanning) return;
+  scanning = true;
+  const startBtn = document.getElementById("startScan");
+  startBtn.disabled = true; startBtn.innerHTML = `<span class="spin2" style="border-color:rgba(255,255,255,.4);border-top-color:#fff"></span>Scanning…`;
+  document.getElementById("scanIntro").textContent = "Scanning your repository — building testing intelligence from all four sources.";
+  document.getElementById("scanProgress").style.display = "block";
+  logBox.style.display = "block";
+  logBox.innerHTML = "";
+
+  const tasks = [...scanTasksEl.querySelectorAll(".scan-task")];
+  const pbar = document.getElementById("pbar");
+  const spStep = document.getElementById("spStep");
+  const spEta = document.getElementById("spEta");
+  const total = SCAN_TASKS.length;
+  let i = 0;
+  const warnTasks = new Set([8,9]); // missing & suspicious end with warn
+
+  function step(){
+    if(i>0){
+      const prev = tasks[i-1];
+      prev.classList.remove("running");
+      prev.classList.add(warnTasks.has(i-1)?"warn":"done");
+      prev.querySelector(".tk-badge").textContent = warnTasks.has(i-1)?"Warning":"Done";
+      prev.querySelector(".tk-ic").innerHTML = warnTasks.has(i-1)
+        ? `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M12 8v5M12 16v.5"/><path d="M10.3 4l-7 12.5A1.5 1.5 0 004.6 19h14.8a1.5 1.5 0 001.3-2.5L13.7 4a1.5 1.5 0 00-3.4 0z"/></svg>`
+        : `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12l4 4 10-10"/></svg>`;
+    }
+    // logs tied to this task index
+    SCAN_LOG.filter(l=>Math.floor(l.t)===i-1 && l.t!==Math.floor(l.t)).forEach(addLog); // half-step extras
+    if(i>=total){ finishScan(); return; }
+    const cur = tasks[i];
+    cur.classList.remove("pending"); cur.classList.add("running");
+    cur.querySelector(".tk-badge").textContent = "Running";
+    cur.querySelector(".tk-ic").innerHTML = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3a9 9 0 109 9" /></svg>`;
+    spStep.innerHTML = `${SCAN_TASKS[i]} <span class="pct">${Math.round((i/total)*100)}%</span>`;
+    spEta.textContent = `~${Math.max(1, total-i)}s remaining`;
+    pbar.style.width = `${Math.round(((i+0.5)/total)*100)}%`;
+    const logForI = SCAN_LOG.find(l=>l.t===i);
+    if(logForI) addLog(logForI);
+    i++;
+    setTimeout(step, 620 + Math.random()*260);
+  }
+  setTimeout(step, 300);
+}
+
+function finishScan(){
+  document.getElementById("pbar").style.width = "100%";
+  document.getElementById("spStep").innerHTML = `Complete <span class="pct">100%</span>`;
+  document.getElementById("spEta").textContent = "done";
+  // mark step 5 done in stepper
+  stepState[4] = "done";
+  renderStepper();
+  setTimeout(showSuccess, 700);
+}
+
+function showSuccess(){
+  scanning = false;
+  const body = document.getElementById("scanBody");
+  const head = document.querySelector('#scanPanel .card-head');
+  head.innerHTML = `<div class="success-head">
+      <div class="sc-ring"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><path d="M5 13l4 4 10-11"/></svg></div>
+      <h2>Testing intelligence is ready</h2>
+      <p>TestLens combined your codebase, 8 product docs, and 42 QC cases with a live test run. Here's what it found.</p>
+    </div>`;
+  body.innerHTML = `<div class="summary-grid">${SUMMARY.map(s=>`
+    <div class="sum"><div class="bar" style="background:${s.c}"></div><div class="sv" style="color:${s.c}">${s.v}</div><div class="sl"><span class="dot" style="background:${s.c}"></span>${s.l}</div></div>`).join("")}</div>
+    <div class="info-note"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 8v8M12 5.5v.5"/><circle cx="12" cy="12" r="9"/></svg><span>9 missing &amp; 3 suspicious tests are queued as AI insights. TestLens has <b style="color:var(--text)">staged 7 test drafts</b> awaiting your approval on the dashboard.</span></div>`;
+  const foot = document.getElementById("scanFoot");
+  foot.innerHTML = `<button class="btn ghost" id="rescanBtn"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 12a8 8 0 108-8" /><path d="M4 4v4h4"/></svg>Re-run scan</button>
+    <span class="spacer"></span>
+    <button class="btn primary lg" id="openDash"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 13h8V3H3zM13 21h8v-10h-8zM13 3v6h8V3zM3 21h8v-4H3z"/></svg>Open Dashboard</button>`;
+  document.getElementById("openDash").addEventListener("click", ()=>{
+    const el = toast("Dashboard opened", false);
+    setTimeout(()=>{ window.location.href = "TestLens Dashboard.html"; }, 850);
+  });
+  document.getElementById("rescanBtn").addEventListener("click", ()=>{ window.location.reload(); });
+}
+
+/* ============ TOASTS ============ */
+const toastWrap = document.getElementById("toastWrap");
+function toast(msg, loading){
+  const el = document.createElement("div");
+  el.className = "toast";
+  el.innerHTML = (loading?`<span class="spin2"></span>`:`<span class="ok"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12l4 4 10-10"/></svg></span>`) + `<span>${msg}</span>`;
+  toastWrap.appendChild(el);
+  setTimeout(()=>{ el.classList.add("out"); setTimeout(()=>el.remove(),300); }, loading?2400:2000);
+  return el;
+}
+function flow(loadingMsg, doneMsg){
+  const el = toast(loadingMsg, true);
+  if(doneMsg){
+    setTimeout(()=>{
+      el.querySelector(".spin2").outerHTML = `<span class="ok"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12l4 4 10-10"/></svg></span>`;
+      el.querySelector("span:last-child").textContent = doneMsg;
+    }, 1100);
+  }
+}
+document.addEventListener("click", e=>{
+  const b = e.target.closest("[data-toast]"); if(!b) return;
+  flow(b.dataset.toast, b.dataset.toastDone || "");
+});
+
+/* ============ INIT ============ */
+renderStepper();
+renderMental();
+renderDocs();
+renderSrcChips();
+renderQcFiles();
+renderCmds();
+renderToggles();
+renderScanTasks();
+</script>
+</body>
+</html>

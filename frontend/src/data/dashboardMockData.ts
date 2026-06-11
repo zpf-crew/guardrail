@@ -7,8 +7,10 @@ export interface TestCase {
   risk: 'low' | 'medium' | 'high';
   description: string;
   aiNote?: string;
+  noteType?: '' | 'warn';
   duration: string;
   lastRun: string;
+  runs: number[];
 }
 
 export interface Insight {
@@ -38,42 +40,51 @@ export interface HeatmapCell {
 
 export const healthScore = { score: 72, grade: 'C+', trend: '+3 from last week', note: 'Improving — suspicious tests fixed' };
 
-export const statTiles = [
-  { label: 'Total', value: '847', color: 'gray' },
-  { label: 'Passed', value: '782', color: 'pass' },
-  { label: 'Failed', value: '12', color: 'fail' },
-  { label: 'Flaky', value: '1', color: 'flaky' },
-  { label: 'Missing', value: '4', color: 'missing' },
-  { label: 'Suspicious', value: '2', color: 'suspect' },
-  { label: 'Coverage', value: '64%', color: 'accent' },
-  { label: 'High-risk', value: '3', color: 'fail' },
+export interface StatTile {
+  label: string;
+  value: string | number;
+  color: string;
+  delta: string;
+  deltaCls: 'up' | 'down' | 'up-bad' | 'down-good';
+  sub?: boolean;
+}
+
+export const statTiles: StatTile[] = [
+  { label: 'Total test cases', value: 24, color: 'var(--accent)', delta: '+5', deltaCls: 'up' },
+  { label: 'Passed', value: 14, color: 'var(--pass)', delta: '+4', deltaCls: 'up' },
+  { label: 'Failed', value: 3, color: 'var(--fail)', delta: '-3', deltaCls: 'down-good' },
+  { label: 'Flaky', value: 2, color: 'var(--flaky)', delta: '+1', deltaCls: 'up-bad' },
+  { label: 'Missing', value: 4, color: 'var(--missing)', delta: '+5', deltaCls: 'up-bad' },
+  { label: 'Suspicious', value: 2, color: 'var(--suspect)', delta: '+1', deltaCls: 'up-bad' },
+  { label: 'Coverage', value: '71.4%', color: 'var(--accent-2)', delta: '+4.2%', deltaCls: 'up', sub: true },
+  { label: 'High-risk open', value: 5, color: 'var(--fail)', delta: '-2', deltaCls: 'down-good' },
 ];
 
 export const testCases: TestCase[] = [
-  { id: 'T-001', title: 'Apply valid coupon at checkout', status: 'pass', type: 'Unit', feature: 'Coupon', risk: 'high', description: 'Tests that a valid coupon code applies the correct discount', aiNote: 'Well-covered, 5 assertions', duration: '42ms', lastRun: '2 min ago' },
-  { id: 'T-002', title: 'Reject expired coupon', status: 'pass', type: 'Unit', feature: 'Coupon', risk: 'high', description: 'Tests that expired coupons are rejected with proper error', duration: '38ms', lastRun: '2 min ago' },
-  { id: 'T-003', title: 'Stack multiple coupons', status: 'fail', type: 'Integration', feature: 'Coupon', risk: 'high', description: 'Tests that only one coupon can be applied at a time', aiNote: 'Fails: allows stacking after refactor', duration: '234ms', lastRun: '5 min ago' },
-  { id: 'T-004', title: 'Guest checkout flow', status: 'pass', type: 'UI/Browser', feature: 'Checkout', risk: 'high', description: 'End-to-end guest checkout with payment', duration: '4.2s', lastRun: '10 min ago' },
-  { id: 'T-005', title: 'Card payment success', status: 'pass', type: 'Integration', feature: 'Payment', risk: 'high', description: 'Tests successful card payment processing', duration: '156ms', lastRun: '2 min ago' },
-  { id: 'T-006', title: 'Card payment declined', status: 'flaky', type: 'Integration', feature: 'Payment', risk: 'high', description: 'Tests declined card handling', aiNote: 'Flaky: timing issue with mock server', duration: '312ms', lastRun: '8 min ago' },
-  { id: 'T-007', title: 'Partial refund processing', status: 'pass', type: 'Unit', feature: 'Payment', risk: 'medium', description: 'Tests partial refund calculation', duration: '28ms', lastRun: '2 min ago' },
-  { id: 'T-008', title: 'Empty cart checkout blocked', status: 'pass', type: 'Unit', feature: 'Checkout', risk: 'medium', description: 'Tests that empty cart cannot proceed to checkout', duration: '15ms', lastRun: '2 min ago' },
-  { id: 'T-009', title: 'Coupon discount rounding', status: 'suspect', type: 'Unit', feature: 'Coupon', risk: 'medium', description: 'Tests discount rounding to 2 decimal places', aiNote: 'Spec says round down, test rounds up', duration: '12ms', lastRun: '2 min ago' },
-  { id: 'T-010', title: 'Mobile checkout responsive', status: 'pass', type: 'Mobile', feature: 'Checkout', risk: 'high', description: 'Tests checkout UI on mobile viewport', duration: '6.1s', lastRun: '15 min ago' },
-  { id: 'T-011', title: 'Apply percentage coupon', status: 'pass', type: 'Unit', feature: 'Coupon', risk: 'medium', description: 'Tests percentage-based coupon calculation', duration: '22ms', lastRun: '2 min ago' },
-  { id: 'T-012', title: 'Apply fixed amount coupon', status: 'pass', type: 'Unit', feature: 'Coupon', risk: 'medium', description: 'Tests fixed-amount coupon deduction', duration: '19ms', lastRun: '2 min ago' },
-  { id: 'T-013', title: 'Coupon minimum purchase', status: 'fail', type: 'Unit', feature: 'Coupon', risk: 'high', description: 'Tests coupon requires minimum cart value', aiNote: 'Missing: minimum check bypassed', duration: '31ms', lastRun: '5 min ago' },
-  { id: 'T-014', title: 'Payment retry after decline', status: 'pass', type: 'UI/Browser', feature: 'Payment', risk: 'high', description: 'Tests user can retry payment after decline', duration: '5.8s', lastRun: '10 min ago' },
-  { id: 'T-015', title: 'Tax calculation accuracy', status: 'pass', type: 'Unit', feature: 'Checkout', risk: 'medium', description: 'Tests tax calculation for different regions', duration: '45ms', lastRun: '2 min ago' },
-  { id: 'T-016', title: 'Shipping cost calculation', status: 'pass', type: 'Unit', feature: 'Checkout', risk: 'low', description: 'Tests shipping cost based on weight and region', duration: '33ms', lastRun: '2 min ago' },
-  { id: 'T-017', title: 'Order confirmation email', status: 'pass', type: 'Integration', feature: 'Checkout', risk: 'medium', description: 'Tests confirmation email is sent after order', duration: '890ms', lastRun: '10 min ago' },
-  { id: 'T-018', title: 'Invalid coupon format', status: 'pass', type: 'Unit', feature: 'Coupon', risk: 'low', description: 'Tests invalid coupon format rejection', duration: '11ms', lastRun: '2 min ago' },
-  { id: 'T-019', title: 'Coupon usage limit', status: 'suspect', type: 'Unit', feature: 'Coupon', risk: 'high', description: 'Tests coupon usage limit per user', aiNote: 'Spec says per-account, test checks per-email', duration: '27ms', lastRun: '2 min ago' },
-  { id: 'T-020', title: 'Refund full amount', status: 'pass', type: 'Integration', feature: 'Payment', risk: 'high', description: 'Tests full refund processing', duration: '445ms', lastRun: '2 min ago' },
-  { id: 'T-021', title: 'Checkout timeout handling', status: 'fail', type: 'UI/Browser', feature: 'Checkout', risk: 'high', description: 'Tests checkout session timeout behavior', aiNote: 'Timeout not triggered in test', duration: '12.3s', lastRun: '10 min ago' },
-  { id: 'T-022', title: 'Currency conversion', status: 'pass', type: 'Unit', feature: 'Payment', risk: 'medium', description: 'Tests multi-currency conversion at checkout', duration: '56ms', lastRun: '2 min ago' },
-  { id: 'T-023', title: 'Promo code case sensitivity', status: 'pass', type: 'Unit', feature: 'Coupon', risk: 'low', description: 'Tests promo codes are case-insensitive', duration: '14ms', lastRun: '2 min ago' },
-  { id: 'T-024', title: 'Mobile payment sheet', status: 'pass', type: 'Mobile', feature: 'Payment', risk: 'high', description: 'Tests native payment sheet on iOS/Android', duration: '7.2s', lastRun: '15 min ago' },
+  { id: 'T-001', title: 'Apply valid coupon at checkout', status: 'pass', type: 'Unit', feature: 'Coupon', risk: 'high', description: 'Tests that a valid coupon code applies the correct discount', aiNote: 'Well-covered, 5 assertions', duration: '42ms', lastRun: '2 min ago', runs: [1,1,1,1,1] },
+  { id: 'T-002', title: 'Reject expired coupon', status: 'pass', type: 'Unit', feature: 'Coupon', risk: 'high', description: 'Tests that expired coupons are rejected with proper error', duration: '38ms', lastRun: '2 min ago', runs: [1,1,1,1,1] },
+  { id: 'T-003', title: 'Stack multiple coupons', status: 'fail', type: 'Integration', feature: 'Coupon', risk: 'high', description: 'Tests that only one coupon can be applied at a time', aiNote: 'Fails: allows stacking after refactor', duration: '234ms', lastRun: '5 min ago', runs: [1,1,0,1,1] },
+  { id: 'T-004', title: 'Guest checkout flow', status: 'pass', type: 'UI/Browser', feature: 'Checkout', risk: 'high', description: 'End-to-end guest checkout with payment', duration: '4.2s', lastRun: '10 min ago', runs: [1,1,1,1,1] },
+  { id: 'T-005', title: 'Card payment success', status: 'pass', type: 'Integration', feature: 'Payment', risk: 'high', description: 'Tests successful card payment processing', duration: '156ms', lastRun: '2 min ago', runs: [1,1,1,1,1] },
+  { id: 'T-006', title: 'Card payment declined', status: 'flaky', type: 'Integration', feature: 'Payment', risk: 'high', description: 'Tests declined card handling', aiNote: 'Flaky: timing issue with mock server', noteType: 'warn', duration: '312ms', lastRun: '8 min ago', runs: [1,0,1,0,0] },
+  { id: 'T-007', title: 'Partial refund processing', status: 'pass', type: 'Unit', feature: 'Payment', risk: 'medium', description: 'Tests partial refund calculation', duration: '28ms', lastRun: '2 min ago', runs: [1,1,1,1,1] },
+  { id: 'T-008', title: 'Empty cart checkout blocked', status: 'pass', type: 'Unit', feature: 'Checkout', risk: 'medium', description: 'Tests that empty cart cannot proceed to checkout', duration: '15ms', lastRun: '2 min ago', runs: [1,1,1,1,1] },
+  { id: 'T-009', title: 'Coupon discount rounding', status: 'suspect', type: 'Unit', feature: 'Coupon', risk: 'medium', description: 'Tests discount rounding to 2 decimal places', aiNote: 'Spec says round down, test rounds up', noteType: 'warn', duration: '12ms', lastRun: '2 min ago', runs: [1,1,1,0,1] },
+  { id: 'T-010', title: 'Mobile checkout responsive', status: 'pass', type: 'Mobile', feature: 'Checkout', risk: 'high', description: 'Tests checkout UI on mobile viewport', duration: '6.1s', lastRun: '15 min ago', runs: [1,1,1,1,1] },
+  { id: 'T-011', title: 'Apply percentage coupon', status: 'pass', type: 'Unit', feature: 'Coupon', risk: 'medium', description: 'Tests percentage-based coupon calculation', duration: '22ms', lastRun: '2 min ago', runs: [1,1,1,1,1] },
+  { id: 'T-012', title: 'Apply fixed amount coupon', status: 'pass', type: 'Unit', feature: 'Coupon', risk: 'medium', description: 'Tests fixed-amount coupon deduction', duration: '19ms', lastRun: '2 min ago', runs: [1,1,1,1,1] },
+  { id: 'T-013', title: 'Coupon minimum purchase', status: 'fail', type: 'Unit', feature: 'Coupon', risk: 'high', description: 'Tests coupon requires minimum cart value', aiNote: 'Missing: minimum check bypassed', duration: '31ms', lastRun: '5 min ago', runs: [1,1,0,1,0] },
+  { id: 'T-014', title: 'Payment retry after decline', status: 'pass', type: 'UI/Browser', feature: 'Payment', risk: 'high', description: 'Tests user can retry payment after decline', duration: '5.8s', lastRun: '10 min ago', runs: [1,1,1,1,1] },
+  { id: 'T-015', title: 'Tax calculation accuracy', status: 'pass', type: 'Unit', feature: 'Checkout', risk: 'medium', description: 'Tests tax calculation for different regions', duration: '45ms', lastRun: '2 min ago', runs: [1,1,1,1,1] },
+  { id: 'T-016', title: 'Shipping cost calculation', status: 'pass', type: 'Unit', feature: 'Checkout', risk: 'low', description: 'Tests shipping cost based on weight and region', duration: '33ms', lastRun: '2 min ago', runs: [1,1,1,1,1] },
+  { id: 'T-017', title: 'Order confirmation email', status: 'pass', type: 'Integration', feature: 'Checkout', risk: 'medium', description: 'Tests confirmation email is sent after order', duration: '890ms', lastRun: '10 min ago', runs: [1,1,1,1,1] },
+  { id: 'T-018', title: 'Invalid coupon format', status: 'pass', type: 'Unit', feature: 'Coupon', risk: 'low', description: 'Tests invalid coupon format rejection', duration: '11ms', lastRun: '2 min ago', runs: [1,1,1,1,1] },
+  { id: 'T-019', title: 'Coupon usage limit', status: 'suspect', type: 'Unit', feature: 'Coupon', risk: 'high', description: 'Tests coupon usage limit per user', aiNote: 'Spec says per-account, test checks per-email', noteType: 'warn', duration: '27ms', lastRun: '2 min ago', runs: [1,1,1,1,0] },
+  { id: 'T-020', title: 'Refund full amount', status: 'pass', type: 'Integration', feature: 'Payment', risk: 'high', description: 'Tests full refund processing', duration: '445ms', lastRun: '2 min ago', runs: [1,1,1,1,1] },
+  { id: 'T-021', title: 'Checkout timeout handling', status: 'fail', type: 'UI/Browser', feature: 'Checkout', risk: 'high', description: 'Tests checkout session timeout behavior', aiNote: 'Timeout not triggered in test', noteType: 'warn', duration: '12.3s', lastRun: '10 min ago', runs: [1,0,0,0,0] },
+  { id: 'T-022', title: 'Currency conversion', status: 'pass', type: 'Unit', feature: 'Payment', risk: 'medium', description: 'Tests multi-currency conversion at checkout', duration: '56ms', lastRun: '2 min ago', runs: [1,1,1,1,1] },
+  { id: 'T-023', title: 'Promo code case sensitivity', status: 'pass', type: 'Unit', feature: 'Coupon', risk: 'low', description: 'Tests promo codes are case-insensitive', duration: '14ms', lastRun: '2 min ago', runs: [1,1,1,1,1] },
+  { id: 'T-024', title: 'Mobile payment sheet', status: 'pass', type: 'Mobile', feature: 'Payment', risk: 'high', description: 'Tests native payment sheet on iOS/Android', duration: '7.2s', lastRun: '15 min ago', runs: [1,1,1,1,1] },
 ];
 
 export const insights: Insight[] = [

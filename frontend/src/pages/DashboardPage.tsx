@@ -2,33 +2,85 @@ import * as React from 'react';
 import { useNavigate } from 'react-router-dom';
 import { TopBar } from '@/components/layout/TopBar';
 import { Panel } from '@/components/ui/panel';
-import { Badge } from '@/components/ui/badge';
 import { SearchInput } from '@/components/ui/search-input';
 import { SegmentedControl } from '@/components/ui/segmented-control';
 import { Button } from '@/components/ui/button';
-import { ProgressBar } from '@/components/ui/progress-bar';
 import { useToast } from '@/components/ui/toast';
 import { testCases, insights, modules, coverage, heatmap, heatmapCols, healthScore, statTiles } from '@/data/dashboardMockData';
 import type { TestCase, Insight } from '@/data/dashboardMockData';
 
 function FilterSelect({ value, onChange, children }: { value: string; onChange: (e: React.ChangeEvent<HTMLSelectElement>) => void; children: React.ReactNode }) {
   return (
-    <select className="bg-[#0d0f16] border border-[rgba(255,255,255,0.07)] rounded-[8px] px-[10px] py-[7px] text-[12px] text-[#e8ebf2] outline-none" value={value} onChange={onChange}>
+    <select
+      className="appearance-none bg-[#161a24] border border-[rgba(255,255,255,0.07)] text-[#e8ebf2] text-[12.5px] px-[11px] py-[6px] pr-[28px] rounded-[8px] cursor-pointer outline-none transition-colors hover:border-[rgba(255,255,255,0.12)] focus:border-[rgba(129,140,248,0.35)]"
+      style={{
+        backgroundImage: `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' fill='none' stroke='%2398a1b3' stroke-width='2'%3E%3Cpath d='M3 5l3 3 3-3'/%3E%3C/svg%3E")`,
+        backgroundRepeat: 'no-repeat',
+        backgroundPosition: 'right 9px center',
+      }}
+      value={value}
+      onChange={onChange}
+    >
       {children}
     </select>
   );
 }
 
-const statusBadgeVariant: Record<string, 'pass' | 'fail' | 'flaky' | 'missing' | 'suspect' | 'gray'> = {
-  pass: 'pass', fail: 'fail', flaky: 'flaky', missing: 'missing', suspect: 'suspect',
-};
+function SectionHead({ title, subtitle }: { title: string; subtitle?: string }) {
+  return (
+    <div className="flex items-baseline gap-[12px] mb-[14px] mt-[6px] mx-[2px]">
+      <h2 className="text-[15px] font-[650] m-0 tracking-[-0.1px] text-white">{title}</h2>
+      {subtitle && <span className="text-[12.5px] text-[#6b7488]">{subtitle}</span>}
+      <span className="flex-1 h-[1px] bg-[linear-gradient(90deg,rgba(255,255,255,0.07),transparent)]" />
+    </div>
+  );
+}
 
-const riskBadgeVariant: Record<string, 'pass' | 'fail' | 'flaky' | 'missing' | 'suspect' | 'gray'> = {
-  low: 'pass', medium: 'flaky', high: 'fail',
-};
+function StatusIcon({ status }: { status: string }) {
+  const icons: Record<string, string> = {
+    pass: 'M5 12l4 4 10-10',
+    fail: 'M6 6l12 12M18 6L6 18',
+    flaky: 'M12 7v5l3 2M12 12a8.5 8.5 0 100 0 8.5 8.5 0 000 0z',
+    missing: 'M12 7v10M7 12h10',
+    suspect: 'M12 8v5M12 16v.5M10.3 4l-7 12.5A1.5 1.5 0 004.6 19h14.8a1.5 1.5 0 001.3-2.5L13.7 4a1.5 1.5 0 00-3.4 0z',
+  };
+  const colors: Record<string, string> = {
+    pass: '#3ddc97', fail: '#fb7185', flaky: '#fbbf24', missing: '#60a5fa', suspect: '#c084fc',
+  };
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke={colors[status]} strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" className="w-[15px] h-[15px]">
+      <path d={icons[status]} />
+    </svg>
+  );
+}
 
-const severityVariant: Record<string, 'pass' | 'fail' | 'flaky' | 'missing' | 'suspect' | 'gray'> = {
-  high: 'fail', medium: 'flaky', low: 'gray',
+function RunBars({ runs, status }: { runs: number[]; status: string }) {
+  const colors: Record<string, string> = {
+    pass: '#3ddc97', fail: '#fb7185', flaky: '#fbbf24', missing: '#60a5fa', suspect: '#c084fc',
+  };
+  if (!runs.length) return <span className="text-[11px] text-[#6b7488] opacity-60">not run</span>;
+  return (
+    <div className="flex gap-[3px] items-end h-[16px]" title="last 5 runs">
+      {runs.map((r, i) => (
+        <span key={i} className="block rounded-[2px]" style={{ width: '4px', height: `${7 + i * 2.2}px`, background: r ? colors[status] : 'rgba(255,255,255,0.13)' }} />
+      ))}
+    </div>
+  );
+}
+
+function DeltaIcon({ cls }: { cls: string }) {
+  const up = cls.includes('up');
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className="w-[13px] h-[13px]">
+      <path d={up ? 'M6 14l6-6 6 6' : 'M6 10l6 6 6-6'} />
+    </svg>
+  );
+}
+
+const severityMap: Record<string, { bg: string; color: string; label: string }> = {
+  high: { bg: 'rgba(251,191,36,0.14)', color: '#fbbf24', label: 'high' },
+  medium: { bg: 'rgba(96,165,250,0.14)', color: '#60a5fa', label: 'medium' },
+  low: { bg: 'rgba(139,148,167,0.16)', color: '#8b94a7', label: 'low' },
 };
 
 export function DashboardPage() {
@@ -92,221 +144,336 @@ export function DashboardPage() {
 
   const hasFilters = search || filterStatus !== 'All' || filterType !== 'All' || filterRisk !== 'All' || filterFeature !== 'All' || highlightedInsight !== null;
 
-  const circumference = 2 * Math.PI * 42;
-  const scoreOffset = circumference - (healthScore.score / 100) * circumference;
+  const donutColor = healthScore.score >= 80 ? '#3ddc97' : healthScore.score >= 60 ? '#fbbf24' : '#fb7185';
 
   return (
     <div className="min-h-screen" style={{ fontFamily: 'var(--sans)' }}>
       <TopBar
         repo="checkout-service"
         branch="feature/coupon-refactor"
-        scanTime="4 min ago · 2,418 files"
+        scanTime="4 min ago &middot; 2,418 files"
         actions={
           <>
-            <Button variant="outline" onClick={() => toast('Scan started', 'loading')}>Run Scan</Button>
-            <Button variant="primary" onClick={() => navigate('/tests')}>Generate Tests</Button>
+            <Button variant="outline" onClick={() => toast('Scan started', 'loading')}>
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="w-[15px] h-[15px]"><path d="M5 3l14 9-14 9z" /></svg>
+              Run Scan
+            </Button>
+            <Button variant="primary" onClick={() => navigate('/tests')}>
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="w-[15px] h-[15px]"><path d="M12 3v18M3 12h18" opacity="0"/><path d="M9 3v4M7 5h4"/><path d="M15 8l1.5 3.5L20 13l-3.5 1.5L15 18l-1.5-3.5L10 13l3.5-1.5z" /></svg>
+              Generate Tests
+            </Button>
+            <Button variant="ghost" onClick={() => toast('Exporting report...', 'loading')}>
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="w-[15px] h-[15px]"><path d="M12 3v12M8 11l4 4 4-4"/><path d="M5 21h14" /></svg>
+              Export Report
+            </Button>
           </>
         }
       />
 
-      <div className="mx-auto max-w-[1320px] p-[26px]">
-        <div className="grid grid-cols-[1fr_372px] gap-[22px]">
-          <div className="flex flex-col gap-[22px]">
-            {/* Health Summary */}
-            <Panel className="p-[22px]">
-              <div className="flex gap-[22px]">
-                <div className="flex flex-col items-center justify-center min-w-[140px]">
-                  <div className="relative w-[100px] h-[100px]">
-                    <svg viewBox="0 0 100 100" className="w-full h-full -rotate-90">
-                      <circle cx="50" cy="50" r="42" fill="none" stroke="rgba(255,255,255,0.07)" strokeWidth="8" />
-                      <circle cx="50" cy="50" r="42" fill="none" stroke="#818cf8" strokeWidth="8" strokeDasharray={circumference} strokeDashoffset={scoreOffset} strokeLinecap="round" />
-                    </svg>
-                    <div className="absolute inset-0 flex flex-col items-center justify-center">
-                      <span className="text-[28px] font-bold text-white">{healthScore.score}</span>
-                      <span className="text-[14px] font-semibold text-[#818cf8]">{healthScore.grade}</span>
-                    </div>
-                  </div>
-                  <div className="text-[11px] text-[#3ddc97] mt-[6px]">{healthScore.trend}</div>
-                  <div className="text-[11px] text-[#6b7488] mt-[2px]">{healthScore.note}</div>
-                </div>
-                <div className="flex-1 grid grid-cols-4 gap-[10px]">
-                  {statTiles.map(tile => (
-                    <Panel key={tile.label} className="p-[12px] text-center">
-                      <div className="text-[18px] font-bold text-white">{tile.value}</div>
-                      <div className="text-[11px] text-[#6b7488]">{tile.label}</div>
-                    </Panel>
-                  ))}
+      <div className="mx-auto max-w-[1640px] p-[24px_26px_70px]">
+        {/* Health Summary */}
+        <div className="grid grid-cols-[300px_1fr] gap-[16px] mb-[26px]">
+          <Panel className="p-[20px_22px] flex flex-col gap-[14px] relative overflow-hidden">
+            <div className="absolute inset-0 bg-[radial-gradient(120px_120px_at_80%_0%,rgba(129,140,248,0.12),transparent_70%)] pointer-events-none" />
+            <span className="text-[11px] uppercase tracking-[0.9px] text-[#6b7488] font-semibold relative">Repository Health</span>
+            <div className="flex items-center gap-[18px] relative">
+              <div
+                className="w-[116px] h-[116px] rounded-full flex-none relative grid place-items-center"
+                style={{
+                  background: `conic-gradient(${donutColor} calc(${healthScore.score} * 1%), rgba(255,255,255,0.06) 0)`,
+                }}
+              >
+                <div className="absolute inset-[9px] rounded-full bg-[#11141c] shadow-[0_0_0_1px_rgba(255,255,255,0.07)_inset]" />
+                <div className="relative text-center leading-none">
+                  <div className="text-[32px] font-bold tracking-[-1px] text-white">{healthScore.score}</div>
+                  <div className="text-[12px] text-[#6b7488] mt-[3px]">/ 100</div>
                 </div>
               </div>
-            </Panel>
+              <div className="flex flex-col gap-[9px]">
+                <div className="text-[13px] font-semibold text-[#e8ebf2]">
+                  Grade <span className="font-mono text-[11px] px-[7px] py-[2px] rounded-[6px] ml-[4px]" style={{ background: 'rgba(251,191,36,0.14)', color: '#fbbf24' }}>{healthScore.grade}</span>
+                </div>
+                <div className="inline-flex items-center gap-[5px] text-[12px] font-semibold text-[#3ddc97]">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className="w-[13px] h-[13px]"><path d="M5 15l5-5 4 4 6-7" /></svg>
+                  {healthScore.trend}
+                </div>
+                <div className="text-[11.5px] text-[#98a1b3] leading-[1.45]">{healthScore.note}</div>
+              </div>
+            </div>
+          </Panel>
 
+          <div className="grid grid-cols-4 gap-[12px]">
+            {statTiles.map(tile => (
+              <div
+                key={tile.label}
+                className="bg-[#11141c] border border-[rgba(255,255,255,0.07)] rounded-[10px] p-[14px_15px_13px] relative overflow-hidden cursor-default transition-all hover:-translate-y-[2px] hover:border-[rgba(255,255,255,0.12)]"
+              >
+                <div className="absolute left-0 top-0 bottom-0 w-[3px] rounded-l-[3px]" style={{ background: tile.color }} />
+                <div className="flex items-center justify-between">
+                  <span className="text-[11.5px] text-[#98a1b3] font-[550] flex items-center gap-[6px]">
+                    <span className="w-[7px] h-[7px] rounded-full" style={{ background: tile.color }} />
+                    {tile.label}
+                  </span>
+                </div>
+                <div className="text-[27px] font-bold tracking-[-0.8px] mt-[8px] leading-none text-white">{tile.value}</div>
+                <div className={`text-[11px] font-semibold mt-[7px] inline-flex items-center gap-[4px] ${tile.deltaCls === 'up' ? 'text-[#3ddc97]' : tile.deltaCls === 'down' ? 'text-[#fb7185]' : tile.deltaCls === 'up-bad' ? 'text-[#fb7185]' : 'text-[#3ddc97]'}`}>
+                  <DeltaIcon cls={tile.deltaCls} />{tile.delta} vs last scan
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+
+        <div className="grid grid-cols-[minmax(0,1fr)_372px] gap-[24px] items-start">
+          <div className="flex flex-col gap-[26px] min-w-0">
             {/* Test Case Explorer */}
-            <Panel className="p-[22px]">
-              <div className="flex items-center gap-[12px] mb-[16px] flex-wrap">
-                <SearchInput placeholder="Search tests..." value={search} onChange={e => setSearch(e.target.value)} shortcut="/" type="search" />
-                <SegmentedControl
-                  options={[{ label: 'Type', value: 'Type' }, { label: 'Feature', value: 'Feature' }, { label: 'Status', value: 'Status' }]}
-                  value={groupBy}
-                  onChange={setGroupBy}
-                />
-                <FilterSelect value={filterStatus} onChange={e => setFilterStatus(e.target.value)}>
-                  <option value="All">All Status</option>
-                  {statuses.map(s => <option key={s} value={s}>{s}</option>)}
-                </FilterSelect>
-                <FilterSelect value={filterType} onChange={e => setFilterType(e.target.value)}>
-                  <option value="All">All Types</option>
-                  {types.map(t => <option key={t} value={t}>{t}</option>)}
-                </FilterSelect>
-                <FilterSelect value={filterRisk} onChange={e => setFilterRisk(e.target.value)}>
-                  <option value="All">All Risk</option>
-                  <option value="high">High</option>
-                  <option value="medium">Medium</option>
-                  <option value="low">Low</option>
-                </FilterSelect>
-                <FilterSelect value={filterFeature} onChange={e => setFilterFeature(e.target.value)}>
-                  <option value="All">All Features</option>
-                  {features.map(f => <option key={f} value={f}>{f}</option>)}
-                </FilterSelect>
-                {hasFilters && <Button variant="ghost" size="default" onClick={clearFilters}>Clear</Button>}
-              </div>
-
-              <div className="text-[11px] text-[#6b7488] mb-[10px]">{filtered.length} tests found</div>
-
-              {Object.entries(grouped).map(([group, tests]) => (
-                <div key={group} className="mb-[16px]">
-                  <div className="text-[12px] font-semibold text-[#98a1b3] mb-[8px] flex items-center gap-[6px]">
-                    {group} <span className="text-[#6b7488] font-normal">({tests.length})</span>
+            <section>
+              <SectionHead title="Test Case Explorer" subtitle="behavior-level view of every test in the suite" />
+              <div className="bg-[#11141c] border border-[rgba(255,255,255,0.07)] rounded-[14px] shadow-[0_1px_0_rgba(255,255,255,0.04)_inset,0_8px_30px_rgba(0,0,0,0.45)] overflow-hidden">
+                <div className="p-[16px_18px_14px] border-b border-[rgba(255,255,255,0.07)] flex flex-col gap-[13px]">
+                  <div className="flex items-center gap-[12px] flex-wrap">
+                    <SearchInput placeholder="Search test cases, features, AI notes..." value={search} onChange={e => setSearch(e.target.value)} shortcut="/" type="search" />
+                    <SegmentedControl
+                      options={[{ label: 'Group by Type', value: 'Type' }, { label: 'By Feature', value: 'Feature' }, { label: 'By Status', value: 'Status' }]}
+                      value={groupBy}
+                      onChange={setGroupBy}
+                    />
                   </div>
-                  <div className="flex flex-col gap-[8px]">
-                    {tests.map(tc => {
-                      const isHighlighted = highlightedTests.has(tc.id);
-                      return (
-                        <Panel
-                          key={tc.id}
-                          className={`p-[14px] cursor-pointer transition-all ${isHighlighted ? 'border-[rgba(129,140,248,0.35)] shadow-[0_0_0_1px_rgba(129,140,248,0.15)]' : ''}`}
-                          onClick={() => toast(`${tc.id}: ${tc.title}`, 'success')}
-                        >
-                          <div className="flex items-start gap-[10px]">
-                            <span className={`mt-[2px] ${tc.status === 'pass' ? 'text-[#3ddc97]' : tc.status === 'fail' ? 'text-[#fb7185]' : tc.status === 'flaky' ? 'text-[#fbbf24]' : 'text-[#c084fc]'}`}>
-                              {tc.status === 'pass' ? '●' : tc.status === 'fail' ? '✕' : tc.status === 'flaky' ? '⚡' : '⚠'}
-                            </span>
-                            <div className="flex-1 min-w-0">
-                              <div className="text-[13px] font-medium text-[#e8ebf2]">{tc.title}</div>
-                              <div className="flex flex-wrap gap-[5px] mt-[4px]">
-                                <Badge variant={statusBadgeVariant[tc.status]} dot>{tc.status}</Badge>
-                                <Badge variant="gray">{tc.type}</Badge>
-                                <Badge variant="accent">{tc.feature}</Badge>
-                                <Badge variant={riskBadgeVariant[tc.risk]}>{tc.risk}</Badge>
+                  <div className="flex items-center gap-[8px] flex-wrap">
+                    <span className="text-[11px] uppercase tracking-[0.6px] text-[#6b7488] font-semibold mr-[2px]">Filter</span>
+                    <FilterSelect value={filterStatus} onChange={e => setFilterStatus(e.target.value)}>
+                      <option value="All">All statuses</option>
+                      {statuses.map(s => <option key={s} value={s}>{s}</option>)}
+                    </FilterSelect>
+                    <FilterSelect value={filterType} onChange={e => setFilterType(e.target.value)}>
+                      <option value="All">All types</option>
+                      {types.map(t => <option key={t} value={t}>{t}</option>)}
+                    </FilterSelect>
+                    <FilterSelect value={filterRisk} onChange={e => setFilterRisk(e.target.value)}>
+                      <option value="All">All risk</option>
+                      <option value="high">High risk</option>
+                      <option value="medium">Medium risk</option>
+                      <option value="low">Low risk</option>
+                    </FilterSelect>
+                    <FilterSelect value={filterFeature} onChange={e => setFilterFeature(e.target.value)}>
+                      <option value="All">All features</option>
+                      {features.map(f => <option key={f} value={f}>{f}</option>)}
+                    </FilterSelect>
+                    {hasFilters && (
+                      <button className="ml-auto text-[12px] text-[#818cf8] bg-none border-none cursor-pointer px-[8px] py-[6px] rounded-[6px] hover:bg-[rgba(129,140,248,0.14)]" onClick={clearFilters}>
+                        Reset
+                      </button>
+                    )}
+                  </div>
+                </div>
+                <div className="px-[18px] py-[9px] text-[12px] text-[#6b7488] border-b border-[rgba(255,255,255,0.07)] flex items-center gap-[6px]">
+                  Showing <b className="text-[#98a1b3]">&nbsp;{filtered.length}&nbsp;</b> of <b className="text-[#98a1b3]">&nbsp;{testCases.length}&nbsp;</b> test cases &middot; grouped by <b className="text-[#98a1b3]">&nbsp;{groupBy.toLowerCase()}</b>
+                </div>
+                <div className="max-h-[1100px] overflow-y-auto">
+                  {filtered.length === 0 ? (
+                    <div className="p-[60px_20px] text-center text-[#6b7488]">
+                      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" className="w-[40px] h-[40px] opacity-30 mb-[12px] mx-auto"><circle cx="11" cy="11" r="7" /><path d="M21 21l-4-4" /></svg>
+                      <div>No test cases match your filters.</div>
+                    </div>
+                  ) : (
+                    Object.entries(grouped).map(([group, tests]) => (
+                      <div key={group}>
+                        <div className="sticky top-0 z-[2] flex items-center gap-[9px] px-[18px] py-[9px] bg-[#161a24] border-b border-[rgba(255,255,255,0.07)] text-[11.5px] font-[650] tracking-[0.3px] uppercase text-[#98a1b3]">
+                          <span>{group}</span>
+                          <span className="font-mono text-[11px] text-[#6b7488] bg-[#0d0f16] px-[8px] py-[1px] rounded-[99px] normal-case tracking-normal">{tests.length}</span>
+                        </div>
+                        {tests.map(tc => {
+                          const isHighlighted = highlightedTests.has(tc.id);
+                          const statusBg: Record<string, string> = {
+                            pass: 'rgba(61,220,151,0.13)', fail: 'rgba(251,113,133,0.14)', flaky: 'rgba(251,191,36,0.14)', missing: 'rgba(96,165,250,0.14)', suspect: 'rgba(192,132,252,0.15)',
+                          };
+                          const statusColor: Record<string, string> = {
+                            pass: '#3ddc97', fail: '#fb7185', flaky: '#fbbf24', missing: '#60a5fa', suspect: '#c084fc',
+                          };
+                          return (
+                            <div
+                              key={tc.id}
+                              className={`grid grid-cols-[auto_1fr_auto] gap-[13px] items-start px-[18px] py-[15px] border-b border-[rgba(255,255,255,0.07)] cursor-pointer transition-colors ${isHighlighted ? 'bg-[rgba(129,140,248,0.09)] shadow-[inset_3px_0_0_#818cf8]' : 'hover:bg-[rgba(255,255,255,0.022)]'}`}
+                              onClick={() => toast(`${tc.id}: ${tc.title}`, 'success')}
+                            >
+                              <div className="w-[26px] h-[26px] rounded-[8px] grid place-items-center flex-none mt-[1px]" style={{ background: statusBg[tc.status], color: statusColor[tc.status] }}>
+                                <StatusIcon status={tc.status} />
                               </div>
-                              <div className="text-[12px] text-[#6b7488] mt-[4px]">{tc.description}</div>
-                              {tc.aiNote && <div className="text-[11px] text-[#818cf8] mt-[3px]">🤖 {tc.aiNote}</div>}
-                              <div className="flex items-center gap-[12px] mt-[6px] text-[11px] text-[#6b7488]">
-                                <span>{tc.duration}</span>
-                                <span>Last run: {tc.lastRun}</span>
+                              <div className="min-w-0">
+                                <div className="text-[13.8px] font-semibold text-[#e8ebf2] mb-[5px] tracking-[-0.1px]">{tc.title}</div>
+                                <div className="flex items-center gap-[6px] flex-wrap mb-[7px]">
+                                  <span className="inline-flex items-center gap-[5px] text-[11px] font-semibold px-[8px] py-[2.5px] rounded-[6px] leading-[1.4] whitespace-nowrap capitalize" style={{ background: statusBg[tc.status], color: statusColor[tc.status] }}>
+                                    <span className="w-[6px] h-[6px] rounded-full" style={{ background: statusColor[tc.status] }} />
+                                    {tc.status}
+                                  </span>
+                                  <span className="inline-flex items-center gap-[5px] text-[10.5px] font-mono px-[8px] py-[2.5px] rounded-[6px] leading-[1.4] whitespace-nowrap bg-[#1b2030] text-[#98a1b3] border border-[rgba(255,255,255,0.07)]">
+                                    {tc.type}
+                                  </span>
+                                  <span className="inline-flex items-center gap-[5px] text-[11px] px-[8px] py-[2.5px] rounded-[6px] leading-[1.4] whitespace-nowrap bg-[#0d0f16] text-[#98a1b3] border border-[rgba(255,255,255,0.07)]">
+                                    {tc.feature}
+                                  </span>
+                                  <span className="inline-flex items-center gap-[5px] text-[10.5px] font-mono uppercase tracking-[0.4px] px-[8px] py-[2.5px] rounded-[6px] leading-[1.4] whitespace-nowrap" style={{ color: tc.risk === 'high' ? '#fb7185' : tc.risk === 'medium' ? '#fbbf24' : '#3ddc97', background: 'rgba(255,255,255,0.04)' }}>
+                                    {tc.risk} risk
+                                  </span>
+                                </div>
+                                <div className="text-[12.5px] text-[#98a1b3] leading-[1.5]">{tc.description}</div>
+                                {tc.aiNote && (
+                                  <div className={`flex items-start gap-[8px] mt-[9px] p-[8px_11px] rounded-[9px] text-[12px] leading-[1.45] ${tc.noteType === 'warn' ? 'bg-[rgba(251,191,36,0.07)] border border-[rgba(251,191,36,0.2)] text-[#f4dca0]' : 'bg-[rgba(129,140,248,0.07)] border border-[rgba(129,140,248,0.18)] text-[#c7cdf5]'}`}>
+                                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="w-[14px] h-[14px] flex-none mt-[1.5px]" style={{ color: tc.noteType === 'warn' ? '#fbbf24' : '#818cf8' }}>
+                                      {tc.noteType === 'warn' ? <><path d="M12 8v5M12 16v.5" /><circle cx="12" cy="12" r="9" /></> : <><path d="M9 18h6M10 21h4M12 3a6 6 0 00-3.5 10.9c.5.4.5 1.1.5 1.6V16h6v-.5c0-.5 0-1.2.5-1.6A6 6 0 0012 3z" /></>}
+                                    </svg>
+                                    <span>{tc.aiNote}</span>
+                                  </div>
+                                )}
+                              </div>
+                              <div className="flex flex-col items-end gap-[8px] flex-none">
+                                <span className="text-[11px] text-[#6b7488] font-mono whitespace-nowrap">{tc.lastRun}</span>
+                                <RunBars runs={tc.runs} status={tc.status} />
                               </div>
                             </div>
+                          );
+                        })}
+                      </div>
+                    ))
+                  )}
+                </div>
+              </div>
+            </section>
+
+            {/* Testing Structure + Coverage & Risk */}
+            <div className="grid grid-cols-2 gap-[24px] items-start">
+              <section>
+                <SectionHead title="Testing Structure" />
+                <div className="bg-[#11141c] border border-[rgba(255,255,255,0.07)] rounded-[14px] shadow-[0_1px_0_rgba(255,255,255,0.04)_inset,0_8px_30px_rgba(0,0,0,0.45)] overflow-hidden py-[8px_0]">
+                  {modules.map(m => (
+                    <div key={m.path} className="px-[18px] py-[13px] border-b border-[rgba(255,255,255,0.07)] transition-colors hover:bg-[rgba(255,255,255,0.022)] cursor-pointer">
+                      <div className="flex items-center gap-[10px] mb-[9px]">
+                        <span className="font-mono text-[12.5px] text-[#e8ebf2]">
+                          <span className="text-[#6b7488]">{m.path}/</span>{m.name}
+                        </span>
+                        <span className="ml-auto font-mono text-[12px] text-[#98a1b3]"><b className="text-[#e8ebf2]">{m.coverage}%</b> cov</span>
+                      </div>
+                      <div className="flex flex-wrap gap-[6px]">
+                          <span className="inline-flex items-center gap-[5px] text-[11px] px-[8px] py-[2px] rounded-[6px] bg-[#0d0f16] border border-[rgba(255,255,255,0.07)] text-[#98a1b3]">
+                            <span className="w-[6px] h-[6px] rounded-full bg-[#3ddc97]" />Unit: {m.tests.unit}
+                          </span>
+                          <span className="inline-flex items-center gap-[5px] text-[11px] px-[8px] py-[2px] rounded-[6px] bg-[#0d0f16] border border-[rgba(255,255,255,0.07)] text-[#98a1b3]">
+                            <span className="w-[6px] h-[6px] rounded-full bg-[#60a5fa]" />Integration: {m.tests.integration}
+                          </span>
+                          <span className="inline-flex items-center gap-[5px] text-[11px] px-[8px] py-[2px] rounded-[6px] bg-[#0d0f16] border border-[rgba(255,255,255,0.07)] text-[#98a1b3]">
+                            <span className="w-[6px] h-[6px] rounded-full bg-[#c084fc]" />E2E: {m.tests.e2e}
+                          </span>
+                        </div>
+                      <div className="h-[4px] rounded-[4px] bg-[rgba(255,255,255,0.06)] mt-[9px] overflow-hidden flex">
+                        <span className="block h-full" style={{ width: `${m.coverage}%`, background: m.coverage >= 75 ? '#3ddc97' : m.coverage >= 55 ? '#fbbf24' : '#fb7185' }} />
+                        <span className="block h-full" style={{ width: `${100 - m.coverage}%`, background: 'rgba(255,255,255,0.07)' }} />
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </section>
+
+              <section>
+                <SectionHead title="Coverage & Risk" />
+                <div className="bg-[#11141c] border border-[rgba(255,255,255,0.07)] rounded-[14px] shadow-[0_1px_0_rgba(255,255,255,0.04)_inset,0_8px_30px_rgba(0,0,0,0.45)] p-[18px]">
+                  <div className="mb-[18px]">
+                    <div className="text-[12px] font-semibold text-[#98a1b3] mb-[12px] uppercase tracking-[0.5px]">Coverage by module</div>
+                    {coverage.map(c => {
+                      const color = c.line >= 75 ? '#3ddc97' : c.line >= 55 ? '#fbbf24' : '#fb7185';
+                      return (
+                        <div key={c.name} className="flex items-center gap-[12px] mb-[11px]">
+                          <span className="text-[12.5px] w-[120px] flex-none text-[#e8ebf2]">
+                            {c.name}
+                            <span className="font-mono text-[11px] text-[#6b7488] block">line / branch</span>
+                          </span>
+                          <div className="flex-1 h-[8px] rounded-[99px] bg-[rgba(255,255,255,0.06)] overflow-hidden relative">
+                            <span className="absolute left-0 top-0 bottom-0 rounded-[99px]" style={{ width: `${c.line}%`, background: color, opacity: 0.95, height: '4px' }} />
+                            <span className="absolute left-0 top-[4px] bottom-0 rounded-[99px]" style={{ width: `${c.branch}%`, background: color, opacity: 0.55, height: '4px' }} />
                           </div>
-                        </Panel>
+                          <span className="font-mono text-[12.5px] font-semibold w-[42px] text-right flex-none" style={{ color }}>{c.line}%</span>
+                        </div>
                       );
                     })}
                   </div>
-                </div>
-              ))}
-            </Panel>
-
-            {/* Testing Structure */}
-            <Panel className="p-[22px]">
-              <div className="text-[14px] font-semibold text-white mb-[14px]">Testing Structure</div>
-              <div className="flex flex-col gap-[10px]">
-                {modules.map(m => (
-                  <div key={m.path} className="flex items-center gap-[12px]">
-                    <div className="flex-1 min-w-0">
-                      <div className="text-[12.5px] font-medium text-[#e8ebf2]">{m.name}</div>
-                      <div className="text-[11px] text-[#6b7488] font-mono">{m.path}</div>
-                    </div>
-                    <div className="text-[12px] text-[#98a1b3] w-[40px] text-right">{m.coverage}%</div>
-                    <div className="w-[120px]">
-                      <ProgressBar value={m.coverage} />
-                    </div>
-                    <div className="flex gap-[4px]">
-                      <Badge variant="gray">U:{m.tests.unit}</Badge>
-                      <Badge variant="gray">I:{m.tests.integration}</Badge>
-                      <Badge variant="gray">E:{m.tests.e2e}</Badge>
+                  <div>
+                    <div className="text-[12px] font-semibold text-[#98a1b3] mb-[12px] uppercase tracking-[0.5px]">Risk heatmap — failures & gaps by module</div>
+                    <table className="w-full border-separate border-spacing-[4px] text-[11px]">
+                      <thead>
+                        <tr className="text-[#6b7488]">
+                          {heatmapCols.map(col => <th key={col} className="text-left py-[2px] px-[2px] font-semibold text-[10px] uppercase tracking-[0.4px]">{col}</th>)}
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {heatmap.map(row => {
+                          const heatColor = (v: number) => ['rgba(61,220,151,0.18)', 'rgba(251,191,36,0.4)', 'rgba(251,113,133,0.55)', 'rgba(251,113,133,0.9)'][v];
+                          return (
+                            <tr key={row.module}>
+                              <td className="py-[2px] px-[2px] font-mono text-[11px] text-[#98a1b3] normal-case tracking-normal">{row.module}</td>
+                              <td className="py-[2px] px-[2px]">
+                                {row.missing > 0 ? <div className="h-[34px] rounded-[7px] grid place-items-center font-mono text-[12px] font-semibold text-white transition-transform hover:scale-110 relative z-[2]" style={{ background: heatColor(Math.min(row.missing, 3)) }}>{row.missing}</div> : <div className="h-[34px] rounded-[7px] bg-[rgba(255,255,255,0.03)]" />}
+                              </td>
+                              <td className="py-[2px] px-[2px]">
+                                {row.suspicious > 0 ? <div className="h-[34px] rounded-[7px] grid place-items-center font-mono text-[12px] font-semibold text-white transition-transform hover:scale-110 relative z-[2]" style={{ background: heatColor(Math.min(row.suspicious, 3)) }}>{row.suspicious}</div> : <div className="h-[34px] rounded-[7px] bg-[rgba(255,255,255,0.03)]" />}
+                              </td>
+                              <td className="py-[2px] px-[2px]">
+                                {row.flaky > 0 ? <div className="h-[34px] rounded-[7px] grid place-items-center font-mono text-[12px] font-semibold text-white transition-transform hover:scale-110 relative z-[2]" style={{ background: heatColor(Math.min(row.flaky, 3)) }}>{row.flaky}</div> : <div className="h-[34px] rounded-[7px] bg-[rgba(255,255,255,0.03)]" />}
+                              </td>
+                              <td className="py-[2px] px-[2px]">
+                                {row.failed > 0 ? <div className="h-[34px] rounded-[7px] grid place-items-center font-mono text-[12px] font-semibold text-white transition-transform hover:scale-110 relative z-[2]" style={{ background: heatColor(Math.min(row.failed, 3)) }}>{row.failed}</div> : <div className="h-[34px] rounded-[7px] bg-[rgba(255,255,255,0.03)]" />}
+                              </td>
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
+                    <div className="flex items-center gap-[7px] mt-[12px] text-[11px] text-[#6b7488] justify-end">
+                      <span>fewer issues</span>
+                      <span className="w-[13px] h-[13px] rounded-[4px]" style={{ background: 'rgba(61,220,151,0.25)' }} />
+                      <span className="w-[13px] h-[13px] rounded-[4px]" style={{ background: 'rgba(251,191,36,0.35)' }} />
+                      <span className="w-[13px] h-[13px] rounded-[4px]" style={{ background: 'rgba(251,113,133,0.45)' }} />
+                      <span className="w-[13px] h-[13px] rounded-[4px]" style={{ background: 'rgba(251,113,133,0.85)' }} />
+                      <span>more</span>
                     </div>
                   </div>
-                ))}
-              </div>
-            </Panel>
-
-            {/* Coverage & Risk */}
-            <Panel className="p-[22px]">
-              <div className="text-[14px] font-semibold text-white mb-[14px]">Coverage & Risk</div>
-              <div className="grid grid-cols-2 gap-[16px]">
-                <div>
-                  <div className="text-[12px] text-[#98a1b3] mb-[10px] font-semibold">Coverage by Module</div>
-                  {coverage.map(c => (
-                    <div key={c.name} className="mb-[8px]">
-                      <div className="flex justify-between text-[11px] mb-[3px]">
-                        <span className="text-[#e8ebf2]">{c.name}</span>
-                        <span className="text-[#6b7488]">L:{c.line}% B:{c.branch}%</span>
-                      </div>
-                      <div className="h-[6px] rounded-[99px] bg-[#0d0f16] overflow-hidden">
-                        <div className="h-full rounded-[99px] bg-gradient-to-r from-[#5d68f0] to-[#22d3ee]" style={{ width: `${c.line}%` }} />
-                      </div>
-                    </div>
-                  ))}
                 </div>
-                <div>
-                  <div className="text-[12px] text-[#98a1b3] mb-[10px] font-semibold">Risk Heatmap</div>
-                  <table className="w-full text-[11px]">
-                    <thead>
-                      <tr className="text-[#6b7488]">
-                        {heatmapCols.map(col => <th key={col} className="text-left py-[4px] px-[6px] font-semibold">{col}</th>)}
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {heatmap.map(row => (
-                        <tr key={row.module} className="text-[#e8ebf2]">
-                          <td className="py-[4px] px-[6px]">{row.module}</td>
-                          <td className="py-[4px] px-[6px] text-center">
-                            {row.missing > 0 ? <Badge variant="missing">{row.missing}</Badge> : <span className="text-[#6b7488]">—</span>}
-                          </td>
-                          <td className="py-[4px] px-[6px] text-center">
-                            {row.suspicious > 0 ? <Badge variant="suspect">{row.suspicious}</Badge> : <span className="text-[#6b7488]">—</span>}
-                          </td>
-                          <td className="py-[4px] px-[6px] text-center">
-                            {row.flaky > 0 ? <Badge variant="flaky">{row.flaky}</Badge> : <span className="text-[#6b7488]">—</span>}
-                          </td>
-                          <td className="py-[4px] px-[6px] text-center">
-                            {row.failed > 0 ? <Badge variant="fail">{row.failed}</Badge> : <span className="text-[#6b7488]">—</span>}
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-              </div>
-            </Panel>
+              </section>
+            </div>
           </div>
 
           {/* AI Insights Sidebar */}
-          <div className="flex flex-col gap-[14px]">
-            <div className="text-[14px] font-semibold text-white">AI Insights</div>
-            {insights.map(insight => (
-              <Panel
-                key={insight.id}
-                className={`p-[16px] cursor-pointer transition-all ${highlightedInsight === insight.id ? 'border-[rgba(129,140,248,0.35)] shadow-[0_0_0_1px_rgba(129,140,248,0.15)]' : ''}`}
-                onClick={() => handleInsightClick(insight)}
-              >
-                <div className="flex items-center gap-[6px] mb-[6px]">
-                  <Badge variant={severityVariant[insight.severity]} dot>{insight.severity}</Badge>
-                </div>
-                <div className="text-[13px] font-semibold text-[#e8ebf2] mb-[4px]">{insight.title}</div>
-                <div className="text-[12px] text-[#98a1b3] leading-[1.5] mb-[10px]">{insight.description}</div>
-                <Button variant="outline" size="default" className="w-full text-[12px]">{insight.action}</Button>
-                <div className="text-[10px] text-[#6b7488] mt-[6px]">{insight.relatedTests.length} related tests</div>
-              </Panel>
-            ))}
+          <div className="flex flex-col gap-[22px] sticky top-[76px]">
+            <section>
+              <div className="flex items-baseline gap-[12px] mb-[14px] mt-[6px] mx-[2px]">
+                <h2 className="text-[15px] font-[650] m-0 tracking-[-0.1px] text-white">AI Insights</h2>
+                <span className="text-[12.5px] text-[#6b7488]">{insights.length} recommendations</span>
+                <span className="flex-1 h-[1px] bg-[linear-gradient(90deg,rgba(255,255,255,0.07),transparent)]" />
+              </div>
+              <div className="flex flex-col gap-[11px]">
+                {insights.map(insight => {
+                  const sev = severityMap[insight.severity];
+                  return (
+                    <div
+                      key={insight.id}
+                      className={`bg-[#161a24] border border-[rgba(255,255,255,0.07)] rounded-[12px] p-[13px_14px] cursor-pointer transition-all relative overflow-hidden ${highlightedInsight === insight.id ? 'border-[rgba(129,140,248,0.35)] shadow-[0_0_0_1px_rgba(129,140,248,0.15),0_8px_24px_rgba(0,0,0,0.4)]' : 'hover:border-[rgba(255,255,255,0.12)] hover:-translate-y-[2px] hover:shadow-[0_8px_24px_rgba(0,0,0,0.35)]'}`}
+                      onClick={() => handleInsightClick(insight)}
+                    >
+                      <div className="flex items-center gap-[9px] mb-[8px]">
+                        <span className="text-[9.5px] font-bold tracking-[0.6px] uppercase px-[7px] py-[2.5px] rounded-[5px] flex-none" style={{ background: sev.bg, color: sev.color }}>{insight.severity}</span>
+                        <span className="text-[13px] font-[650] tracking-[-0.1px] text-[#e8ebf2]">{insight.title}</span>
+                      </div>
+                      <div className="text-[12px] text-[#98a1b3] leading-[1.5] mb-[11px]">{insight.description}</div>
+                      <button className="inline-flex items-center gap-[6px] text-[12px] font-semibold text-[#818cf8] bg-[rgba(129,140,248,0.14)] border border-[rgba(129,140,248,0.25)] px-[11px] py-[6px] rounded-[8px] cursor-pointer transition-all hover:bg-[rgba(129,140,248,0.22)]">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="w-[13px] h-[13px]">
+                          <path d="M5 12h14M13 6l6 6-6 6" />
+                        </svg>
+                        {insight.action}
+                      </button>
+                      <div className="text-[11px] text-[#6b7488] mt-[8px] font-mono">{insight.relatedTests.length} related tests</div>
+                    </div>
+                  );
+                })}
+              </div>
+            </section>
           </div>
         </div>
       </div>

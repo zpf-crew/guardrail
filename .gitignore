@@ -1,8 +1,6 @@
 node_modules
-data/*.db
 coverage
-.git
 .env
 *.log
 .agentbase/
-.env
+dist/
