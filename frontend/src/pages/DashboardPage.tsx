@@ -48,7 +48,7 @@ export function DashboardPage() {
 
   const features = [...new Set(testCases.map(tc => tc.feature))];
   const types = [...new Set(testCases.map(tc => tc.type))];
-  const statuses = ['All', 'pass', 'fail', 'flaky', 'suspect'];
+  const statuses = ['pass', 'fail', 'flaky', 'suspect'];
 
   const filtered = testCases.filter(tc => {
     if (search && !tc.title.toLowerCase().includes(search.toLowerCase()) && !tc.id.toLowerCase().includes(search.toLowerCase())) return false;
