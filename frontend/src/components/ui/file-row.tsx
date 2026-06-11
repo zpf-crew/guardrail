@@ -1,3 +1,5 @@
+import { CheckIcon, XIcon } from '@/components/icons';
+
 export interface FileRowProps {
   name: string;
   type: string;
@@ -28,13 +30,13 @@ export function FileRow({ name, type, size, status, onDelete }: FileRowProps) {
       </div>
       {status && (
         <span className="text-[11px] text-[#3ddc97] inline-flex items-center gap-[5px]">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" className="w-[13px] h-[13px]"><path d="M5 12l4 4 10-10" /></svg>
+          <CheckIcon strokeWidth={2.4} className="w-[13px] h-[13px]" />
           {status}
         </span>
       )}
       {onDelete && (
         <button aria-label="Delete file" onClick={onDelete} className="bg-transparent border-none text-[#6b7488] cursor-pointer p-[6px] rounded-[6px] grid place-items-center hover:text-[#fb7185] hover:bg-[rgba(251,113,133,0.14)]">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="w-[15px] h-[15px]"><path d="M6 6l12 12M18 6L6 18" /></svg>
+          <XIcon className="w-[15px] h-[15px]" />
         </button>
       )}
     </div>

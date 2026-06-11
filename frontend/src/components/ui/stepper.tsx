@@ -1,4 +1,5 @@
 import { cn } from '@/lib/cn';
+import { CheckIcon, MinusIcon } from '@/components/icons';
 
 export interface Step {
   title: string;
@@ -30,7 +31,7 @@ export function Stepper({ steps, label = 'Setup progress', onStepClick }: Steppe
               <div className={cn('absolute left-[25.5px] top-[40px] h-[calc(100%-28px)] w-[1.5px] z-0', isDone ? 'bg-[rgba(61,220,151,0.4)]' : 'bg-[rgba(255,255,255,0.12)]')} />
             )}
             <div className={cn('w-[28px] h-[28px] rounded-full flex-none grid place-items-center text-[13px] font-semibold font-mono relative bg-[#0d0f16] border-[1.5px] border-[rgba(255,255,255,0.12)] text-[#6b7488] transition-all', isCurrent && 'border-[#818cf8] text-[#818cf8] bg-[#11141c]', isDone && 'bg-[rgba(61,220,151,0.13)] border-[rgba(61,220,151,0.5)] text-[#3ddc97]', isSkipped && 'border-dashed border-[rgba(255,255,255,0.12)] text-[#8b94a7]')}>
-              {isDone ? <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" className="w-[15px] h-[15px]"><path d="M5 12l4 4 10-10" /></svg> : isSkipped ? <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" className="w-[15px] h-[15px]"><path d="M5 12h14" /></svg> : (i + 1)}
+              {isDone ? <CheckIcon strokeWidth={2.4} className="w-[15px] h-[15px]" /> : isSkipped ? <MinusIcon strokeWidth={2.4} className="w-[15px] h-[15px]" /> : (i + 1)}
             </div>
             <div className="pt-[3px] min-w-0">
               <div className={cn('text-[13.5px] font-semibold', isCurrent ? 'text-white' : 'text-[#e8ebf2]')}>

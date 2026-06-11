@@ -8,6 +8,19 @@ import { Button } from '@/components/ui/button';
 import { useToast } from '@/components/ui/toast';
 import { testCases, insights, modules, coverage, heatmap, heatmapCols, healthScore, statTiles } from '@/data/dashboardMockData';
 import type { TestCase, Insight } from '@/data/dashboardMockData';
+import {
+  PlayIcon,
+  SparklesIcon,
+  DownloadIcon,
+  TrendUpIcon,
+  SearchIcon,
+  AlertCircleIcon,
+  LightbulbIcon,
+  ChevronRightIcon,
+  ChevronUpIcon,
+  ChevronDownIcon,
+  TestStatusIcon,
+} from '@/components/icons';
 
 function FilterSelect({ value, onChange, children }: { value: string; onChange: (e: React.ChangeEvent<HTMLSelectElement>) => void; children: React.ReactNode }) {
   return (
@@ -36,24 +49,6 @@ function SectionHead({ title, subtitle }: { title: string; subtitle?: string }) 
   );
 }
 
-function StatusIcon({ status }: { status: string }) {
-  const icons: Record<string, string> = {
-    pass: 'M5 12l4 4 10-10',
-    fail: 'M6 6l12 12M18 6L6 18',
-    flaky: 'M12 7v5l3 2M12 12a8.5 8.5 0 100 0 8.5 8.5 0 000 0z',
-    missing: 'M12 7v10M7 12h10',
-    suspect: 'M12 8v5M12 16v.5M10.3 4l-7 12.5A1.5 1.5 0 004.6 19h14.8a1.5 1.5 0 001.3-2.5L13.7 4a1.5 1.5 0 00-3.4 0z',
-  };
-  const colors: Record<string, string> = {
-    pass: '#3ddc97', fail: '#fb7185', flaky: '#fbbf24', missing: '#60a5fa', suspect: '#c084fc',
-  };
-  return (
-    <svg viewBox="0 0 24 24" fill="none" stroke={colors[status]} strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" className="w-[15px] h-[15px]">
-      <path d={icons[status]} />
-    </svg>
-  );
-}
-
 function RunBars({ runs, status }: { runs: number[]; status: string }) {
   const colors: Record<string, string> = {
     pass: '#3ddc97', fail: '#fb7185', flaky: '#fbbf24', missing: '#60a5fa', suspect: '#c084fc',
@@ -70,11 +65,9 @@ function RunBars({ runs, status }: { runs: number[]; status: string }) {
 
 function DeltaIcon({ cls }: { cls: string }) {
   const up = cls.includes('up');
-  return (
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className="w-[13px] h-[13px]">
-      <path d={up ? 'M6 14l6-6 6 6' : 'M6 10l6 6 6-6'} />
-    </svg>
-  );
+  return up
+    ? <ChevronUpIcon strokeWidth={2.5} className="w-[13px] h-[13px]" />
+    : <ChevronDownIcon strokeWidth={2.5} className="w-[13px] h-[13px]" />;
 }
 
 const severityMap: Record<string, { bg: string; color: string; label: string }> = {
@@ -155,15 +148,15 @@ export function DashboardPage() {
         actions={
           <>
             <Button variant="outline" onClick={() => toast('Scan started', 'loading')}>
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="w-[15px] h-[15px]"><path d="M5 3l14 9-14 9z" /></svg>
+              <PlayIcon className="w-[15px] h-[15px]" />
               Run Scan
             </Button>
             <Button variant="primary" onClick={() => navigate('/tests')}>
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="w-[15px] h-[15px]"><path d="M12 3v18M3 12h18" opacity="0"/><path d="M9 3v4M7 5h4"/><path d="M15 8l1.5 3.5L20 13l-3.5 1.5L15 18l-1.5-3.5L10 13l3.5-1.5z" /></svg>
+              <SparklesIcon className="w-[15px] h-[15px]" />
               Generate Tests
             </Button>
             <Button variant="ghost" onClick={() => toast('Exporting report...', 'loading')}>
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="w-[15px] h-[15px]"><path d="M12 3v12M8 11l4 4 4-4"/><path d="M5 21h14" /></svg>
+              <DownloadIcon className="w-[15px] h-[15px]" />
               Export Report
             </Button>
           </>
@@ -194,7 +187,7 @@ export function DashboardPage() {
                   Grade <span className="font-mono text-[11px] px-[7px] py-[2px] rounded-[6px] ml-[4px]" style={{ background: 'rgba(251,191,36,0.14)', color: '#fbbf24' }}>{healthScore.grade}</span>
                 </div>
                 <div className="inline-flex items-center gap-[5px] text-[12px] font-semibold text-[#3ddc97]">
-                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className="w-[13px] h-[13px]"><path d="M5 15l5-5 4 4 6-7" /></svg>
+                  <TrendUpIcon strokeWidth={2.5} className="w-[13px] h-[13px]" />
                   {healthScore.trend}
                 </div>
                 <div className="text-[11.5px] text-[#98a1b3] leading-[1.45]">{healthScore.note}</div>
@@ -272,7 +265,7 @@ export function DashboardPage() {
                 <div className="max-h-[1100px] overflow-y-auto">
                   {filtered.length === 0 ? (
                     <div className="p-[60px_20px] text-center text-[#6b7488]">
-                      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" className="w-[40px] h-[40px] opacity-30 mb-[12px] mx-auto"><circle cx="11" cy="11" r="7" /><path d="M21 21l-4-4" /></svg>
+                      <SearchIcon strokeWidth={1.8} className="w-[40px] h-[40px] opacity-30 mb-[12px] mx-auto" />
                       <div>No test cases match your filters.</div>
                     </div>
                   ) : (
@@ -297,7 +290,7 @@ export function DashboardPage() {
                               onClick={() => toast(`${tc.id}: ${tc.title}`, 'success')}
                             >
                               <div className="w-[26px] h-[26px] rounded-[8px] grid place-items-center flex-none mt-[1px]" style={{ background: statusBg[tc.status], color: statusColor[tc.status] }}>
-                                <StatusIcon status={tc.status} />
+                                <TestStatusIcon status={tc.status} />
                               </div>
                               <div className="min-w-0">
                                 <div className="text-[13.8px] font-semibold text-[#e8ebf2] mb-[5px] tracking-[-0.1px]">{tc.title}</div>
@@ -319,9 +312,11 @@ export function DashboardPage() {
                                 <div className="text-[12.5px] text-[#98a1b3] leading-[1.5]">{tc.description}</div>
                                 {tc.aiNote && (
                                   <div className={`flex items-start gap-[8px] mt-[9px] p-[8px_11px] rounded-[9px] text-[12px] leading-[1.45] ${tc.noteType === 'warn' ? 'bg-[rgba(251,191,36,0.07)] border border-[rgba(251,191,36,0.2)] text-[#f4dca0]' : 'bg-[rgba(129,140,248,0.07)] border border-[rgba(129,140,248,0.18)] text-[#c7cdf5]'}`}>
-                                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="w-[14px] h-[14px] flex-none mt-[1.5px]" style={{ color: tc.noteType === 'warn' ? '#fbbf24' : '#818cf8' }}>
-                                      {tc.noteType === 'warn' ? <><path d="M12 8v5M12 16v.5" /><circle cx="12" cy="12" r="9" /></> : <><path d="M9 18h6M10 21h4M12 3a6 6 0 00-3.5 10.9c.5.4.5 1.1.5 1.6V16h6v-.5c0-.5 0-1.2.5-1.6A6 6 0 0012 3z" /></>}
-                                    </svg>
+                                    {tc.noteType === 'warn' ? (
+                                      <AlertCircleIcon className="w-[14px] h-[14px] flex-none mt-[1.5px] text-[#fbbf24]" />
+                                    ) : (
+                                      <LightbulbIcon className="w-[14px] h-[14px] flex-none mt-[1.5px] text-[#818cf8]" />
+                                    )}
                                     <span>{tc.aiNote}</span>
                                   </div>
                                 )}
@@ -463,9 +458,7 @@ export function DashboardPage() {
                       </div>
                       <div className="text-[12px] text-[#98a1b3] leading-[1.5] mb-[11px]">{insight.description}</div>
                       <button className="inline-flex items-center gap-[6px] text-[12px] font-semibold text-[#818cf8] bg-[rgba(129,140,248,0.14)] border border-[rgba(129,140,248,0.25)] px-[11px] py-[6px] rounded-[8px] cursor-pointer transition-all hover:bg-[rgba(129,140,248,0.22)]">
-                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="w-[13px] h-[13px]">
-                          <path d="M5 12h14M13 6l6 6-6 6" />
-                        </svg>
+                        <ChevronRightIcon className="w-[13px] h-[13px]" />
                         {insight.action}
                       </button>
                       <div className="text-[11px] text-[#6b7488] mt-[8px] font-mono">{insight.relatedTests.length} related tests</div>

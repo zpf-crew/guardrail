@@ -7,6 +7,26 @@ import { CodeDiff } from '@/components/ui/code-diff';
 import { ProgressBar } from '@/components/ui/progress-bar';
 import { useToast } from '@/components/ui/toast';
 import { quickActions, classification, planActions, planRisk, planFiles, aiQuestions, genTimeline, changes, covCompare, matrix, reviewStats, reviewFiles } from '@/data/generateTestsMockData';
+import {
+  AlignLeftIcon,
+  RunResultIcon,
+  FileDocIcon,
+  FileCodeIcon,
+  ArrowLeftIcon,
+  ChevronRightIcon,
+  ShieldCheckIcon,
+  SearchIcon,
+  CheckIcon,
+  ZapIcon,
+  PlanActionIcon,
+  ChangeTypeIcon,
+  TrashIcon,
+  MicIcon,
+  MonitorIcon,
+  SmartphoneIcon,
+  AlertCircleIcon,
+  EyeIcon,
+} from '@/components/icons';
 
 const workflowSteps = [
   { title: 'Intent', status: 'Ready' },
@@ -38,50 +58,18 @@ function StepHeader({ eyebrow, title, description }: { eyebrow: string; title: s
 function BlockHeader({ label, count }: { label: string; count?: number }) {
   return (
     <div className="flex items-center gap-[9px] text-[12px] font-semibold uppercase tracking-[0.6px] text-[#98a1b3] mb-[13px]">
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="w-[15px] h-[15px] text-[#818cf8]">
-        <path d="M4 6h16M4 12h16M4 18h10"/>
-      </svg>
+      <AlignLeftIcon className="w-[15px] h-[15px] text-[#818cf8]" />
       {label}
       {count !== undefined && <span className="font-mono text-[11px] text-[#6b7488] bg-[#0d0f16] px-[8px] py-[1px] rounded-full">{count}</span>}
     </div>
   );
 }
 
-function StatusIcon({ status }: { status: 'pass' | 'fail' | 'running' }) {
-  if (status === 'pass') {
-    return (
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className="w-[16px] h-[16px] text-[#3ddc97]">
-        <path d="M5 12l4 4 10-10"/>
-      </svg>
-    );
-  }
-  if (status === 'fail') {
-    return (
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className="w-[16px] h-[16px] text-[#fb7185]">
-        <path d="M18 6L6 18M6 6l12 12"/>
-      </svg>
-    );
-  }
-  return (
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className="w-[16px] h-[16px] text-[#818cf8]">
-      <path d="M12 2v20M2 12h20"/>
-    </svg>
-  );
-}
-
 function FileIcon({ type }: { type: 'code' | 'doc' }) {
   if (type === 'doc') {
-    return (
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="w-[14px] h-[14px] text-[#fbbf24]">
-        <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" x2="8" y1="13" y2="13"/><line x1="16" x2="8" y1="17" y2="17"/>
-      </svg>
-    );
+    return <FileDocIcon className="w-[14px] h-[14px] text-[#fbbf24]" />;
   }
-  return (
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="w-[14px] h-[14px] text-[#818cf8]">
-      <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/>
-    </svg>
-  );
+  return <FileCodeIcon className="w-[14px] h-[14px] text-[#818cf8]" />;
 }
 
 export function GenerateTestsPage() {
@@ -204,9 +192,7 @@ export function GenerateTestsPage() {
             </span>
             <Button variant="ghost" onClick={() => toast('Workflow saved as draft', 'success')}>Save draft</Button>
             <Button variant="outline" onClick={() => navigate('/dashboard')}>
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="w-[15px] h-[15px] mr-[6px]">
-                <path d="M19 12H5M11 6l-6 6 6 6"/>
-              </svg>
+              <ArrowLeftIcon className="w-[15px] h-[15px] mr-[6px]" />
               Back to Dashboard
             </Button>
           </>
@@ -253,9 +239,7 @@ export function GenerateTestsPage() {
             ))}
           </div>
           <div className="mt-[22px] p-[12px] bg-[rgba(34,211,238,0.05)] border border-[rgba(34,211,238,0.18)] rounded-[11px] text-[11px] text-[#98a1b3] leading-[1.5]">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="w-[14px] h-[14px] text-[#22d3ee] mb-[6px]">
-              <path d="M12 3l7 3v6c0 5-3.5 7.5-7 9-3.5-1.5-7-4-7-9V6z"/><path d="M9 12l2 2 4-4"/>
-            </svg>
+            <ShieldCheckIcon className="w-[14px] h-[14px] text-[#22d3ee] mb-[6px]" />
             <b className="text-[#e8ebf2]">Production code changes require approval.</b> Test file changes are fully reviewable before apply.
           </div>
         </div>
@@ -290,9 +274,7 @@ export function GenerateTestsPage() {
                   </select>
                   <div className="flex-1" />
                   <Button variant="primary" size="lg" onClick={handleAnalyze} disabled={analyzing}>
-                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="w-[15px] h-[15px] mr-[6px]">
-                      <circle cx="11" cy="11" r="7"/><path d="M21 21l-4-4"/>
-                    </svg>
+                    <SearchIcon className="w-[15px] h-[15px] mr-[6px]" />
                     {analyzing ? 'Analyzing...' : 'Analyze'}
                   </Button>
                 </div>
@@ -312,9 +294,7 @@ export function GenerateTestsPage() {
                       }`}
                     >
                       {selectedTypes.includes(type) && (
-                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className="w-[15px] h-[15px]">
-                          <path d="M5 12l4 4 10-10"/>
-                        </svg>
+                        <CheckIcon strokeWidth={2.5} className="w-[15px] h-[15px]" />
                       )}
                       {type}
                     </button>
@@ -328,9 +308,7 @@ export function GenerateTestsPage() {
                   {quickActions.map(action => (
                     <div key={action.title} className="flex gap-[12px] p-[14px] rounded-[12px] bg-[#11141c] border border-[rgba(255,255,255,0.07)] cursor-pointer transition-all hover:border-[rgba(129,140,248,0.35)] hover:translate-y-[-2px] hover:shadow-[0_8px_24px_rgba(0,0,0,0.35)]" onClick={() => handleQuickAction(action.title)}>
                       <div className="w-[34px] h-[34px] rounded-[9px] flex-shrink-0 grid place-items-center bg-[rgba(129,140,248,0.14)] text-[#818cf8]">
-                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="w-[17px] h-[17px]">
-                          <path d="M13 3L4 14h7l-1 7 9-11h-7z"/>
-                        </svg>
+                        <ZapIcon className="w-[17px] h-[17px]" />
                       </div>
                       <div>
                         <div className="text-[13px] font-semibold text-[#e8ebf2] leading-[1.35] mb-[4px]">{action.title}</div>
@@ -419,18 +397,14 @@ export function GenerateTestsPage() {
 
               <div className="flex items-center gap-[10px] flex-wrap p-[16px] bg-[#161a24] border border-[rgba(255,255,255,0.07)] rounded-[12px]">
                 <Button variant="ghost" onClick={() => setCurrentStep(0)}>
-                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="w-[15px] h-[15px] mr-[6px]">
-                    <path d="M19 12H5M11 6l-6 6 6 6"/>
-                  </svg>
+                  <ArrowLeftIcon className="w-[15px] h-[15px] mr-[6px]" />
                   Back
                 </Button>
                 <div className="flex-1" />
                 <span className="text-[12px] text-[#6b7488]">5 areas need attention · 2 high risk</span>
                 <Button variant="primary" size="lg" onClick={handleGeneratePlan} disabled={generating}>
                   {generating ? 'Generating...' : 'Generate Test Plan'}
-                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="w-[15px] h-[15px] ml-[6px]">
-                    <path d="M5 12h14M13 6l6 6-6 6"/>
-                  </svg>
+                  <ChevronRightIcon className="w-[15px] h-[15px] ml-[6px]" />
                 </Button>
               </div>
             </div>
@@ -459,12 +433,7 @@ export function GenerateTestsPage() {
                           a.action.includes('Delete') ? 'bg-[rgba(251,113,133,0.14)] text-[#fb7185]' : 
                           'bg-[rgba(129,140,248,0.14)] text-[#818cf8]'
                         }`}>
-                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="w-[16px] h-[16px]">
-                            {a.action.includes('Add') ? <path d="M12 5v14M5 12h14"/> : 
-                             a.action.includes('Update') ? <><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></> :
-                             a.action.includes('Delete') ? <path d="M3 6h18M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/> :
-                             <><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></>}
-                          </svg>
+                            <PlanActionIcon action={a.action} />
                         </div>
                         <span className="text-[13.5px] text-[#e8ebf2] font-medium">{a.action}</span>
                         <span className={`ml-auto font-mono text-[16px] font-bold ${
@@ -532,9 +501,7 @@ export function GenerateTestsPage() {
 
               <div className="flex items-center gap-[10px] flex-wrap p-[16px] bg-[#161a24] border border-[rgba(255,255,255,0.07)] rounded-[12px]">
                 <Button variant="ghost" onClick={() => setCurrentStep(1)}>
-                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="w-[15px] h-[15px] mr-[6px]">
-                    <path d="M19 12H5M11 6l-6 6 6 6"/>
-                  </svg>
+                  <ArrowLeftIcon className="w-[15px] h-[15px] mr-[6px]" />
                   Back
                 </Button>
                 <Button variant="outline">Edit Plan</Button>
@@ -543,9 +510,7 @@ export function GenerateTestsPage() {
                 <div className="flex-1" />
                 <Button variant="danger">Cancel</Button>
                 <Button variant="primary" size="lg" onClick={handleApprovePlan}>
-                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="w-[15px] h-[15px] mr-[6px]">
-                    <path d="M5 12l4 4 10-10"/>
-                  </svg>
+                  <CheckIcon className="w-[15px] h-[15px] mr-[6px]" />
                   Approve Plan
                 </Button>
               </div>
@@ -574,9 +539,7 @@ export function GenerateTestsPage() {
                           t.state === 'done' ? 'bg-[rgba(61,220,151,0.13)] border border-[rgba(61,220,151,0.45)] text-[#3ddc97]' : 
                           'bg-[#0d0f16] border border-[rgba(255,255,255,0.12)] text-[#6b7488]'
                         }`}>
-                          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" className="w-[13px] h-[13px]">
-                            <path d="M5 12l4 4 10-10" />
-                          </svg>
+                          <CheckIcon strokeWidth={2.4} className="w-[13px] h-[13px]" />
                         </div>
                         <div className={`text-[13px] pt-[3px] ${t.state === 'done' ? 'text-[#e8ebf2]' : 'text-[#98a1b3]'}`}>
                           {t.label}
@@ -621,11 +584,7 @@ export function GenerateTestsPage() {
                             change.changeType === 'update' ? 'bg-[rgba(96,165,250,0.13)] text-[#60a5fa]' : 
                             'bg-[rgba(251,113,133,0.14)] text-[#fb7185]'
                           }`}>
-                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="w-[16px] h-[16px]">
-                              {change.changeType === 'add' ? <path d="M12 5v14M5 12h14"/> : 
-                               change.changeType === 'update' ? <><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></> :
-                               <path d="M3 6h18M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/>}
-                            </svg>
+                            <ChangeTypeIcon changeType={change.changeType} />
                           </div>
                           <div className="flex-1 min-w-0">
                             <div className="flex items-center gap-[7px] flex-wrap mb-[6px]">
@@ -669,51 +628,51 @@ export function GenerateTestsPage() {
                 <div className="grid grid-cols-[1fr_auto_1fr] gap-[16px] items-stretch">
                   <div className="bg-[#0d0f16] border border-[rgba(251,113,133,0.2)] rounded-[12px] p-[15px]">
                     <div className="text-[11px] font-bold uppercase tracking-[0.6px] text-[#fb7185] mb-[11px] flex items-center gap-[7px]">
-                      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="w-[14px] h-[14px]"><path d="M3 6h18M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
+                      <TrashIcon className="w-[14px] h-[14px]" />
                       Before
                     </div>
                     <ul className="m-0 p-0 list-none flex flex-col gap-[9px]">
                       <li className="text-[12.5px] text-[#98a1b3] flex gap-[8px] leading-[1.45]">
-                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="w-[14px] h-[14px] flex-shrink-0 mt-[2px] text-[#fb7185]"><path d="M5 12l4 4 10-10"/></svg>
+                        <CheckIcon className="w-[14px] h-[14px] flex-shrink-0 mt-[2px] text-[#fb7185]" />
                         0 tests for coupon minimum purchase
                       </li>
                       <li className="text-[12.5px] text-[#98a1b3] flex gap-[8px] leading-[1.45]">
-                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="w-[14px] h-[14px] flex-shrink-0 mt-[2px] text-[#fb7185]"><path d="M5 12l4 4 10-10"/></svg>
+                        <CheckIcon className="w-[14px] h-[14px] flex-shrink-0 mt-[2px] text-[#fb7185]" />
                         0 timezone expiry tests
                       </li>
                       <li className="text-[12.5px] text-[#98a1b3] flex gap-[8px] leading-[1.45]">
-                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="w-[14px] h-[14px] flex-shrink-0 mt-[2px] text-[#fb7185]"><path d="M5 12l4 4 10-10"/></svg>
+                        <CheckIcon className="w-[14px] h-[14px] flex-shrink-0 mt-[2px] text-[#fb7185]" />
                         1 outdated stacking test
                       </li>
                       <li className="text-[12.5px] text-[#98a1b3] flex gap-[8px] leading-[1.45]">
-                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="w-[14px] h-[14px] flex-shrink-0 mt-[2px] text-[#fb7185]"><path d="M5 12l4 4 10-10"/></svg>
+                        <CheckIcon className="w-[14px] h-[14px] flex-shrink-0 mt-[2px] text-[#fb7185]" />
                         0 mobile tests for new devices
                       </li>
                     </ul>
                   </div>
                   <div className="grid place-items-center text-[#6b7488]">
-                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="w-[22px] h-[22px]"><path d="M5 12h14M12 5l7 7-7 7"/></svg>
+                    <ChevronRightIcon className="w-[22px] h-[22px]" />
                   </div>
                   <div className="bg-[#0d0f16] border border-[rgba(61,220,151,0.25)] rounded-[12px] p-[15px]">
                     <div className="text-[11px] font-bold uppercase tracking-[0.6px] text-[#3ddc97] mb-[11px] flex items-center gap-[7px]">
-                      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="w-[14px] h-[14px]"><path d="M5 12l4 4 10-10"/></svg>
+                      <CheckIcon className="w-[14px] h-[14px]" />
                       After
                     </div>
                     <ul className="m-0 p-0 list-none flex flex-col gap-[9px]">
                       <li className="text-[12.5px] text-[#98a1b3] flex gap-[8px] leading-[1.45]">
-                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="w-[14px] h-[14px] flex-shrink-0 mt-[2px] text-[#3ddc97]"><path d="M5 12l4 4 10-10"/></svg>
+                        <CheckIcon className="w-[14px] h-[14px] flex-shrink-0 mt-[2px] text-[#3ddc97]" />
                         9 new tests added
                       </li>
                       <li className="text-[12.5px] text-[#98a1b3] flex gap-[8px] leading-[1.45]">
-                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="w-[14px] h-[14px] flex-shrink-0 mt-[2px] text-[#3ddc97]"><path d="M5 12l4 4 10-10"/></svg>
+                        <CheckIcon className="w-[14px] h-[14px] flex-shrink-0 mt-[2px] text-[#3ddc97]" />
                         1 test updated
                       </li>
                       <li className="text-[12.5px] text-[#98a1b3] flex gap-[8px] leading-[1.45]">
-                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="w-[14px] h-[14px] flex-shrink-0 mt-[2px] text-[#3ddc97]"><path d="M5 12l4 4 10-10"/></svg>
+                        <CheckIcon className="w-[14px] h-[14px] flex-shrink-0 mt-[2px] text-[#3ddc97]" />
                         1 outdated test removed
                       </li>
                       <li className="text-[12.5px] text-[#98a1b3] flex gap-[8px] leading-[1.45]">
-                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="w-[14px] h-[14px] flex-shrink-0 mt-[2px] text-[#3ddc97]"><path d="M5 12l4 4 10-10"/></svg>
+                        <CheckIcon className="w-[14px] h-[14px] flex-shrink-0 mt-[2px] text-[#3ddc97]" />
                         6 files changed
                       </li>
                     </ul>
@@ -746,9 +705,7 @@ export function GenerateTestsPage() {
                 <div className="mb-[18px]">
                   <div className="flex items-center gap-[11px] p-[13px_16px] bg-[#161a24] border border-[rgba(255,255,255,0.07)] rounded-[12px_12px_0_0]">
                     <div className="w-[30px] h-[30px] rounded-[8px] flex-shrink-0 grid place-items-center bg-[rgba(129,140,248,0.14)] text-[#818cf8]">
-                      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="w-[16px] h-[16px]">
-                        <path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3Z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><line x1="12" x2="12" y1="19" y2="22"/>
-                      </svg>
+                      <MicIcon className="w-[16px] h-[16px]" />
                     </div>
                     <div>
                       <div className="text-[14px] font-semibold text-[#e8ebf2]">Unit Tests</div>
@@ -772,9 +729,7 @@ export function GenerateTestsPage() {
                 <div className="mb-[18px]">
                   <div className="flex items-center gap-[11px] p-[13px_16px] bg-[#161a24] border border-[rgba(255,255,255,0.07)] rounded-[12px_12px_0_0]">
                     <div className="w-[30px] h-[30px] rounded-[8px] flex-shrink-0 grid place-items-center bg-[rgba(129,140,248,0.14)] text-[#818cf8]">
-                      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="w-[16px] h-[16px]">
-                        <rect x="2" y="3" width="20" height="14" rx="2"/><line x1="8" x2="16" y1="21" y2="21"/><line x1="12" x2="12" y1="17" y2="21"/>
-                      </svg>
+                      <MonitorIcon className="w-[16px] h-[16px]" />
                     </div>
                     <div>
                       <div className="text-[14px] font-semibold text-[#e8ebf2]">UI/Browser Tests</div>
@@ -797,7 +752,7 @@ export function GenerateTestsPage() {
                         <div className="p-[14px] min-h-[130px] bg-[linear-gradient(180deg,#0f1320,#0c0f18)] relative">
                           <div className="text-[10px] text-[#6b7488] mb-[8px]">Cart</div>
                           <div className="flex items-center gap-[8px] bg-[rgba(251,113,133,0.14)] border border-[rgba(251,113,133,0.4)] text-[#ffc9d2] rounded-[8px] p-[9px_11px] text-[11px]">
-                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="w-[14px] h-[14px] flex-shrink-0 text-[#fb7185]"><circle cx="12" cy="12" r="10"/><line x1="12" x2="12" y1="8" y2="12"/><line x1="12" x2="12.01" y1="16" y2="16"/></svg>
+                            <AlertCircleIcon className="w-[14px] h-[14px] flex-shrink-0 text-[#fb7185]" />
                             Session expired. Please refresh.
                           </div>
                           <div className="h-[8px] rounded-[4px] bg-[rgba(255,255,255,0.07)] mb-[7px] w-[60%] mt-[8px]" />
@@ -817,9 +772,7 @@ export function GenerateTestsPage() {
                 <div className="mb-[18px]">
                   <div className="flex items-center gap-[11px] p-[13px_16px] bg-[#161a24] border border-[rgba(255,255,255,0.07)] rounded-[12px_12px_0_0]">
                     <div className="w-[30px] h-[30px] rounded-[8px] flex-shrink-0 grid place-items-center bg-[rgba(251,113,133,0.14)] text-[#fb7185]">
-                      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="w-[16px] h-[16px]">
-                        <rect x="5" y="2" width="14" height="20" rx="2"/><line x1="12" x2="12" y1="18" y2="18"/>
-                      </svg>
+                      <SmartphoneIcon className="w-[16px] h-[16px]" />
                     </div>
                     <div>
                       <div className="text-[14px] font-semibold text-[#e8ebf2]">Mobile Tests</div>
@@ -841,7 +794,7 @@ export function GenerateTestsPage() {
                             SAVE10
                           </div>
                           <div className="bg-[rgba(251,191,36,0.14)] border border-[rgba(251,191,36,0.4)] text-[#f4dca0] rounded-[7px] p-[7px_8px] text-[8.5px] mb-[8px] flex gap-[5px] items-center">
-                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="w-[11px] h-[11px] flex-shrink-0"><circle cx="12" cy="12" r="10"/><line x1="12" x2="12" y1="8" y2="12"/><line x1="12" x2="12.01" y1="16" y2="16"/></svg>
+                            <AlertCircleIcon className="w-[11px] h-[11px] flex-shrink-0" />
                             Coupon expired
                           </div>
                           <div className="h-[24px] rounded-[6px] bg-[linear-gradient(160deg,#8b93ff,#5d68f0)]" />
@@ -904,7 +857,7 @@ export function GenerateTestsPage() {
                             row.status === 'fail' ? 'text-[#fb7185] bg-[rgba(251,113,133,0.14)]' : 
                             'text-[#818cf8] bg-[rgba(129,140,248,0.14)]'
                           }`}>
-                            <StatusIcon status={row.status} />
+                            <RunResultIcon status={row.status} />
                             {row.status}
                           </span>
                         </td>
@@ -912,7 +865,7 @@ export function GenerateTestsPage() {
                         <td className="p-[11px_12px] border-b border-[rgba(255,255,255,0.07)]">
                           {row.evidence && (
                             <span className="text-[#818cf8] text-[11.5px] cursor-pointer inline-flex items-center gap-[5px] hover:underline">
-                              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="w-[12px] h-[12px]"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
+                              <EyeIcon className="w-[12px] h-[12px]" />
                               {row.evidence}
                             </span>
                           )}
@@ -926,7 +879,7 @@ export function GenerateTestsPage() {
 
               <div className="bg-[rgba(251,113,133,0.05)] border border-[rgba(251,113,133,0.28)] rounded-[12px] p-[16px] mt-[14px]">
                 <div className="flex items-center gap-[9px] text-[13.5px] font-semibold text-[#fb7185] mb-[12px]">
-                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="w-[17px] h-[17px]"><circle cx="12" cy="12" r="10"/><line x1="12" x2="12" y1="8" y2="12"/><line x1="12" x2="12.01" y1="16" y2="16"/></svg>
+                  <AlertCircleIcon className="w-[17px] h-[17px]" />
                   Payment sheet on iPhone 15
                 </div>
                 <div className="text-[12.5px] text-[#98a1b3] mb-[8px] leading-[1.5]">Test fails intermittently on iPhone 15 simulator. Passes on Pixel 7.</div>
@@ -954,9 +907,7 @@ export function GenerateTestsPage() {
               />
 
               <div className="flex items-start gap-[11px] p-[14px_16px] bg-[rgba(61,220,151,0.08)] border border-[rgba(61,220,151,0.2)] rounded-[12px] mb-[18px] text-[13px] text-[#b6f0d4] leading-[1.5]">
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="w-[18px] h-[18px] flex-shrink-0 text-[#3ddc97] mt-[1px]">
-                  <path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3Z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><line x1="12" x2="12" y1="19" y2="22"/>
-                </svg>
+                <MicIcon className="w-[18px] h-[18px] flex-shrink-0 text-[#3ddc97] mt-[1px]" />
                 <div>
                   <b className="text-[#d6fae8]">Recommended: Apply changes</b> — 10 of 11 tests pass. Coverage improved from 64% to 78%. 1 mobile test fails on iPhone 15.
                 </div>
@@ -980,9 +931,7 @@ export function GenerateTestsPage() {
                 <div className="flex flex-col gap-[6px]">
                   {reviewFiles.map(f => (
                     <div key={f.path} className="flex items-center gap-[10px] bg-[#0d0f16] rounded-[8px] px-[12px] py-[8px]">
-                      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="w-[12px] h-[12px] text-[#818cf8] flex-shrink-0">
-                        <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/>
-                      </svg>
+                      <FileCodeIcon className="w-[12px] h-[12px] text-[#818cf8] flex-shrink-0" />
                       <span className="text-[12px] font-mono text-[#e8ebf2] flex-1">{f.path}</span>
                       <span className="text-[11px] text-[#3ddc97] font-medium">+{f.additions}</span>
                       <span className="text-[11px] text-[#fb7185] font-medium">-{f.deletions}</span>

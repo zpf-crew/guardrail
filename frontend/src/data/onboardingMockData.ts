@@ -1,5 +1,14 @@
+export interface GitHubRepo {
+  org: string;
+  name: string;
+  fullName: string;
+  branch: string;
+  private: boolean;
+}
+
 export interface RepoInfo {
   name: string;
+  fullName: string;
   branch: string;
   language: string;
   framework: string;
@@ -8,7 +17,7 @@ export interface RepoInfo {
 
 export interface DocFile {
   name: string;
-  type: 'pdf' | 'md' | 'txt' | 'csv' | 'xlsx';
+  type: 'pdf' | 'md' | 'txt' | 'csv' | 'xlsx' | 'json';
   size: string;
 }
 
@@ -17,16 +26,35 @@ export interface QCRow {
   feature: string;
   scenario: string;
   expected: string;
-  priority: 'Critical' | 'High' | 'Medium' | 'Low';
-  automated: 'Yes' | 'No';
+  priority: 'critical' | 'high' | 'medium' | 'low';
+  automated: 'automated' | 'missing' | 'unknown';
 }
 
 export interface ScanTask {
   label: string;
+  warn?: boolean;
 }
+
+export interface ScanLogEntry {
+  tag: 'ok' | 'warn' | 'info';
+  message: string;
+}
+
+export interface SummaryStat {
+  label: string;
+  value: string;
+  color: string;
+}
+
+export const githubRepos: GitHubRepo[] = [
+  { org: 'acme-corp', name: 'checkout-service', fullName: 'acme-corp/checkout-service', branch: 'feature/coupon-refactor', private: true },
+  { org: 'acme-corp', name: 'payment-gateway', fullName: 'acme-corp/payment-gateway', branch: 'main', private: true },
+  { org: 'acme-corp', name: 'mobile-checkout', fullName: 'acme-corp/mobile-checkout', branch: 'develop', private: false },
+];
 
 export const repoInfo: RepoInfo = {
   name: 'checkout-service',
+  fullName: 'acme-corp/checkout-service',
   branch: 'feature/coupon-refactor',
   language: 'TypeScript',
   framework: 'Express',
@@ -34,72 +62,75 @@ export const repoInfo: RepoInfo = {
 };
 
 export const mockDocs: DocFile[] = [
-  { name: 'Checkout Flow Spec.pdf', type: 'pdf', size: '2.4 MB' },
-  { name: 'Coupon Rules.md', type: 'md', size: '18 KB' },
-  { name: 'Payment Gateway API.txt', type: 'txt', size: '12 KB' },
+  { name: 'Checkout Flow Spec.pdf', type: 'pdf', size: '1.4 MB' },
+  { name: 'Coupon Rules.md', type: 'md', size: '22 KB' },
+  { name: 'Payment Error Handling.md', type: 'md', size: '18 KB' },
 ];
 
+export const extraDocs: DocFile[] = [
+  { name: 'Order Summary PRD.pdf', type: 'pdf', size: '880 KB' },
+  { name: 'API Spec — Payments v2.txt', type: 'txt', size: '41 KB' },
+  { name: 'Session & Auth Notes.md', type: 'md', size: '15 KB' },
+];
+
+export const defaultDocSources = ['Confluence Space: Checkout', 'Spec folder: /docs/product'];
+
 export const mockQCs: DocFile[] = [
-  { name: 'qc-checkout-suite.csv', type: 'csv', size: '34 KB' },
-  { name: 'qc-payment-cases.xlsx', type: 'xlsx', size: '56 KB' },
+  { name: 'qc-checkout-suite.csv', type: 'csv', size: '86 KB' },
+];
+
+export const extraQCs: DocFile[] = [
+  { name: 'payment-edge-cases.json', type: 'json', size: '12 KB' },
+  { name: 'regression-checklist.md', type: 'md', size: '9 KB' },
 ];
 
 export const qcRows: QCRow[] = [
-  { id: 'QC-001', feature: 'Checkout', scenario: 'Apply valid coupon', expected: 'Discount applied, total updated', priority: 'High', automated: 'Yes' },
-  { id: 'QC-002', feature: 'Checkout', scenario: 'Apply expired coupon', expected: 'Error: coupon expired', priority: 'High', automated: 'Yes' },
-  { id: 'QC-003', feature: 'Payment', scenario: 'Card payment success', expected: 'Order confirmed, receipt sent', priority: 'Critical', automated: 'Yes' },
-  { id: 'QC-004', feature: 'Payment', scenario: 'Card payment declined', expected: 'Error shown, retry option', priority: 'Critical', automated: 'No' },
-  { id: 'QC-005', feature: 'Checkout', scenario: 'Empty cart checkout', expected: 'Blocked with message', priority: 'Medium', automated: 'Yes' },
-  { id: 'QC-006', feature: 'Coupon', scenario: 'Stack multiple coupons', expected: 'Only one allowed', priority: 'Medium', automated: 'No' },
-  { id: 'QC-007', feature: 'Payment', scenario: 'Partial refund', expected: 'Refund processed, balance updated', priority: 'High', automated: 'No' },
-  { id: 'QC-008', feature: 'Checkout', scenario: 'Guest checkout', expected: 'Order created without account', priority: 'High', automated: 'Yes' },
+  { id: 'QC-101', feature: 'Coupon', scenario: 'Apply valid coupon', expected: 'Discount is applied', priority: 'high', automated: 'automated' },
+  { id: 'QC-102', feature: 'Coupon', scenario: 'Expired coupon', expected: 'Shows expired coupon error', priority: 'high', automated: 'missing' },
+  { id: 'QC-118', feature: 'Coupon', scenario: 'Stacking blocked', expected: 'Second coupon rejected', priority: 'medium', automated: 'missing' },
+  { id: 'QC-205', feature: 'Payment', scenario: 'API timeout', expected: 'User can retry payment', priority: 'critical', automated: 'missing' },
+  { id: 'QC-211', feature: 'Payment', scenario: 'Declined card', expected: 'Retry prompt shown 3×', priority: 'critical', automated: 'automated' },
+  { id: 'QC-301', feature: 'Checkout', scenario: 'Duplicate submit', expected: 'Prevents double order', priority: 'critical', automated: 'unknown' },
+  { id: 'QC-307', feature: 'Checkout', scenario: 'Incomplete address', expected: 'Inline validation error', priority: 'high', automated: 'automated' },
+  { id: 'QC-402', feature: 'Order Summary', scenario: 'Multi-currency total', expected: "Banker's rounding applied", priority: 'medium', automated: 'unknown' },
 ];
 
 export const scanTasks: ScanTask[] = [
-  { label: 'Analyzing repository structure' },
-  { label: 'Detecting framework and dependencies' },
-  { label: 'Discovering existing test files' },
-  { label: 'Parsing product documentation' },
-  { label: 'Importing QC test cases' },
-  { label: 'Mapping file-to-feature relationships' },
-  { label: 'Running existing test suite' },
-  { label: 'Collecting coverage data' },
-  { label: 'Detecting missing test coverage' },
-  { label: 'Detecting suspicious tests' },
-  { label: 'Analyzing test flakiness' },
-  { label: 'Generating insights and recommendations' },
+  { label: 'Analyze repository structure' },
+  { label: 'Detect test framework & commands' },
+  { label: 'Discover existing test cases' },
+  { label: 'Parse product / wiki documents' },
+  { label: 'Import QC test cases' },
+  { label: 'Map source files to test files' },
+  { label: 'Run test command' },
+  { label: 'Run coverage command' },
+  { label: 'Detect missing tests', warn: true },
+  { label: 'Detect suspicious tests', warn: true },
+  { label: 'Generate initial testing insights' },
 ];
 
-export const scanLogs: string[] = [
-  '[00:01] Scanning repository: checkout-service...',
-  '[00:02] Found 2,418 files across 142 directories',
-  '[00:03] Detected framework: Express (Node.js)',
-  '[00:05] Found 847 test files (unit: 623, integration: 142, e2e: 82)',
-  '[00:07] Parsed 3 product documents',
-  '[00:08] Imported 8 QC test cases',
-  '[00:10] Mapped 24 source files to features',
-  '[00:12] Running test suite...',
-  '[00:18] Collected coverage: 64% line, 52% branch',
-  '[00:20] Found 4 missing test scenarios',
-  '[00:21] Found 2 suspicious tests conflicting with specs',
-  '[00:22] Found 1 flaky test',
-  '[00:24] Generated 6 AI insights',
-  '[00:25] Scan complete.',
+export const scanLogs: ScanLogEntry[] = [
+  { tag: 'info', message: 'Analyzing repository structure — 2,418 files across 6 feature modules' },
+  { tag: 'ok', message: 'Detected Jest and React Testing Library' },
+  { tag: 'ok', message: 'Found 186 automated test cases' },
+  { tag: 'ok', message: 'Parsed 8 product documents (Checkout, Coupon, Payment, Session)' },
+  { tag: 'ok', message: 'Imported 42 QC test cases' },
+  { tag: 'ok', message: 'Mapped 31 QC scenarios to existing automated tests' },
+  { tag: 'info', message: 'Running test suite — npm test -- --runInBand' },
+  { tag: 'warn', message: '5 tests failed, 2 flaky across re-runs' },
+  { tag: 'info', message: 'Coverage report parsed: 74% line coverage, 46% branch coverage' },
+  { tag: 'warn', message: 'Found 9 missing high-priority test cases' },
+  { tag: 'warn', message: 'Detected 3 suspicious tests inconsistent with product specs' },
+  { tag: 'ok', message: 'Generated initial testing insights — dashboard is ready' },
 ];
-
-export interface SummaryStat {
-  label: string;
-  value: string;
-  icon: string;
-}
 
 export const summaryStats: SummaryStat[] = [
-  { label: 'Tests found', value: '847', icon: '📋' },
-  { label: 'QC imported', value: '8', icon: '📥' },
-  { label: 'Docs indexed', value: '3', icon: '📄' },
-  { label: 'Missing', value: '4', icon: '⚠️' },
-  { label: 'Suspicious', value: '2', icon: '🔍' },
-  { label: 'Failed', value: '12', icon: '❌' },
-  { label: 'Flaky', value: '1', icon: '⚡' },
-  { label: 'Coverage', value: '64%', icon: '📊' },
+  { label: 'Automated tests found', value: '186', color: '#818cf8' },
+  { label: 'QC test cases imported', value: '42', color: '#22d3ee' },
+  { label: 'Product docs indexed', value: '8', color: '#60a5fa' },
+  { label: 'Missing recommended', value: '9', color: '#60a5fa' },
+  { label: 'Suspicious tests', value: '3', color: '#c084fc' },
+  { label: 'Failed tests', value: '5', color: '#fb7185' },
+  { label: 'Flaky tests', value: '2', color: '#fbbf24' },
+  { label: 'Line coverage', value: '74%', color: '#3ddc97' },
 ];

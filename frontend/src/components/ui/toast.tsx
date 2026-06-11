@@ -1,4 +1,5 @@
 import * as React from 'react';
+import { CheckIcon } from '@/components/icons';
 
 export interface ToastItem {
   id: string;
@@ -48,7 +49,7 @@ export function ToastProvider({ children }: { children: React.ReactNode }) {
               <span className="w-[16px] h-[16px] rounded-full border-2 border-[rgba(129,140,248,0.3)] border-t-[#818cf8] animate-spin flex-none" />
             ) : (
               <span className="text-[#3ddc97] grid place-items-center">
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" className="w-[17px] h-[17px]"><path d="M5 12l4 4 10-10" /></svg>
+                <CheckIcon strokeWidth={2.5} className="w-[17px] h-[17px]" />
               </span>
             )}
             <span>{t.message}</span>
