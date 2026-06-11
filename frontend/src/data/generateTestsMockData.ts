@@ -6,6 +6,14 @@ export interface QuickAction {
   icon: string;
 }
 
+export const quickActions: QuickAction[] = [
+  { title: 'Generate missing coupon tests', description: '4 missing edge-case tests', icon: '🧪' },
+  { title: 'Fix suspicious payment tests', description: '2 tests conflict with specs', icon: '🔧' },
+  { title: 'Fix flaky payment decline test', description: 'T-006 timing issue', icon: '⚡' },
+  { title: 'Add UI tests for checkout timeout', description: 'Actually triggers timeout', icon: '🖥️' },
+  { title: 'Update mobile test devices', description: 'iPhone 15 + Pixel 7', icon: '📱' },
+];
+
 export interface ClassificationCard {
   behavior: string;
   status: 'covered' | 'missing' | 'weak' | 'suspicious';
@@ -13,6 +21,41 @@ export interface ClassificationCard {
   risk: 'low' | 'medium' | 'high';
   explanation: string;
 }
+
+export const classification: ClassificationCard[] = [
+  { behavior: 'Coupon minimum purchase validation', status: 'missing', type: 'Edge case', risk: 'high', explanation: 'No test verifies cart must meet minimum' },
+  { behavior: 'Coupon timezone expiry', status: 'missing', type: 'Edge case', risk: 'high', explanation: 'Expiry not tested across timezones' },
+  { behavior: 'Coupon usage limit per account', status: 'suspicious', type: 'Logic', risk: 'medium', explanation: 'Spec says per-account, test checks per-email' },
+  { behavior: 'Coupon stacking prevention', status: 'weak', type: 'Edge case', risk: 'high', explanation: 'Test passes but stacking was accidentally allowed' },
+  { behavior: 'Coupon discount rounding', status: 'covered', type: 'Logic', risk: 'low', explanation: 'Test exists but rounds up instead of down per spec' },
+  { behavior: 'Checkout timeout behavior', status: 'missing', type: 'UI flow', risk: 'high', explanation: 'Existing test does not trigger actual timeout' },
+  { behavior: 'Payment decline retry', status: 'missing', type: 'UI flow', risk: 'high', explanation: 'No test for retry after payment failure' },
+  { behavior: 'Mobile checkout on new devices', status: 'missing', type: 'Device', risk: 'medium', explanation: 'iPhone 15 and Pixel 7 not covered' },
+];
+
+export interface PlanAction {
+  action: string;
+  count: number;
+}
+
+export const planActions: PlanAction[] = [
+  { action: 'Add tests', count: 9 },
+  { action: 'Update tests', count: 1 },
+  { action: 'Delete tests', count: 1 },
+  { action: 'Edit production code', count: 1 },
+];
+
+export interface PlanRisk {
+  item: string;
+  level: 'low' | 'medium' | 'high';
+}
+
+export const planRisk: PlanRisk[] = [
+  { item: 'Production code change in coupon.ts', level: 'high' },
+  { item: 'Mobile tests on new devices', level: 'medium' },
+  { item: 'UI tests for timeout flow', level: 'medium' },
+  { item: 'Open AI questions', level: 'low' },
+];
 
 export interface PlanAction {
   action: string;
