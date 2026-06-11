@@ -14,11 +14,30 @@ export const ToastContext = React.createContext<ToastContextType | null>(null);
 
 export function ToastProvider({ children }: { children: React.ReactNode }) {
   const [toasts, setToasts] = React.useState<ToastItem[]>([]);
+  const timersRef = React.useRef<Map<string, ReturnType<typeof setTimeout>>>(new Map());
+
+  const removeToast = React.useCallback((id: string) => {
+    const timer = timersRef.current.get(id);
+    if (timer) {
+      clearTimeout(timer);
+      timersRef.current.delete(id);
+    }
+    setToasts(prev => prev.filter(t => t.id !== id));
+  }, []);
+
+  React.useEffect(() => {
+    return () => {
+      timersRef.current.forEach(timer => clearTimeout(timer));
+      timersRef.current.clear();
+    };
+  }, []);
+
   const toast = React.useCallback((message: string, type: 'loading' | 'success' = 'success') => {
     const id = Math.random().toString(36).slice(2);
     setToasts(prev => [...prev, { id, message, type }]);
-    setTimeout(() => { setToasts(prev => prev.filter(t => t.id !== id)); }, type === 'loading' ? 2400 : 2200);
-  }, []);
+    const timer = setTimeout(() => { removeToast(id); }, type === 'loading' ? 2400 : 2200);
+    timersRef.current.set(id, timer);
+  }, [removeToast]);
   return (
     <ToastContext.Provider value={{ toast }}>
       {children}

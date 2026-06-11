@@ -8,16 +8,16 @@ export interface Step {
 
 export interface StepperProps {
   steps: Step[];
-  activeStep: number;
   onStepClick?: (index: number) => void;
+  label?: string;
 }
 
-export function Stepper({ steps, activeStep: _activeStep, onStepClick }: StepperProps) {
+export function Stepper({ steps, label = 'Setup progress', onStepClick }: StepperProps) {
   const doneCount = steps.filter(s => s.state === 'done' || s.state === 'skipped').length;
   return (
     <div className="flex flex-col gap-[2px]">
       <div className="text-[11px] uppercase tracking-[0.8px] text-[#6b7488] font-semibold mb-[14px] flex justify-between">
-        <span>Setup progress</span>
+        <span>{label}</span>
         <span><b className="text-[#818cf8]">{doneCount}</b> / {steps.length}</span>
       </div>
       {steps.map((step, i) => {
