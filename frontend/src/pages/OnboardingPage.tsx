@@ -29,6 +29,22 @@ export function OnboardingPage() {
   const [scanLogIndex, setScanLogIndex] = React.useState(0);
   const [scanTaskIndex, setScanTaskIndex] = React.useState(0);
 
+  const taskIntervalRef = React.useRef<ReturnType<typeof setInterval> | null>(null);
+  const logIntervalRef = React.useRef<ReturnType<typeof setInterval> | null>(null);
+
+  React.useEffect(() => {
+    return () => {
+      if (taskIntervalRef.current) {
+        clearInterval(taskIntervalRef.current);
+        taskIntervalRef.current = null;
+      }
+      if (logIntervalRef.current) {
+        clearInterval(logIntervalRef.current);
+        logIntervalRef.current = null;
+      }
+    };
+  }, []);
+
   const steps: Step[] = stepDefs.map((s, i) => {
     if (i < currentStep) return { ...s, state: 'done' as const };
     if (i === currentStep) return { ...s, state: 'current' as const };
@@ -85,22 +101,24 @@ export function OnboardingPage() {
 
     let taskIdx = 0;
     let logIdx = 0;
-    const taskInterval = setInterval(() => {
+    taskIntervalRef.current = setInterval(() => {
       taskIdx++;
       setScanTaskIndex(taskIdx);
       setScanProgress(Math.round((taskIdx / scanTasks.length) * 100));
       if (taskIdx >= scanTasks.length) {
-        clearInterval(taskInterval);
+        if (taskIntervalRef.current) clearInterval(taskIntervalRef.current);
+        taskIntervalRef.current = null;
         setScanComplete(true);
         toast('Scan complete', 'success');
       }
     }, 800);
 
-    const logInterval = setInterval(() => {
+    logIntervalRef.current = setInterval(() => {
       logIdx++;
       setScanLogIndex(logIdx);
       if (logIdx >= scanLogs.length) {
-        clearInterval(logInterval);
+        if (logIntervalRef.current) clearInterval(logIntervalRef.current);
+        logIntervalRef.current = null;
       }
     }, 600);
   };
@@ -199,7 +217,7 @@ export function OnboardingPage() {
                   {docLinks.length > 0 && (
                     <div className="flex flex-wrap gap-[6px] mt-[10px]">
                       {docLinks.map((link, i) => (
-                        <span key={i} className="inline-flex items-center gap-[5px] bg-[#161a24] border border-[rgba(255,255,255,0.07)] rounded-[6px] px-[9px] py-[4px] text-[12px] text-[#818cf8]">
+                        <span key={link} className="inline-flex items-center gap-[5px] bg-[#161a24] border border-[rgba(255,255,255,0.07)] rounded-[6px] px-[9px] py-[4px] text-[12px] text-[#818cf8]">
                           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="w-[12px] h-[12px]"><path d="M10 13a5 5 0 007.54.54l3-3a5 5 0 00-7.07-7.07l-1.72 1.71" /><path d="M14 11a5 5 0 00-7.54-.54l-3 3a5 5 0 007.07 7.07l1.71-1.71" /></svg>
                           {link}
                           <button onClick={() => setDocLinks(prev => prev.filter((_, j) => j !== i))} className="text-[#6b7488] hover:text-[#fb7185]">
