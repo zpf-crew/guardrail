@@ -2,7 +2,7 @@ import { createLogger } from '../utils/logger.js';
 
 const logger = createLogger();
 
-const TOKEN_URL = 'https://iam.api.vngcloud.vn/v1/oauth2/token';
+const TOKEN_URL = 'https://iam.api.vngcloud.vn/accounts-api/v2/auth/token';
 
 export function createLLMService() {
   const clientId = process.env.GREENNODE_CLIENT_ID;
@@ -11,14 +11,14 @@ export function createLLMService() {
   const baseUrl = process.env.LLM_BASE_URL || 'https://maas-api.vngcloud.vn/v1';
 
   async function getAccessToken() {
+    const basicAuth = Buffer.from(`${clientId}:${clientSecret}`).toString('base64');
     const response = await fetch(TOKEN_URL, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        client_id: clientId,
-        client_secret: clientSecret,
-        grant_type: 'client_credentials',
-      }),
+      headers: {
+        'Content-Type': 'application/x-www-form-urlencoded',
+        'Authorization': `Basic ${basicAuth}`,
+      },
+      body: 'grant_type=client_credentials',
     });
 
     if (!response.ok) {

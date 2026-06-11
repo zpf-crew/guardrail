@@ -37,6 +37,12 @@ describe('createLLMService', () => {
 
     expect(result).toBe('Mock response');
     expect(fetch).toHaveBeenCalledTimes(2);
+    
+    // Verify token call uses correct endpoint and Basic Auth
+    const tokenCall = fetch.mock.calls[0];
+    expect(tokenCall[0]).toBe('https://iam.api.vngcloud.vn/accounts-api/v2/auth/token');
+    expect(tokenCall[1].headers['Authorization']).toMatch(/^Basic /);
+    expect(tokenCall[1].body).toBe('grant_type=client_credentials');
   });
 
   it('throws on chat completion error', async () => {
