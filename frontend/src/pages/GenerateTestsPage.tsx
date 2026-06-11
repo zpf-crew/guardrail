@@ -9,20 +9,64 @@ import { useToast } from '@/components/ui/toast';
 import { quickActions, classification, planActions, planRisk, planFiles, aiQuestions, genTimeline, changes, covCompare, matrix, reviewStats, reviewFiles } from '@/data/generateTestsMockData';
 
 const workflowSteps = [
-  { title: 'Intent' },
-  { title: 'Isolation' },
-  { title: 'Plan' },
-  { title: 'Generate' },
-  { title: 'Run' },
-  { title: 'Review' },
+  { title: 'Intent', icon: (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="w-[14px] h-[14px]"><path d="M12 5v14M5 12h14"/></svg>
+  )},
+  { title: 'Isolation', icon: (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="w-[14px] h-[14px]"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/></svg>
+  )},
+  { title: 'Plan', icon: (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="w-[14px] h-[14px]"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
+  )},
+  { title: 'Generate', icon: (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="w-[14px] h-[14px]"><path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3Z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><line x1="12" x2="12" y1="19" y2="22"/></svg>
+  )},
+  { title: 'Run', icon: (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="w-[14px] h-[14px]"><polygon points="5 3 19 12 5 21 5 3"/></svg>
+  )},
+  { title: 'Review', icon: (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="w-[14px] h-[14px]"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" x2="8" y1="13" y2="13"/><line x1="16" x2="8" y1="17" y2="17"/></svg>
+  )},
 ];
 
 const testTypeOptions = ['Unit', 'UI/Browser', 'Mobile'];
 
-const statusColor: Record<string, string> = { pass: 'text-[#3ddc97]', fail: 'text-[#fb7185]', running: 'text-[#818cf8]' };
 const changeTypeBadge: Record<string, 'pass' | 'fail' | 'flaky' | 'missing' | 'suspect' | 'gray' | 'accent'> = { add: 'pass', update: 'flaky', delete: 'fail' };
 const riskBadge: Record<string, 'pass' | 'fail' | 'flaky' | 'missing' | 'suspect' | 'gray' | 'accent'> = { low: 'pass', medium: 'flaky', high: 'fail' };
 const classStatusBadge: Record<string, 'pass' | 'fail' | 'flaky' | 'missing' | 'suspect' | 'gray' | 'accent'> = { covered: 'pass', missing: 'missing', weak: 'flaky', suspicious: 'suspect' };
+
+const riskColor: Record<string, string> = { low: '#3ddc97', medium: '#fbbf24', high: '#fb7185' };
+
+function SectionHeader({ label }: { label: string }) {
+  return (
+    <div className="flex items-center gap-[12px] mb-[14px]">
+      <div className="text-[11px] uppercase tracking-[0.8px] text-[#6b7488] font-semibold">{label}</div>
+      <div className="flex-1 h-[1px]" style={{ background: 'linear-gradient(90deg, rgba(255,255,255,0.07), transparent)' }} />
+    </div>
+  );
+}
+
+function StatusIcon({ status }: { status: 'pass' | 'fail' | 'running' }) {
+  if (status === 'pass') {
+    return (
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className="w-[16px] h-[16px] text-[#3ddc97]">
+        <path d="M5 12l4 4 10-10"/>
+      </svg>
+    );
+  }
+  if (status === 'fail') {
+    return (
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className="w-[16px] h-[16px] text-[#fb7185]">
+        <path d="M18 6L6 18M6 6l12 12"/>
+      </svg>
+    );
+  }
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className="w-[16px] h-[16px] text-[#818cf8]">
+      <path d="M12 2v20M2 12h20"/>
+    </svg>
+  );
+}
 
 export function GenerateTestsPage() {
   const navigate = useNavigate();
@@ -140,7 +184,7 @@ export function GenerateTestsPage() {
             {workflowSteps.map((step, i) => (
               <div
                 key={step.title}
-                className={`flex items-center gap-[8px] p-[9px_10px] rounded-[9px] cursor-pointer text-[13px] transition-colors ${i === currentStep ? 'bg-[rgba(129,140,248,0.14)] text-white' : i < currentStep ? 'text-[#3ddc97] hover:bg-[rgba(255,255,255,0.025)]' : 'text-[#6b7488] hover:bg-[rgba(255,255,255,0.025)]'}`}
+                className={`flex items-center gap-[8px] p-[9px_10px] rounded-[9px] cursor-pointer text-[13px] transition-all ${i === currentStep ? 'bg-[rgba(129,140,248,0.14)] text-white shadow-[0_0_12px_rgba(129,140,248,0.08)]' : i < currentStep ? 'text-[#3ddc97] hover:bg-[rgba(255,255,255,0.025)]' : 'text-[#6b7488] hover:bg-[rgba(255,255,255,0.025)]'}`}
                 onClick={() => { if (i <= currentStep) setCurrentStep(i); }}
               >
                 <span className={`w-[22px] h-[22px] rounded-full grid place-items-center text-[11px] font-mono font-semibold ${i < currentStep ? 'bg-[rgba(61,220,151,0.13)] text-[#3ddc97]' : i === currentStep ? 'border border-[#818cf8] text-[#818cf8]' : 'border border-[rgba(255,255,255,0.12)] text-[#6b7488]'}`}>
@@ -160,7 +204,7 @@ export function GenerateTestsPage() {
           {/* Step 1: Intent */}
           {currentStep === 0 && (
             <Panel className="p-[26px]">
-              <div className="text-[11px] uppercase tracking-[0.8px] text-[#6b7488] font-semibold mb-[14px]">Step 1 — Intent</div>
+              <SectionHeader label="Step 1 — Intent" />
               <h3 className="text-[18px] font-semibold text-white mb-[4px]">What testing do you want to improve?</h3>
               <p className="text-[13.5px] text-[#98a1b3] mb-[18px]">Describe what you want to test, and Guardrail will find the right approach.</p>
 
@@ -173,7 +217,7 @@ export function GenerateTestsPage() {
 
               <div className="flex gap-[10px] mb-[14px] items-center">
                 <label className="text-[12.5px] text-[#98a1b3]">Feature:</label>
-                <select className="bg-[#0d0f16] border border-[rgba(255,255,255,0.07)] rounded-[8px] px-[10px] py-[7px] text-[12px] text-[#e8ebf2] outline-none" value={selectedFeature} onChange={e => setSelectedFeature(e.target.value)}>
+                <select className="bg-[#0d0f16] border border-[rgba(255,255,255,0.07)] rounded-[8px] px-[10px] py-[7px] text-[12px] text-[#e8ebf2] outline-none cursor-pointer hover:border-[rgba(255,255,255,0.12)]" value={selectedFeature} onChange={e => setSelectedFeature(e.target.value)}>
                   <option>Coupon</option>
                   <option>Payment</option>
                   <option>Checkout</option>
@@ -199,7 +243,7 @@ export function GenerateTestsPage() {
                 <label className="text-[12.5px] text-[#98a1b3] mb-[8px] block">Quick Actions</label>
                 <div className="grid grid-cols-2 gap-[8px]">
                   {quickActions.map(action => (
-                    <Panel key={action.title} className="p-[12px] cursor-pointer hover:border-[rgba(129,140,248,0.25)] transition-colors" onClick={() => handleQuickAction(action.title)}>
+                    <Panel key={action.title} className="p-[12px] cursor-pointer hover:border-[rgba(129,140,248,0.25)] transition-all hover:shadow-[0_0_12px_rgba(129,140,248,0.05)]" onClick={() => handleQuickAction(action.title)}>
                       <div className="text-[16px] mb-[4px]">{action.icon}</div>
                       <div className="text-[12.5px] font-medium text-[#e8ebf2]">{action.title}</div>
                       <div className="text-[11px] text-[#6b7488] mt-[2px]">{action.description}</div>
@@ -220,20 +264,30 @@ export function GenerateTestsPage() {
           {/* Step 2: Isolation */}
           {currentStep === 1 && (
             <Panel className="p-[26px]">
-              <div className="text-[11px] uppercase tracking-[0.8px] text-[#6b7488] font-semibold mb-[14px]">Step 2 — Isolation & Classification</div>
+              <SectionHeader label="Step 2 — Isolation & Classification" />
               <h3 className="text-[18px] font-semibold text-white mb-[14px]">Source & Context</h3>
 
               <div className="grid grid-cols-2 gap-[14px] mb-[18px]">
                 <div>
                   <div className="text-[12px] text-[#98a1b3] mb-[6px] font-semibold">Source Files</div>
                   {['src/services/coupon/coupon.ts', 'src/services/coupon/coupon.test.ts', 'src/routes/checkout/checkout.e2e.ts', 'tests/mobile/checkout.mobile.ts'].map(f => (
-                    <div key={f} className="text-[12px] font-mono text-[#e8ebf2] bg-[#0d0f16] rounded-[6px] px-[10px] py-[6px] mb-[4px]">{f}</div>
+                    <div key={f} className="flex items-center gap-[6px] text-[12px] font-mono text-[#e8ebf2] bg-[#0d0f16] rounded-[6px] px-[10px] py-[6px] mb-[4px]">
+                      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="w-[12px] h-[12px] text-[#818cf8]">
+                        <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/>
+                      </svg>
+                      {f}
+                    </div>
                   ))}
                 </div>
                 <div>
                   <div className="text-[12px] text-[#98a1b3] mb-[6px] font-semibold">Specs & QC Cases</div>
                   {['Checkout Flow Spec.pdf', 'Coupon Rules.md', 'qc-checkout-suite.csv', 'qc-payment-cases.xlsx'].map(f => (
-                    <div key={f} className="text-[12px] text-[#e8ebf2] bg-[#0d0f16] rounded-[6px] px-[10px] py-[6px] mb-[4px]">{f}</div>
+                    <div key={f} className="flex items-center gap-[6px] text-[12px] text-[#e8ebf2] bg-[#0d0f16] rounded-[6px] px-[10px] py-[6px] mb-[4px]">
+                      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="w-[12px] h-[12px] text-[#fbbf24]">
+                        <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" x2="8" y1="13" y2="13"/><line x1="16" x2="8" y1="17" y2="17"/>
+                      </svg>
+                      {f}
+                    </div>
                   ))}
                 </div>
               </div>
@@ -250,11 +304,11 @@ export function GenerateTestsPage() {
                 Detected user journeys: coupon application, payment processing, checkout flow
               </div>
 
-              <div className="text-[12px] text-[#98a1b3] mb-[10px] font-semibold">Behavior Classification</div>
+              <SectionHeader label="Behavior Classification" />
               <div className="grid grid-cols-2 gap-[8px] mb-[18px]">
                 {classification.map(c => (
-                  <Panel key={c.behavior} className="p-[12px]">
-                    <div className="flex items-center gap-[6px] mb-[4px]">
+                  <Panel key={c.behavior} className="p-[12px] transition-all hover:border-[rgba(255,255,255,0.08)]">
+                    <div className="flex items-center gap-[6px] mb-[4px] flex-wrap">
                       <Badge variant={classStatusBadge[c.status]} dot>{c.status}</Badge>
                       <Badge variant="gray">{c.type}</Badge>
                       <Badge variant={riskBadge[c.risk]}>{c.risk}</Badge>
@@ -277,36 +331,46 @@ export function GenerateTestsPage() {
           {/* Step 3: Plan */}
           {currentStep === 2 && (
             <Panel className="p-[26px]">
-              <div className="text-[11px] uppercase tracking-[0.8px] text-[#6b7488] font-semibold mb-[14px]">Step 3 — Confirmation & Plan</div>
+              <SectionHeader label="Step 3 — Confirmation & Plan" />
               <h3 className="text-[18px] font-semibold text-white mb-[14px]">Proposed Actions</h3>
 
               <div className="grid grid-cols-2 gap-[8px] mb-[18px]">
                 {planActions.map(a => (
                   <div key={a.action} className="flex items-center gap-[8px] bg-[#0d0f16] rounded-[8px] px-[12px] py-[10px]">
-                    <span className="text-[#818cf8] font-semibold">{a.count}</span>
+                    <span className="text-[#818cf8] font-semibold text-[14px] min-w-[20px]">{a.count}</span>
                     <span className="text-[12.5px] text-[#e8ebf2]">{a.action}</span>
                   </div>
                 ))}
               </div>
 
-              <div className="text-[12px] text-[#98a1b3] mb-[8px] font-semibold">Risk Assessment</div>
+              <SectionHeader label="Risk Assessment" />
               <div className="flex flex-col gap-[6px] mb-[18px]">
                 {planRisk.map(r => (
-                  <div key={r.item} className="flex items-center justify-between bg-[#0d0f16] rounded-[8px] px-[12px] py-[8px]">
-                    <span className="text-[12px] text-[#e8ebf2]">{r.item}</span>
+                  <div key={r.item} className="flex items-center gap-[12px] bg-[#0d0f16] rounded-[8px] px-[12px] py-[8px]">
+                    <div className="flex-1">
+                      <div className="text-[12px] text-[#e8ebf2]">{r.item}</div>
+                      <div className="w-full h-[3px] bg-[rgba(255,255,255,0.05)] rounded-full mt-[4px] overflow-hidden">
+                        <div className="h-full rounded-full" style={{ width: r.level === 'high' ? '100%' : r.level === 'medium' ? '60%' : '30%', backgroundColor: riskColor[r.level] }} />
+                      </div>
+                    </div>
                     <Badge variant={riskBadge[r.level]}>{r.level}</Badge>
                   </div>
                 ))}
               </div>
 
-              <div className="text-[12px] text-[#98a1b3] mb-[8px] font-semibold">Files Likely to Change</div>
+              <SectionHeader label="Files Likely to Change" />
               <div className="flex flex-col gap-[4px] mb-[18px]">
                 {planFiles.map(f => (
-                  <div key={f} className="text-[12px] font-mono text-[#818cf8] bg-[#0d0f16] rounded-[6px] px-[10px] py-[5px]">{f}</div>
+                  <div key={f} className="flex items-center gap-[6px] text-[12px] font-mono text-[#818cf8] bg-[#0d0f16] rounded-[6px] px-[10px] py-[5px]">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="w-[12px] h-[12px] text-[#818cf8]">
+                      <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/>
+                    </svg>
+                    {f}
+                  </div>
                 ))}
               </div>
 
-              <div className="text-[12px] text-[#98a1b3] mb-[8px] font-semibold">AI Questions</div>
+              <SectionHeader label="AI Questions" />
               <div className="flex flex-col gap-[12px] mb-[18px]">
                 {aiQuestions.map((q, qi) => (
                   <Panel key={qi} className="p-[14px]">
@@ -341,7 +405,7 @@ export function GenerateTestsPage() {
           {/* Step 4: Generate */}
           {currentStep === 3 && (
             <Panel className="p-[26px]">
-              <div className="text-[11px] uppercase tracking-[0.8px] text-[#6b7488] font-semibold mb-[14px]">Step 4 — Generate Changes</div>
+              <SectionHeader label="Step 4 — Generate Changes" />
               <h3 className="text-[18px] font-semibold text-white mb-[14px]">Agent Activity</h3>
 
               <div className="flex flex-col gap-[4px] mb-[18px]">
@@ -371,18 +435,18 @@ export function GenerateTestsPage() {
 
               <div className="flex flex-col gap-[10px] mb-[18px]">
                 {filteredChanges.map(change => (
-                  <Panel key={change.id} className="p-[14px]">
+                  <Panel key={change.id} className="p-[14px] transition-all hover:border-[rgba(255,255,255,0.08)]">
                     <div className="flex items-center justify-between cursor-pointer" onClick={() => toggleChange(change.id)}>
                       <div>
                         <div className="text-[13px] font-medium text-[#e8ebf2]">{change.title}</div>
-                        <div className="flex gap-[5px] mt-[4px]">
+                        <div className="flex gap-[5px] mt-[4px] flex-wrap">
                           <Badge variant={changeTypeBadge[change.changeType]}>{change.changeType}</Badge>
                           <Badge variant="gray">{change.testType}</Badge>
                           <Badge variant="accent">{change.feature}</Badge>
                           <Badge variant={riskBadge[change.risk]}>{change.risk}</Badge>
                         </div>
                       </div>
-                      <span className="text-[#6b7488] text-[11px]">{expandedChanges.has(change.id) ? '▲' : '▼'}</span>
+                      <span className="text-[#6b7488] text-[11px] ml-[8px]">{expandedChanges.has(change.id) ? '▲' : '▼'}</span>
                     </div>
                     {expandedChanges.has(change.id) && (
                       <div className="mt-[10px]">
@@ -394,20 +458,23 @@ export function GenerateTestsPage() {
                 ))}
               </div>
 
-              <div className="text-[12px] text-[#98a1b3] mb-[8px] font-semibold">Before / After Comparison</div>
+              <SectionHeader label="Before / After Comparison" />
               <div className="grid grid-cols-2 gap-[10px] mb-[18px]">
                 {[
-                  { label: 'Tests to add', before: '0', after: '9' },
-                  { label: 'Tests to update', before: '0', after: '1' },
-                  { label: 'Tests to delete', before: '1', after: '0' },
-                  { label: 'Files to change', before: '0', after: '6' },
+                  { label: 'Tests to add', before: 0, after: 9, color: '#3ddc97' },
+                  { label: 'Tests to update', before: 0, after: 1, color: '#fbbf24' },
+                  { label: 'Tests to delete', before: 1, after: 0, color: '#fb7185' },
+                  { label: 'Files to change', before: 0, after: 6, color: '#818cf8' },
                 ].map(item => (
                   <div key={item.label} className="bg-[#0d0f16] rounded-[8px] p-[12px]">
                     <div className="text-[11px] text-[#98a1b3] mb-[4px]">{item.label}</div>
-                    <div className="flex items-center gap-[8px]">
+                    <div className="flex items-center gap-[8px] mb-[8px]">
                       <span className="text-[16px] font-bold text-[#6b7488]">{item.before}</span>
                       <span className="text-[#6b7488]">→</span>
-                      <span className="text-[16px] font-bold text-[#3ddc97]">{item.after}</span>
+                      <span className="text-[16px] font-bold" style={{ color: item.color }}>{item.after}</span>
+                    </div>
+                    <div className="w-full h-[4px] bg-[rgba(255,255,255,0.05)] rounded-full overflow-hidden">
+                      <div className="h-full rounded-full transition-all" style={{ width: `${Math.max((item.after / 10) * 100, 10)}%`, backgroundColor: item.color }} />
                     </div>
                   </div>
                 ))}
@@ -423,7 +490,7 @@ export function GenerateTestsPage() {
           {/* Step 5: Run */}
           {currentStep === 4 && (
             <Panel className="p-[26px]">
-              <div className="text-[11px] uppercase tracking-[0.8px] text-[#6b7488] font-semibold mb-[14px]">Step 5 — Run Tests</div>
+              <SectionHeader label="Step 5 — Run Tests" />
               <h3 className="text-[18px] font-semibold text-white mb-[14px]">Running tests...</h3>
 
               <div className="mb-[18px]">
@@ -431,22 +498,79 @@ export function GenerateTestsPage() {
                 <div className="text-[11px] text-[#6b7488] mt-[6px]">{runProgress}% complete</div>
               </div>
 
-              <div className="grid grid-cols-3 gap-[12px] mb-[18px]">
-                <Panel className="p-[14px] text-center">
-                  <div className="text-[11px] text-[#6b7488] mb-[2px]">Unit Tests</div>
-                  <div className="text-[20px] font-bold text-[#3ddc97]">6/6</div>
-                  <div className="text-[11px] text-[#6b7488]">1.2s</div>
-                </Panel>
-                <Panel className="p-[14px] text-center">
-                  <div className="text-[11px] text-[#6b7488] mb-[2px]">UI/Browser</div>
-                  <div className="text-[20px] font-bold text-[#3ddc97]">3/3</div>
-                  <div className="text-[11px] text-[#6b7488]">8.4s</div>
-                </Panel>
-                <Panel className="p-[14px] text-center">
-                  <div className="text-[11px] text-[#6b7488] mb-[2px]">Mobile</div>
-                  <div className="text-[20px] font-bold text-[#fb7185]">1/2</div>
-                  <div className="text-[11px] text-[#6b7488]">12.8s</div>
-                </Panel>
+              <SectionHeader label="Test Results by Type" />
+              <div className="flex flex-col gap-[12px] mb-[18px]">
+                {/* Unit Tests */}
+                <div className="bg-[#0d0f16] rounded-[8px] p-[12px]">
+                  <div className="flex items-center justify-between mb-[8px]">
+                    <div className="flex items-center gap-[8px]">
+                      <div className="w-[28px] h-[28px] rounded-[6px] bg-[rgba(61,220,151,0.13)] grid place-items-center">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="w-[14px] h-[14px] text-[#3ddc97]">
+                          <path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3Z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><line x1="12" x2="12" y1="19" y2="22"/>
+                        </svg>
+                      </div>
+                      <div>
+                        <div className="text-[12.5px] font-medium text-[#e8ebf2]">Unit Tests</div>
+                        <div className="text-[10px] text-[#6b7488] font-mono">pnpm test --filter=unit</div>
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-[12px]">
+                      <div className="text-[20px] font-bold text-[#3ddc97]">6/6</div>
+                      <div className="text-[11px] text-[#6b7488]">1.2s</div>
+                    </div>
+                  </div>
+                  <div className="w-full h-[3px] bg-[rgba(255,255,255,0.05)] rounded-full overflow-hidden">
+                    <div className="h-full rounded-full bg-[#3ddc97]" style={{ width: '100%' }} />
+                  </div>
+                </div>
+
+                {/* UI/Browser Tests */}
+                <div className="bg-[#0d0f16] rounded-[8px] p-[12px]">
+                  <div className="flex items-center justify-between mb-[8px]">
+                    <div className="flex items-center gap-[8px]">
+                      <div className="w-[28px] h-[28px] rounded-[6px] bg-[rgba(61,220,151,0.13)] grid place-items-center">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="w-[14px] h-[14px] text-[#3ddc97]">
+                          <rect x="2" y="3" width="20" height="14" rx="2"/><line x1="8" x2="16" y1="21" y2="21"/><line x1="12" x2="12" y1="17" y2="21"/>
+                        </svg>
+                      </div>
+                      <div>
+                        <div className="text-[12.5px] font-medium text-[#e8ebf2]">UI/Browser Tests</div>
+                        <div className="text-[10px] text-[#6b7488] font-mono">pnpm test:e2e</div>
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-[12px]">
+                      <div className="text-[20px] font-bold text-[#3ddc97]">3/3</div>
+                      <div className="text-[11px] text-[#6b7488]">8.4s</div>
+                    </div>
+                  </div>
+                  <div className="w-full h-[3px] bg-[rgba(255,255,255,0.05)] rounded-full overflow-hidden">
+                    <div className="h-full rounded-full bg-[#3ddc97]" style={{ width: '100%' }} />
+                  </div>
+                </div>
+
+                {/* Mobile Tests */}
+                <div className="bg-[#0d0f16] rounded-[8px] p-[12px]">
+                  <div className="flex items-center justify-between mb-[8px]">
+                    <div className="flex items-center gap-[8px]">
+                      <div className="w-[28px] h-[28px] rounded-[6px] bg-[rgba(251,113,133,0.13)] grid place-items-center">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="w-[14px] h-[14px] text-[#fb7185]">
+                          <rect x="5" y="2" width="14" height="20" rx="2"/><line x1="12" x2="12" y1="18" y2="18"/>
+                        </svg>
+                      </div>
+                      <div>
+                        <div className="text-[12.5px] font-medium text-[#e8ebf2]">Mobile Tests</div>
+                        <div className="text-[10px] text-[#6b7488] font-mono">pnpm test:mobile</div>
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-[12px]">
+                      <div className="text-[20px] font-bold text-[#fb7185]">1/2</div>
+                      <div className="text-[11px] text-[#6b7488]">12.8s</div>
+                    </div>
+                  </div>
+                  <div className="w-full h-[3px] bg-[rgba(255,255,255,0.05)] rounded-full overflow-hidden">
+                    <div className="h-full rounded-full bg-[#fb7185]" style={{ width: '50%' }} />
+                  </div>
+                </div>
               </div>
 
               <div className="grid grid-cols-2 gap-[14px] mb-[18px]">
@@ -489,25 +613,28 @@ export function GenerateTestsPage() {
                 </Panel>
               </div>
 
-              <div className="text-[12px] text-[#98a1b3] mb-[8px] font-semibold">Coverage Comparison</div>
+              <SectionHeader label="Coverage Comparison" />
               <div className="grid grid-cols-2 gap-[10px] mb-[18px]">
                 {covCompare.map(c => (
                   <div key={c.metric} className="bg-[#0d0f16] rounded-[8px] p-[12px]">
                     <div className="text-[11px] text-[#98a1b3] mb-[4px]">{c.metric}</div>
-                    <div className="flex items-center gap-[8px]">
+                    <div className="flex items-center gap-[8px] mb-[6px]">
                       <span className="text-[16px] font-bold text-[#6b7488]">{c.before}%</span>
                       <span className="text-[#6b7488]">→</span>
                       <span className="text-[16px] font-bold text-[#3ddc97]">{c.after}%</span>
+                    </div>
+                    <div className="w-full h-[3px] bg-[rgba(255,255,255,0.05)] rounded-full overflow-hidden">
+                      <div className="h-full rounded-full bg-[#3ddc97]" style={{ width: `${c.after}%` }} />
                     </div>
                   </div>
                 ))}
               </div>
 
-              <div className="text-[12px] text-[#98a1b3] mb-[8px] font-semibold">Test Results</div>
+              <SectionHeader label="Test Results" />
               <div className="flex flex-col gap-[6px] mb-[18px]">
                 {matrix.map(row => (
                   <div key={row.name} className="flex items-center gap-[10px] bg-[#0d0f16] rounded-[8px] px-[12px] py-[8px]">
-                    <span className={statusColor[row.status]}>{row.status === 'pass' ? '●' : row.status === 'fail' ? '✕' : '⟳'}</span>
+                    <StatusIcon status={row.status} />
                     <span className="text-[12px] text-[#e8ebf2] flex-1">{row.name}</span>
                     <Badge variant="gray">{row.type}</Badge>
                     <span className="text-[11px] text-[#6b7488]">{row.duration}</span>
@@ -530,7 +657,7 @@ export function GenerateTestsPage() {
                 </div>
               </Panel>
 
-              <div className="flex gap-[10px]">
+              <div className="flex gap-[10px] mt-[18px]">
                 <Button variant="ghost" onClick={() => setCurrentStep(3)}>Back</Button>
                 <Button variant="primary" size="lg" onClick={() => setCurrentStep(5)}>Review & Apply</Button>
               </div>
@@ -540,7 +667,7 @@ export function GenerateTestsPage() {
           {/* Step 6: Review */}
           {currentStep === 5 && (
             <Panel className="p-[26px]">
-              <div className="text-[11px] uppercase tracking-[0.8px] text-[#6b7488] font-semibold mb-[14px]">Step 6 — Review & Apply</div>
+              <SectionHeader label="Step 6 — Review & Apply" />
 
               <Panel className="p-[16px] mb-[18px] bg-[rgba(61,220,151,0.08)] border-[rgba(61,220,151,0.2)]">
                 <div className="text-[13px] font-semibold text-[#3ddc97] mb-[2px]">Recommended: Apply changes</div>
@@ -549,25 +676,28 @@ export function GenerateTestsPage() {
 
               <div className="grid grid-cols-4 gap-[10px] mb-[18px]">
                 {reviewStats.map(s => (
-                  <Panel key={s.label} className="p-[12px] text-center">
+                  <Panel key={s.label} className="p-[12px] text-center transition-all hover:border-[rgba(255,255,255,0.08)]">
                     <div className="text-[16px] font-bold text-white">{s.value}</div>
                     <div className="text-[11px] text-[#6b7488]">{s.label}</div>
                   </Panel>
                 ))}
               </div>
 
-              <div className="text-[12px] text-[#98a1b3] mb-[8px] font-semibold">Files Changed</div>
+              <SectionHeader label="Files Changed" />
               <div className="flex flex-col gap-[6px] mb-[18px]">
                 {reviewFiles.map(f => (
                   <div key={f.path} className="flex items-center gap-[10px] bg-[#0d0f16] rounded-[8px] px-[12px] py-[8px]">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="w-[12px] h-[12px] text-[#818cf8] flex-shrink-0">
+                      <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/>
+                    </svg>
                     <span className="text-[12px] font-mono text-[#e8ebf2] flex-1">{f.path}</span>
-                    <span className="text-[11px] text-[#3ddc97]">+{f.additions}</span>
-                    <span className="text-[11px] text-[#fb7185]">-{f.deletions}</span>
+                    <span className="text-[11px] text-[#3ddc97] font-medium">+{f.additions}</span>
+                    <span className="text-[11px] text-[#fb7185] font-medium">-{f.deletions}</span>
                   </div>
                 ))}
               </div>
 
-              <div className="text-[12px] text-[#98a1b3] mb-[8px] font-semibold">Remaining Risk</div>
+              <SectionHeader label="Remaining Risk" />
               <div className="flex flex-col gap-[6px] mb-[18px]">
                 {[
                   { item: 'Pixel 7 retry timing', level: 'medium' as const },
@@ -575,8 +705,13 @@ export function GenerateTestsPage() {
                   { item: 'Open questions not answered', level: 'low' as const },
                   { item: 'Visual baselines need update', level: 'low' as const },
                 ].map(r => (
-                  <div key={r.item} className="flex items-center justify-between bg-[#0d0f16] rounded-[8px] px-[12px] py-[8px]">
-                    <span className="text-[12px] text-[#e8ebf2]">{r.item}</span>
+                  <div key={r.item} className="flex items-center gap-[12px] bg-[#0d0f16] rounded-[8px] px-[12px] py-[8px]">
+                    <div className="flex-1">
+                      <div className="text-[12px] text-[#e8ebf2]">{r.item}</div>
+                      <div className="w-full h-[3px] bg-[rgba(255,255,255,0.05)] rounded-full mt-[4px] overflow-hidden">
+                        <div className="h-full rounded-full" style={{ width: r.level === 'medium' ? '60%' : '30%', backgroundColor: riskColor[r.level] }} />
+                      </div>
+                    </div>
                     <Badge variant={riskBadge[r.level]}>{r.level}</Badge>
                   </div>
                 ))}
