@@ -382,6 +382,25 @@ export function GenerateTestsPage() {
                 ))}
               </div>
 
+              <div className="text-[12px] text-[#98a1b3] mb-[8px] font-semibold">Before / After Comparison</div>
+              <div className="grid grid-cols-2 gap-[10px] mb-[18px]">
+                {[
+                  { label: 'Tests to add', before: '0', after: '9' },
+                  { label: 'Tests to update', before: '0', after: '1' },
+                  { label: 'Tests to delete', before: '1', after: '0' },
+                  { label: 'Files to change', before: '0', after: '6' },
+                ].map(item => (
+                  <div key={item.label} className="bg-[#0d0f16] rounded-[8px] p-[12px]">
+                    <div className="text-[11px] text-[#98a1b3] mb-[4px]">{item.label}</div>
+                    <div className="flex items-center gap-[8px]">
+                      <span className="text-[16px] font-bold text-[#6b7488]">{item.before}</span>
+                      <span className="text-[#6b7488]">→</span>
+                      <span className="text-[16px] font-bold text-[#3ddc97]">{item.after}</span>
+                    </div>
+                  </div>
+                ))}
+              </div>
+
               <div className="flex gap-[10px]">
                 <Button variant="ghost" onClick={() => setCurrentStep(2)}>Back</Button>
                 <Button variant="primary" size="lg" onClick={handleRunTests}>Run Tests</Button>
@@ -418,6 +437,46 @@ export function GenerateTestsPage() {
                 </Panel>
               </div>
 
+              <div className="grid grid-cols-2 gap-[14px] mb-[18px]">
+                {/* Browser Frame */}
+                <Panel className="p-[12px]">
+                  <div className="text-[11px] text-[#98a1b3] mb-[6px] font-semibold">Browser Evidence</div>
+                  <div className="bg-[#0d0f16] rounded-[8px] overflow-hidden">
+                    <div className="flex items-center gap-[6px] bg-[#161a24] px-[10px] py-[6px]">
+                      <span className="w-[8px] h-[8px] rounded-full bg-[#fb7185]" />
+                      <span className="w-[8px] h-[8px] rounded-full bg-[#fbbf24]" />
+                      <span className="w-[8px] h-[8px] rounded-full bg-[#3ddc97]" />
+                      <span className="text-[10px] text-[#6b7488] font-mono ml-[8px]">localhost:3000/checkout</span>
+                    </div>
+                    <div className="p-[16px] text-center">
+                      <div className="text-[12px] text-[#98a1b3] mb-[4px]">Checkout Timeout Test</div>
+                      <div className="text-[11px] text-[#3ddc97]">✓ Timeout message visible</div>
+                      <div className="mt-[8px] h-[80px] bg-[#1b2030] rounded-[6px] flex items-center justify-center text-[#6b7488] text-[11px]">
+                        [Screenshot evidence]
+                      </div>
+                    </div>
+                  </div>
+                </Panel>
+
+                {/* Phone Frame */}
+                <Panel className="p-[12px]">
+                  <div className="text-[11px] text-[#98a1b3] mb-[6px] font-semibold">Mobile Evidence</div>
+                  <div className="flex justify-center">
+                    <div className="w-[140px] bg-[#0d0f16] rounded-[20px] border-2 border-[#2a3142] overflow-hidden">
+                      <div className="bg-[#161a24] px-[10px] py-[4px] text-[9px] text-[#6b7488] text-center">Pixel 7</div>
+                      <div className="p-[10px] text-center">
+                        <div className="text-[10px] text-[#98a1b3] mb-[2px]">Checkout Flow</div>
+                        <div className="text-[9px] text-[#3ddc97]">✓ Form visible</div>
+                        <div className="text-[9px] text-[#3ddc97]">✓ Coupon applied</div>
+                        <div className="mt-[6px] h-[60px] bg-[#1b2030] rounded-[4px] flex items-center justify-center text-[#6b7488] text-[9px]">
+                          [Device screen]
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </Panel>
+              </div>
+
               <div className="text-[12px] text-[#98a1b3] mb-[8px] font-semibold">Coverage Comparison</div>
               <div className="grid grid-cols-2 gap-[10px] mb-[18px]">
                 {covCompare.map(c => (
@@ -445,6 +504,19 @@ export function GenerateTestsPage() {
                   </div>
                 ))}
               </div>
+
+              <Panel className="p-[14px] border-[rgba(251,191,36,0.2)] bg-[rgba(251,191,36,0.06)]">
+                <div className="flex items-center gap-[6px] mb-[6px]">
+                  <Badge variant="flaky" dot>Flaky</Badge>
+                  <span className="text-[13px] font-medium text-[#e8ebf2]">Payment sheet on iPhone 15</span>
+                </div>
+                <div className="text-[12px] text-[#98a1b3] mb-[8px]">Test fails intermittently on iPhone 15 simulator. Passes on Pixel 7.</div>
+                <div className="flex gap-[6px]">
+                  <Button variant="outline" size="default" className="text-[11px]">Ask agent to fix</Button>
+                  <Button variant="ghost" size="default" className="text-[11px]">Accept</Button>
+                  <Button variant="danger" size="default" className="text-[11px]">Revert</Button>
+                </div>
+              </Panel>
 
               <div className="flex gap-[10px]">
                 <Button variant="ghost" onClick={() => setCurrentStep(3)}>Back</Button>
