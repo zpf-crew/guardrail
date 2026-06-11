@@ -23,6 +23,7 @@ export function OnboardingPage() {
   const [docs, setDocs] = React.useState(mockDocs);
   const [qcs, setQCs] = React.useState(mockQCs);
   const [docLink, setDocLink] = React.useState('');
+  const [docLinks, setDocLinks] = React.useState<string[]>([]);
   const [scanComplete, setScanComplete] = React.useState(false);
   const [scanProgress, setScanProgress] = React.useState(0);
   const [scanLogIndex, setScanLogIndex] = React.useState(0);
@@ -69,6 +70,7 @@ export function OnboardingPage() {
 
   const handleAddDocLink = () => {
     if (docLink.trim()) {
+      setDocLinks(prev => [...prev, docLink.trim()]);
       toast('Link added', 'success');
       setDocLink('');
     }
@@ -194,6 +196,19 @@ export function OnboardingPage() {
                     />
                     <Button variant="outline" onClick={handleAddDocLink}>Add</Button>
                   </div>
+                  {docLinks.length > 0 && (
+                    <div className="flex flex-wrap gap-[6px] mt-[10px]">
+                      {docLinks.map((link, i) => (
+                        <span key={i} className="inline-flex items-center gap-[5px] bg-[#161a24] border border-[rgba(255,255,255,0.07)] rounded-[6px] px-[9px] py-[4px] text-[12px] text-[#818cf8]">
+                          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="w-[12px] h-[12px]"><path d="M10 13a5 5 0 007.54.54l3-3a5 5 0 00-7.07-7.07l-1.72 1.71" /><path d="M14 11a5 5 0 00-7.54-.54l-3 3a5 5 0 007.07 7.07l1.71-1.71" /></svg>
+                          {link}
+                          <button onClick={() => setDocLinks(prev => prev.filter((_, j) => j !== i))} className="text-[#6b7488] hover:text-[#fb7185]">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="w-[11px] h-[11px]"><path d="M6 6l12 12M18 6L6 18" /></svg>
+                          </button>
+                        </span>
+                      ))}
+                    </div>
+                  )}
                 </div>
 
                 <div className="flex gap-[10px]">
