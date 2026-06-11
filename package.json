@@ -16,6 +16,7 @@
     "socket.io": "^4.7.0"
   },
   "devDependencies": {
+    "dotenv": "^17.4.2",
     "socket.io-client": "^4.7.0",
     "supertest": "^7.0.0",
     "vitest": "^2.0.0"

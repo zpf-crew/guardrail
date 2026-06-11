@@ -2,41 +2,17 @@ import { createLogger } from '../utils/logger.js';
 
 const logger = createLogger();
 
-const TOKEN_URL = 'https://iam.api.vngcloud.vn/accounts-api/v2/auth/token';
-
 export function createLLMService() {
-  const clientId = process.env.GREENNODE_CLIENT_ID;
-  const clientSecret = process.env.GREENNODE_CLIENT_SECRET;
-  const model = process.env.LLM_MODEL || 'gpt-4o-mini';
+  const apiKey = process.env.LLM_API_KEY;
+  const model = process.env.LLM_MODEL || 'google/gemma-4-31b-it';
   const baseUrl = process.env.LLM_BASE_URL || 'https://maas-llm-aiplatform-hcm.api.vngcloud.vn/v1';
 
-  async function getAccessToken() {
-    const basicAuth = Buffer.from(`${clientId}:${clientSecret}`).toString('base64');
-    const response = await fetch(TOKEN_URL, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/x-www-form-urlencoded',
-        'Authorization': `Basic ${basicAuth}`,
-      },
-      body: 'grant_type=client_credentials',
-    });
-
-    if (!response.ok) {
-      throw new Error(`Token exchange failed: ${response.status}`);
-    }
-
-    const data = await response.json();
-    return data.access_token;
-  }
-
   async function chat(messages) {
-    const token = await getAccessToken();
-
     const response = await fetch(`${baseUrl}/chat/completions`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        'Authorization': `Bearer ${token}`,
+        'Authorization': `Bearer ${apiKey}`,
       },
       body: JSON.stringify({
         model,
@@ -46,6 +22,8 @@ export function createLLMService() {
     });
 
     if (!response.ok) {
+      const errorText = await response.text();
+      logger.error('LLM API error', { status: response.status, error: errorText });
       throw new Error(`LLM API error: ${response.status}`);
     }
 
