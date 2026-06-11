@@ -1,0 +1,16 @@
+services:
+  postgres:
+    image: pgvector/pgvector:pg16
+    container_name: guardrail-postgres
+    environment:
+      POSTGRES_USER: guardrail
+      POSTGRES_PASSWORD: guardrail
+      POSTGRES_DB: guardrail
+    ports:
+      - "5432:5432"
+    volumes:
+      - ./backend/db/init.sql:/docker-entrypoint-initdb.d/init.sql
+      - postgres_data:/var/lib/postgresql/data
+
+volumes:
+  postgres_data:

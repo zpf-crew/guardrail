@@ -1,0 +1,947 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>TestLens — checkout-service</title>
+<style>
+  :root {
+    /* surfaces */
+    --bg: #090b10;
+    --bg-grad: radial-gradient(1200px 600px at 78% -10%, rgba(124,131,255,0.10), transparent 60%),
+               radial-gradient(900px 500px at 8% 0%, rgba(34,211,238,0.06), transparent 55%),
+               #090b10;
+    --panel: #11141c;
+    --panel-2: #161a24;
+    --panel-3: #1b2030;
+    --inset: #0d0f16;
+    --border: rgba(255,255,255,0.07);
+    --border-2: rgba(255,255,255,0.12);
+    --border-glow: rgba(129,140,248,0.35);
+
+    /* text */
+    --text: #e8ebf2;
+    --dim: #98a1b3;
+    --faint: #69728699;
+    --faint-solid: #6b7488;
+
+    /* brand */
+    --accent: #818cf8;
+    --accent-2: #22d3ee;
+    --accent-soft: rgba(129,140,248,0.14);
+
+    /* status */
+    --pass: #3ddc97;
+    --fail: #fb7185;
+    --flaky: #fbbf24;
+    --missing: #60a5fa;
+    --suspect: #c084fc;
+    --gray: #8b94a7;
+
+    --pass-bg: rgba(61,220,151,0.13);
+    --fail-bg: rgba(251,113,133,0.14);
+    --flaky-bg: rgba(251,191,36,0.14);
+    --missing-bg: rgba(96,165,250,0.14);
+    --suspect-bg: rgba(192,132,252,0.15);
+
+    --r-low: #3ddc97;
+    --r-med: #fbbf24;
+    --r-high: #fb7185;
+
+    --radius: 14px;
+    --radius-sm: 10px;
+    --shadow: 0 1px 0 rgba(255,255,255,0.04) inset, 0 8px 30px rgba(0,0,0,0.45);
+    --mono: ui-monospace, "SF Mono", "JetBrains Mono", "Menlo", "Cascadia Code", monospace;
+    --sans: system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", sans-serif;
+  }
+
+  * { box-sizing: border-box; }
+  html, body { margin: 0; padding: 0; }
+  body {
+    background: var(--bg-grad);
+    background-attachment: fixed;
+    color: var(--text);
+    font-family: var(--sans);
+    font-size: 14px;
+    line-height: 1.5;
+    -webkit-font-smoothing: antialiased;
+    letter-spacing: 0.1px;
+  }
+  ::selection { background: rgba(129,140,248,0.35); }
+
+  /* scrollbars */
+  *::-webkit-scrollbar { width: 10px; height: 10px; }
+  *::-webkit-scrollbar-thumb { background: #2a3142; border-radius: 99px; border: 2px solid transparent; background-clip: padding-box; }
+  *::-webkit-scrollbar-thumb:hover { background: #39425a; background-clip: padding-box; }
+  *::-webkit-scrollbar-track { background: transparent; }
+
+  .mono { font-family: var(--mono); }
+
+  /* ===== TOP BAR ===== */
+  header.topbar {
+    position: sticky; top: 0; z-index: 50;
+    display: flex; align-items: center; gap: 22px;
+    padding: 12px 26px;
+    background: rgba(11,13,19,0.78);
+    backdrop-filter: blur(18px) saturate(140%);
+    border-bottom: 1px solid var(--border);
+  }
+  .brand { display: flex; align-items: center; gap: 11px; padding-right: 20px; border-right: 1px solid var(--border); }
+  .brand .logo {
+    width: 34px; height: 34px; border-radius: 9px; flex: none;
+    background: linear-gradient(150deg, #8b93ff, #5d68f0 55%, #22d3ee);
+    display: grid; place-items: center; position: relative;
+    box-shadow: 0 4px 16px rgba(99,102,241,0.4), 0 0 0 1px rgba(255,255,255,0.12) inset;
+  }
+  .brand .logo svg { width: 19px; height: 19px; }
+  .brand .name { font-size: 16px; font-weight: 650; letter-spacing: -0.2px; }
+  .brand .name b { color: #fff; }
+  .brand .tag {
+    font-size: 9.5px; font-weight: 700; letter-spacing: 1px; text-transform: uppercase;
+    color: var(--accent-2); border: 1px solid rgba(34,211,238,0.3); background: rgba(34,211,238,0.08);
+    padding: 2px 6px; border-radius: 5px; margin-left: 2px;
+  }
+
+  .repo-meta { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+  .chip {
+    display: inline-flex; align-items: center; gap: 7px;
+    background: var(--panel-2); border: 1px solid var(--border);
+    padding: 6px 11px; border-radius: 8px; font-family: var(--mono); font-size: 12.5px;
+    color: var(--text);
+  }
+  .chip svg { width: 14px; height: 14px; opacity: 0.7; }
+  .chip .k { color: var(--faint-solid); }
+  .chip.branch { color: var(--accent); }
+  .chip.branch svg { opacity: 0.9; }
+
+  .scan-time { display: flex; flex-direction: column; line-height: 1.25; margin-left: 2px; }
+  .scan-time .lbl { font-size: 10px; text-transform: uppercase; letter-spacing: 0.7px; color: var(--faint-solid); }
+  .scan-time .val { font-size: 12.5px; color: var(--dim); }
+  .scan-time .val .live { color: var(--pass); }
+
+  .actions { margin-left: auto; display: flex; align-items: center; gap: 9px; }
+  .btn {
+    display: inline-flex; align-items: center; gap: 7px;
+    font-family: var(--sans); font-size: 13px; font-weight: 550;
+    padding: 8px 13px; border-radius: 9px; cursor: pointer;
+    border: 1px solid var(--border-2); background: var(--panel-2); color: var(--text);
+    transition: all 0.14s ease; white-space: nowrap;
+  }
+  .btn svg { width: 15px; height: 15px; }
+  .btn:hover { background: var(--panel-3); border-color: var(--border-2); transform: translateY(-1px); }
+  .btn:active { transform: translateY(0); }
+  .btn.primary {
+    background: linear-gradient(160deg, #8b93ff, #5d68f0); border-color: transparent; color: #fff;
+    box-shadow: 0 4px 16px rgba(99,102,241,0.35);
+  }
+  .btn.primary:hover { box-shadow: 0 6px 22px rgba(99,102,241,0.5); }
+  .btn.ghost { background: transparent; }
+
+  /* ===== LAYOUT ===== */
+  main { max-width: 1640px; margin: 0 auto; padding: 24px 26px 70px; }
+  .section-head { display: flex; align-items: baseline; gap: 12px; margin: 6px 2px 14px; }
+  .section-head h2 { font-size: 15px; font-weight: 650; margin: 0; letter-spacing: -0.1px; }
+  .section-head .sub { font-size: 12.5px; color: var(--faint-solid); }
+  .section-head .line { flex: 1; height: 1px; background: linear-gradient(90deg, var(--border), transparent); }
+
+  .panel {
+    background: var(--panel); border: 1px solid var(--border); border-radius: var(--radius);
+    box-shadow: var(--shadow);
+  }
+
+  /* ===== HEALTH SUMMARY ===== */
+  .health-row { display: grid; grid-template-columns: 300px 1fr; gap: 16px; margin-bottom: 26px; }
+
+  .score-card { padding: 20px 22px; display: flex; flex-direction: column; gap: 14px; position: relative; overflow: hidden; }
+  .score-card::after { content: ""; position: absolute; inset: 0; background: radial-gradient(120px 120px at 80% 0%, rgba(129,140,248,0.12), transparent 70%); pointer-events: none; }
+  .score-card .label { font-size: 11px; text-transform: uppercase; letter-spacing: 0.9px; color: var(--faint-solid); font-weight: 600; }
+  .donut-wrap { display: flex; align-items: center; gap: 18px; }
+  .donut {
+    --val: 72; --col: #fbbf24;
+    width: 116px; height: 116px; border-radius: 50%; flex: none; position: relative;
+    background: conic-gradient(var(--col) calc(var(--val) * 1%), rgba(255,255,255,0.06) 0);
+    display: grid; place-items: center;
+  }
+  .donut::before { content: ""; position: absolute; inset: 9px; border-radius: 50%; background: var(--panel); box-shadow: 0 0 0 1px var(--border) inset; }
+  .donut .inner { position: relative; text-align: center; line-height: 1; }
+  .donut .inner .num { font-size: 32px; font-weight: 700; letter-spacing: -1px; }
+  .donut .inner .den { font-size: 12px; color: var(--faint-solid); margin-top: 3px; }
+  .score-meta { display: flex; flex-direction: column; gap: 9px; }
+  .score-grade { font-size: 13px; font-weight: 600; }
+  .score-grade .pill { font-family: var(--mono); font-size: 11px; padding: 2px 7px; border-radius: 6px; margin-left: 4px; }
+  .trend { display: inline-flex; align-items: center; gap: 5px; font-size: 12px; font-weight: 600; }
+  .trend.up { color: var(--pass); }
+  .trend.down { color: var(--fail); }
+  .trend.up-bad { color: var(--fail); }
+  .trend svg { width: 13px; height: 13px; }
+  .score-note { font-size: 11.5px; color: var(--dim); line-height: 1.45; }
+
+  .stat-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; }
+  .stat {
+    background: var(--panel); border: 1px solid var(--border); border-radius: var(--radius-sm);
+    padding: 14px 15px 13px; position: relative; overflow: hidden; cursor: default;
+    transition: border-color 0.15s, transform 0.15s;
+  }
+  .stat:hover { transform: translateY(-2px); border-color: var(--border-2); }
+  .stat .bar { position: absolute; left: 0; top: 0; bottom: 0; width: 3px; border-radius: 3px 0 0 3px; }
+  .stat .top { display: flex; align-items: center; justify-content: space-between; }
+  .stat .lbl { font-size: 11.5px; color: var(--dim); font-weight: 550; display: flex; align-items: center; gap: 6px; }
+  .stat .dot { width: 7px; height: 7px; border-radius: 50%; }
+  .stat .v { font-size: 27px; font-weight: 700; letter-spacing: -0.8px; margin-top: 8px; line-height: 1; }
+  .stat .delta { font-size: 11px; font-weight: 600; margin-top: 7px; color: var(--faint-solid); display: inline-flex; align-items: center; gap: 4px; }
+  .stat .delta.up { color: var(--pass); }
+  .stat .delta.down { color: var(--fail); }
+  .stat .delta.up-bad { color: var(--fail); }
+  .stat .delta.down-good { color: var(--pass); }
+
+  /* ===== MAIN GRID ===== */
+  .grid { display: grid; grid-template-columns: minmax(0,1fr) 372px; gap: 24px; align-items: start; }
+  .col-main { display: flex; flex-direction: column; gap: 26px; min-width: 0; }
+  .col-side { display: flex; flex-direction: column; gap: 22px; position: sticky; top: 76px; }
+
+  /* ===== TEST CASE EXPLORER ===== */
+  .explorer { padding: 0; }
+  .explorer .toolbar { padding: 16px 18px 14px; border-bottom: 1px solid var(--border); display: flex; flex-direction: column; gap: 13px; }
+  .toolbar-top { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+  .search {
+    flex: 1; min-width: 200px; display: flex; align-items: center; gap: 9px;
+    background: var(--inset); border: 1px solid var(--border); border-radius: 9px; padding: 9px 12px;
+    transition: border-color 0.15s, box-shadow 0.15s;
+  }
+  .search:focus-within { border-color: var(--border-glow); box-shadow: 0 0 0 3px var(--accent-soft); }
+  .search svg { width: 16px; height: 16px; opacity: 0.55; flex: none; }
+  .search input { flex: 1; background: none; border: none; outline: none; color: var(--text); font-size: 13.5px; font-family: var(--sans); }
+  .search input::placeholder { color: var(--faint-solid); }
+  .search kbd { font-family: var(--mono); font-size: 10.5px; color: var(--faint-solid); border: 1px solid var(--border); border-radius: 5px; padding: 1px 6px; background: var(--panel-2); }
+
+  .segmented { display: inline-flex; background: var(--inset); border: 1px solid var(--border); border-radius: 9px; padding: 3px; gap: 2px; }
+  .segmented button {
+    font-family: var(--sans); font-size: 12.5px; font-weight: 550; color: var(--dim);
+    background: none; border: none; padding: 6px 12px; border-radius: 6px; cursor: pointer; transition: all 0.13s; white-space: nowrap;
+  }
+  .segmented button:hover { color: var(--text); }
+  .segmented button.active { background: var(--panel-3); color: #fff; box-shadow: 0 1px 4px rgba(0,0,0,0.3); }
+
+  .filter-row { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+  .flabel { font-size: 11px; text-transform: uppercase; letter-spacing: 0.6px; color: var(--faint-solid); font-weight: 600; margin-right: 2px; }
+  .fselect {
+    appearance: none; background: var(--panel-2); border: 1px solid var(--border); color: var(--text);
+    font-family: var(--sans); font-size: 12.5px; padding: 6px 28px 6px 11px; border-radius: 8px; cursor: pointer;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' fill='none' stroke='%2398a1b3' stroke-width='2'%3E%3Cpath d='M3 5l3 3 3-3'/%3E%3C/svg%3E");
+    background-repeat: no-repeat; background-position: right 9px center; transition: border-color 0.15s;
+  }
+  .fselect:hover { border-color: var(--border-2); }
+  .fselect:focus { outline: none; border-color: var(--border-glow); }
+  .clear-filters { margin-left: auto; font-size: 12px; color: var(--accent); background: none; border: none; cursor: pointer; padding: 6px 8px; border-radius: 6px; }
+  .clear-filters:hover { background: var(--accent-soft); }
+
+  .tc-meta { padding: 9px 18px; font-size: 12px; color: var(--faint-solid); border-bottom: 1px solid var(--border); display: flex; align-items: center; gap: 6px; }
+  .tc-meta b { color: var(--dim); }
+
+  .tc-list { max-height: 1100px; overflow-y: auto; }
+  .tc-group-head {
+    position: sticky; top: 0; z-index: 2; display: flex; align-items: center; gap: 9px;
+    padding: 9px 18px; background: var(--panel-2); border-bottom: 1px solid var(--border);
+    font-size: 11.5px; font-weight: 650; letter-spacing: 0.3px; text-transform: uppercase; color: var(--dim);
+  }
+  .tc-group-head .gc { font-family: var(--mono); font-size: 11px; color: var(--faint-solid); background: var(--inset); padding: 1px 8px; border-radius: 99px; text-transform: none; letter-spacing: 0; }
+  .tc-group-head .gicon { width: 14px; height: 14px; }
+
+  .tc {
+    display: grid; grid-template-columns: auto 1fr auto; gap: 13px; align-items: start;
+    padding: 15px 18px; border-bottom: 1px solid var(--border); cursor: pointer; position: relative;
+    transition: background 0.13s;
+  }
+  .tc:hover { background: rgba(255,255,255,0.022); }
+  .tc.highlight { background: rgba(129,140,248,0.09); box-shadow: inset 3px 0 0 var(--accent); }
+  .tc .status-ic { width: 26px; height: 26px; border-radius: 8px; display: grid; place-items: center; flex: none; margin-top: 1px; }
+  .tc .status-ic svg { width: 15px; height: 15px; }
+  .tc-body { min-width: 0; }
+  .tc-title { font-size: 13.8px; font-weight: 600; color: var(--text); margin-bottom: 5px; letter-spacing: -0.1px; }
+  .tc-tags { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; margin-bottom: 7px; }
+  .badge {
+    display: inline-flex; align-items: center; gap: 5px; font-size: 11px; font-weight: 600;
+    padding: 2.5px 8px; border-radius: 6px; line-height: 1.4; white-space: nowrap;
+  }
+  .badge .bd { width: 6px; height: 6px; border-radius: 50%; }
+  .badge.status { text-transform: capitalize; }
+  .badge.type { background: var(--panel-3); color: var(--dim); border: 1px solid var(--border); font-family: var(--mono); font-size: 10.5px; }
+  .badge.feat { background: var(--inset); color: var(--dim); border: 1px solid var(--border); }
+  .badge.risk { font-family: var(--mono); font-size: 10.5px; text-transform: uppercase; letter-spacing: 0.4px; }
+  .tc-desc { font-size: 12.5px; color: var(--dim); line-height: 1.5; }
+  .ai-note {
+    display: flex; align-items: flex-start; gap: 8px; margin-top: 9px; padding: 8px 11px;
+    background: rgba(129,140,248,0.07); border: 1px solid rgba(129,140,248,0.18); border-radius: 9px;
+    font-size: 12px; color: #c7cdf5; line-height: 1.45;
+  }
+  .ai-note svg { width: 14px; height: 14px; flex: none; margin-top: 1.5px; color: var(--accent); }
+  .ai-note.warn { background: rgba(251,191,36,0.07); border-color: rgba(251,191,36,0.2); color: #f4dca0; }
+  .ai-note.warn svg { color: var(--flaky); }
+  .tc-right { display: flex; flex-direction: column; align-items: flex-end; gap: 8px; flex: none; }
+  .tc-time { font-size: 11px; color: var(--faint-solid); font-family: var(--mono); white-space: nowrap; }
+  .runbars { display: flex; gap: 3px; align-items: flex-end; height: 16px; }
+  .runbars i { width: 4px; border-radius: 2px; display: block; }
+
+  .empty { padding: 60px 20px; text-align: center; color: var(--faint-solid); }
+  .empty svg { width: 40px; height: 40px; opacity: 0.3; margin-bottom: 12px; }
+
+  /* ===== AI INSIGHTS ===== */
+  .insights { padding: 16px; display: flex; flex-direction: column; gap: 11px; }
+  .insight {
+    background: var(--panel-2); border: 1px solid var(--border); border-radius: 12px; padding: 13px 14px;
+    cursor: pointer; transition: all 0.14s; position: relative; overflow: hidden;
+  }
+  .insight:hover { border-color: var(--border-2); transform: translateY(-2px); box-shadow: 0 8px 24px rgba(0,0,0,0.35); }
+  .insight.active { border-color: var(--border-glow); box-shadow: 0 0 0 1px var(--border-glow), 0 8px 24px rgba(0,0,0,0.4); }
+  .insight .ihead { display: flex; align-items: center; gap: 9px; margin-bottom: 8px; }
+  .sev {
+    font-size: 9.5px; font-weight: 700; letter-spacing: 0.6px; text-transform: uppercase;
+    padding: 2.5px 7px; border-radius: 5px; flex: none;
+  }
+  .sev.critical { background: var(--fail-bg); color: var(--fail); }
+  .sev.high { background: var(--flaky-bg); color: var(--flaky); }
+  .sev.medium { background: var(--missing-bg); color: var(--missing); }
+  .sev.low { background: rgba(139,148,167,0.16); color: var(--gray); }
+  .insight .ititle { font-size: 13px; font-weight: 650; letter-spacing: -0.1px; }
+  .insight .idesc { font-size: 12px; color: var(--dim); line-height: 1.5; margin-bottom: 11px; }
+  .insight .iaction {
+    display: inline-flex; align-items: center; gap: 6px; font-size: 12px; font-weight: 600;
+    color: var(--accent); background: var(--accent-soft); border: 1px solid rgba(129,140,248,0.25);
+    padding: 6px 11px; border-radius: 8px; cursor: pointer; transition: all 0.13s;
+  }
+  .insight .iaction:hover { background: rgba(129,140,248,0.22); }
+  .insight .iaction svg { width: 13px; height: 13px; }
+  .insight .imeta { font-size: 11px; color: var(--faint-solid); margin-top: 8px; font-family: var(--mono); }
+
+  /* ===== TIMELINE ===== */
+  .timeline { padding: 18px 18px 8px; }
+  .tl-item { display: flex; gap: 13px; padding-bottom: 18px; position: relative; }
+  .tl-item:not(:last-child)::before { content: ""; position: absolute; left: 12px; top: 24px; bottom: -2px; width: 1.5px; background: var(--border-2); }
+  .tl-dot { width: 25px; height: 25px; border-radius: 50%; flex: none; display: grid; place-items: center; background: var(--panel-2); border: 1px solid var(--border-2); z-index: 1; }
+  .tl-dot svg { width: 13px; height: 13px; }
+  .tl-dot.done { background: var(--pass-bg); border-color: rgba(61,220,151,0.4); color: var(--pass); }
+  .tl-dot.active { background: var(--accent-soft); border-color: var(--border-glow); color: var(--accent); }
+  .tl-dot.active::after { content: ""; position: absolute; inset: -4px; border-radius: 50%; border: 1.5px solid var(--accent); opacity: 0.4; animation: pulse 1.8s ease-out infinite; }
+  @keyframes pulse { 0% { transform: scale(0.85); opacity: 0.6; } 100% { transform: scale(1.4); opacity: 0; } }
+  .tl-body { padding-top: 2px; min-width: 0; }
+  .tl-title { font-size: 13px; font-weight: 550; color: var(--text); }
+  .tl-title b { color: #fff; font-weight: 650; }
+  .tl-time { font-size: 11px; color: var(--faint-solid); font-family: var(--mono); margin-top: 2px; }
+  .tl-waiting { display: inline-flex; align-items: center; gap: 7px; margin-top: 7px; font-size: 12px; color: var(--accent); }
+  .tl-waiting .btn { padding: 5px 10px; font-size: 11.5px; }
+
+  /* ===== STRUCTURE & COVERAGE ===== */
+  .two-col { display: grid; grid-template-columns: 1fr 1fr; gap: 24px; align-items: start; }
+  @media (max-width: 1180px) { .two-col { grid-template-columns: 1fr; } }
+
+  .struct { padding: 8px 0; }
+  .struct-row { padding: 13px 18px; border-bottom: 1px solid var(--border); transition: background 0.13s; cursor: pointer; }
+  .struct-row:last-child { border-bottom: none; }
+  .struct-row:hover { background: rgba(255,255,255,0.022); }
+  .struct-top { display: flex; align-items: center; gap: 10px; margin-bottom: 9px; }
+  .struct-path { font-family: var(--mono); font-size: 12.5px; color: var(--text); }
+  .struct-path .dir { color: var(--faint-solid); }
+  .struct-cov { margin-left: auto; font-family: var(--mono); font-size: 12px; color: var(--dim); }
+  .struct-cov b { color: var(--text); }
+  .struct-counts { display: flex; flex-wrap: wrap; gap: 6px; }
+  .scount { display: inline-flex; align-items: center; gap: 5px; font-size: 11px; padding: 2px 8px; border-radius: 6px; background: var(--inset); border: 1px solid var(--border); color: var(--dim); }
+  .scount .bd { width: 6px; height: 6px; border-radius: 50%; }
+  .struct-track { height: 4px; border-radius: 4px; background: rgba(255,255,255,0.06); margin-top: 9px; overflow: hidden; display: flex; }
+  .struct-track i { height: 100%; display: block; }
+
+  .cov-card { padding: 18px; }
+  .cov-block { margin-bottom: 18px; }
+  .cov-block:last-child { margin-bottom: 0; }
+  .cov-h { font-size: 12px; font-weight: 600; color: var(--dim); margin-bottom: 12px; text-transform: uppercase; letter-spacing: 0.5px; }
+  .cov-bar-row { display: flex; align-items: center; gap: 12px; margin-bottom: 11px; }
+  .cov-bar-row .cn { font-size: 12.5px; width: 120px; flex: none; color: var(--text); }
+  .cov-bar-row .cn .pct { font-family: var(--mono); font-size: 11px; color: var(--faint-solid); display: block; }
+  .track { flex: 1; height: 8px; border-radius: 99px; background: rgba(255,255,255,0.06); overflow: hidden; position: relative; }
+  .track i { position: absolute; left: 0; top: 0; bottom: 0; border-radius: 99px; }
+  .cov-num { font-family: var(--mono); font-size: 12.5px; font-weight: 600; width: 42px; text-align: right; flex: none; }
+
+  /* heatmap */
+  .heatmap { width: 100%; border-collapse: separate; border-spacing: 4px; }
+  .heatmap th { font-size: 10px; font-weight: 600; color: var(--faint-solid); text-transform: uppercase; letter-spacing: 0.4px; padding: 2px; text-align: center; }
+  .heatmap th.rowh { text-align: left; font-family: var(--mono); text-transform: none; letter-spacing: 0; color: var(--dim); font-size: 11px; }
+  .heatmap td { padding: 0; }
+  .hcell {
+    height: 34px; border-radius: 7px; display: grid; place-items: center;
+    font-family: var(--mono); font-size: 12px; font-weight: 600; color: #fff; cursor: default;
+    transition: transform 0.12s; position: relative;
+  }
+  .hcell:hover { transform: scale(1.08); z-index: 2; }
+  .heat-legend { display: flex; align-items: center; gap: 7px; margin-top: 12px; font-size: 11px; color: var(--faint-solid); justify-content: flex-end; }
+  .heat-legend .sw { width: 13px; height: 13px; border-radius: 4px; }
+
+  /* ===== TOAST ===== */
+  .toast-wrap { position: fixed; bottom: 24px; left: 50%; transform: translateX(-50%); z-index: 100; display: flex; flex-direction: column; gap: 10px; align-items: center; pointer-events: none; }
+  .toast {
+    display: flex; align-items: center; gap: 11px; background: var(--panel-3); border: 1px solid var(--border-2);
+    padding: 12px 16px; border-radius: 11px; box-shadow: 0 12px 40px rgba(0,0,0,0.55); font-size: 13px; color: var(--text);
+    animation: toastin 0.3s cubic-bezier(0.2,0.8,0.3,1); min-width: 260px;
+  }
+  @keyframes toastin { from { opacity: 0; transform: translateY(14px) scale(0.96); } to { opacity: 1; transform: none; } }
+  .toast.out { animation: toastout 0.3s ease forwards; }
+  @keyframes toastout { to { opacity: 0; transform: translateY(10px) scale(0.97); } }
+  .toast .spin { width: 16px; height: 16px; border-radius: 50%; border: 2px solid rgba(129,140,248,0.3); border-top-color: var(--accent); animation: spin 0.7s linear infinite; flex: none; }
+  @keyframes spin { to { transform: rotate(360deg); } }
+  .toast .ok { color: var(--pass); display: grid; place-items: center; }
+  .toast .ok svg { width: 17px; height: 17px; }
+
+  @media (max-width: 1080px) {
+    .grid { grid-template-columns: 1fr; }
+    .col-side { position: static; }
+    .health-row { grid-template-columns: 1fr; }
+    .stat-grid { grid-template-columns: repeat(4, 1fr); }
+  }
+  @media (max-width: 720px) {
+    .stat-grid { grid-template-columns: repeat(2, 1fr); }
+    .actions .btn span { display: none; }
+  }
+</style>
+</head>
+<body>
+
+<header class="topbar">
+  <div class="brand">
+    <div class="logo">
+      <svg viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <circle cx="10.5" cy="10.5" r="6.5"/><path d="M15.5 15.5L21 21"/><path d="M8 10.5l1.8 1.8L13.5 8.5"/>
+      </svg>
+    </div>
+    <div>
+      <div class="name"><b>Test</b>Lens <span class="tag">Agent</span></div>
+    </div>
+  </div>
+
+  <div class="repo-meta">
+    <span class="chip"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 3h11l5 5v13H4z"/><path d="M15 3v5h5"/></svg><span class="k">repo</span>&nbsp;checkout-service</span>
+    <span class="chip branch"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="6" cy="6" r="2.5"/><circle cx="6" cy="18" r="2.5"/><circle cx="18" cy="8" r="2.5"/><path d="M6 8.5v7M18 10.5c0 4-6 2-6 5.5"/></svg>feature/coupon-refactor</span>
+  </div>
+
+  <div class="scan-time">
+    <span class="lbl">Last scan</span>
+    <span class="val"><span class="live">●</span> 4 min ago · <span class="mono">2,418 files</span></span>
+  </div>
+
+  <div class="actions">
+    <button class="btn primary" data-toast="Running full repository scan…" data-toast-done="Scan complete · 24 test cases analyzed">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 3l14 9-14 9z"/></svg><span>Run Scan</span>
+    </button>
+    <button class="btn" data-toast="Generating test suggestions…" data-toast-done="Drafted 7 candidate tests for review">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v18M3 12h18" opacity="0"/><path d="M9 3v4M7 5h4"/><path d="M15 8l1.5 3.5L20 13l-3.5 1.5L15 18l-1.5-3.5L10 13l3.5-1.5z"/></svg><span>Generate Tests</span>
+    </button>
+    <button class="btn ghost" data-toast="Exporting report…" data-toast-done="Report exported · testlens-report.html">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v12M8 11l4 4 4-4"/><path d="M5 21h14"/></svg><span>Export Report</span>
+    </button>
+  </div>
+</header>
+
+<main>
+  <!-- HEALTH SUMMARY -->
+  <div class="health-row">
+    <div class="panel score-card">
+      <span class="label">Repository Health</span>
+      <div class="donut-wrap">
+        <div class="donut" style="--val:72; --col:#fbbf24;">
+          <div class="inner"><div class="num">72</div><div class="den">/ 100</div></div>
+        </div>
+        <div class="score-meta">
+          <div class="score-grade">Grade <span class="pill" style="background:var(--flaky-bg); color:var(--flaky);">C+</span></div>
+          <span class="trend up"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M5 15l5-5 4 4 6-7"/></svg>+6 pts this week</span>
+          <div class="score-note">Coverage is solid but <b>branch coverage</b> &amp; edge cases drag the score down.</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="stat-grid" id="statGrid"></div>
+  </div>
+
+  <!-- MAIN GRID -->
+  <div class="grid">
+    <div class="col-main">
+      <!-- TEST CASE EXPLORER -->
+      <section>
+        <div class="section-head">
+          <h2>Test Case Explorer</h2>
+          <span class="sub">behavior-level view of every test in the suite</span>
+          <span class="line"></span>
+        </div>
+        <div class="panel explorer">
+          <div class="toolbar">
+            <div class="toolbar-top">
+              <label class="search">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="7"/><path d="M21 21l-4-4"/></svg>
+                <input type="text" id="search" placeholder="Search test cases, features, AI notes…" autocomplete="off">
+                <kbd>/</kbd>
+              </label>
+              <div class="segmented" id="groupSeg">
+                <button data-group="type" class="active">Group by Type</button>
+                <button data-group="feature">By Feature</button>
+                <button data-group="status">By Status</button>
+              </div>
+            </div>
+            <div class="filter-row">
+              <span class="flabel">Filter</span>
+              <select class="fselect" id="fStatus">
+                <option value="">All statuses</option>
+                <option value="passed">Passed</option>
+                <option value="failed">Failed</option>
+                <option value="flaky">Flaky</option>
+                <option value="missing">Missing</option>
+                <option value="suspicious">Suspicious</option>
+              </select>
+              <select class="fselect" id="fType">
+                <option value="">All types</option>
+                <option>Unit</option><option>Integration</option><option>E2E</option>
+                <option>Contract</option><option>Regression</option><option>Edge Case</option><option>Security</option>
+              </select>
+              <select class="fselect" id="fRisk">
+                <option value="">All risk</option>
+                <option value="High">High risk</option>
+                <option value="Medium">Medium risk</option>
+                <option value="Low">Low risk</option>
+              </select>
+              <select class="fselect" id="fFeat">
+                <option value="">All features</option>
+                <option>Checkout</option><option>Coupon</option><option>Payment</option>
+                <option>User Session</option><option>Order Summary</option>
+              </select>
+              <button class="clear-filters" id="clearFilters">Reset</button>
+            </div>
+          </div>
+          <div class="tc-meta" id="tcMeta"></div>
+          <div class="tc-list" id="tcList"></div>
+        </div>
+      </section>
+
+      <!-- STRUCTURE + COVERAGE -->
+      <div class="two-col">
+        <section>
+          <div class="section-head"><h2>Testing Structure</h2><span class="line"></span></div>
+          <div class="panel struct" id="structList"></div>
+        </section>
+
+        <section>
+          <div class="section-head"><h2>Coverage &amp; Risk</h2><span class="line"></span></div>
+          <div class="panel cov-card">
+            <div class="cov-block">
+              <div class="cov-h">Coverage by module</div>
+              <div id="covBars"></div>
+            </div>
+            <div class="cov-block">
+              <div class="cov-h">Risk heatmap — failures &amp; gaps by module</div>
+              <table class="heatmap" id="heatmap"></table>
+              <div class="heat-legend">
+                <span>fewer issues</span>
+                <span class="sw" style="background:rgba(61,220,151,0.25)"></span>
+                <span class="sw" style="background:rgba(251,191,36,0.35)"></span>
+                <span class="sw" style="background:rgba(251,113,133,0.45)"></span>
+                <span class="sw" style="background:rgba(251,113,133,0.85)"></span>
+                <span>more</span>
+              </div>
+            </div>
+          </div>
+        </section>
+      </div>
+    </div>
+
+    <!-- SIDEBAR -->
+    <div class="col-side">
+      <section>
+        <div class="section-head"><h2>AI Insights</h2><span class="sub" id="insightCount"></span></div>
+        <div class="panel insights" id="insights"></div>
+      </section>
+
+      <section>
+        <div class="section-head"><h2>Agent Activity</h2><span class="line"></span></div>
+        <div class="panel timeline" id="timeline"></div>
+      </section>
+    </div>
+  </div>
+</main>
+
+<div class="toast-wrap" id="toastWrap"></div>
+
+<script>
+/* ============ MOCK DATA ============ */
+const STATUS = {
+  passed:    { label: "Passed",     color: "var(--pass)",    bg: "var(--pass-bg)" },
+  failed:    { label: "Failed",     color: "var(--fail)",    bg: "var(--fail-bg)" },
+  flaky:     { label: "Flaky",      color: "var(--flaky)",   bg: "var(--flaky-bg)" },
+  missing:   { label: "Missing",    color: "var(--missing)", bg: "var(--missing-bg)" },
+  suspicious:{ label: "Suspicious", color: "var(--suspect)", bg: "var(--suspect-bg)" },
+};
+const RISK_COLOR = { Low: "var(--r-low)", Medium: "var(--r-med)", High: "var(--r-high)" };
+
+function icon(name) {
+  const s = 'fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"';
+  const p = {
+    passed:    '<path d="M5 12l4 4 10-10"/>',
+    failed:    '<path d="M6 6l12 12M18 6L6 18"/>',
+    flaky:     '<path d="M12 7v5l3 2"/><circle cx="12" cy="12" r="8.5"/>',
+    missing:   '<path d="M12 7v10M7 12h10"/>',
+    suspicious:'<path d="M12 7v6M12 16.5v.5"/><path d="M10.3 4l-7 12.5A1.5 1.5 0 004.6 19h14.8a1.5 1.5 0 001.3-2.5L13.7 4a1.5 1.5 0 00-3.4 0z"/>',
+  };
+  return `<svg viewBox="0 0 24 24" ${s}>${p[name]||""}</svg>`;
+}
+
+const TESTS = [
+  { id:1,  title:"Applies percentage coupon to cart subtotal", status:"passed", type:"Unit", feat:"Coupon", risk:"Low", time:"4m ago", runs:[1,1,1,1,1], desc:"Verifies a 15% coupon reduces a $120 subtotal to $102 before tax.", note:"This test only checks the happy path — no expired or stacked-coupon cases.", noteType:"" },
+  { id:2,  title:"Rejects expired coupon with specific error", status:"suspicious", type:"Contract", feat:"Coupon", risk:"High", time:"4m ago", runs:[1,1,0,1,1], desc:"Checks that an expired coupon code is not applied at checkout.", note:"Product spec says expired coupons should show \u201cCoupon expired on {date}\u201d, but this test only asserts a generic error string.", noteType:"warn" },
+  { id:3,  title:"Coupon stacking is blocked when not allowed", status:"missing", type:"Edge Case", feat:"Coupon", risk:"High", time:"—", runs:[], desc:"No test covers applying two coupons when stacking is disabled.", note:"No test covers the minimum-order-amount rule or rounding on stacked discounts.", noteType:"" },
+  { id:4,  title:"Checkout completes with valid card", status:"passed", type:"E2E", feat:"Checkout", risk:"Low", time:"4m ago", runs:[1,1,1,1,1], desc:"Full happy-path purchase: cart \u2192 address \u2192 payment \u2192 confirmation.", note:"", noteType:"" },
+  { id:5,  title:"Checkout blocks when address is incomplete", status:"passed", type:"Integration", feat:"Checkout", risk:"Medium", time:"4m ago", runs:[1,1,1,1,1], desc:"Submitting without a postal code surfaces an inline validation error.", note:"", noteType:"" },
+  { id:6,  title:"Empty cart cannot reach payment step", status:"failed", type:"Integration", feat:"Checkout", risk:"High", time:"4m ago", runs:[1,0,0,0,0], desc:"Guards against navigating to /pay with zero line items.", note:"Failing since the cart-state refactor — route guard now resolves before cart hydration.", noteType:"warn" },
+  { id:7,  title:"Tax recalculates when shipping region changes", status:"missing", type:"Integration", feat:"Checkout", risk:"Medium", time:"—", runs:[], desc:"No coverage for tax recomputation on region switch mid-checkout.", note:"", noteType:"" },
+  { id:8,  title:"Successful card charge returns order id", status:"passed", type:"Contract", feat:"Payment", risk:"Low", time:"4m ago", runs:[1,1,1,1,1], desc:"Validates the gateway response contract for a 200 authorization.", note:"", noteType:"" },
+  { id:9,  title:"Declined card surfaces retry prompt", status:"suspicious", type:"Unit", feat:"Payment", risk:"High", time:"4m ago", runs:[1,1,1,1,0], desc:"Handles a card_declined gateway code at the payment step.", note:"Spec defines 3 retry attempts then a fallback method; test asserts a single retry, which contradicts the payment retry policy.", noteType:"warn" },
+  { id:10, title:"Payment gateway timeout is handled gracefully", status:"flaky", type:"Integration", feat:"Payment", risk:"High", time:"11m ago", runs:[1,0,1,0,0], desc:"Simulates a slow gateway and expects a user-facing timeout message.", note:"This test is flaky across the last 3 runs — fails intermittently under a 5s simulated latency.", noteType:"warn" },
+  { id:11, title:"Idempotency key prevents double charge", status:"failed", type:"Contract", feat:"Payment", risk:"High", time:"11m ago", runs:[0,1,0,0,0], desc:"Replaying the same payment request must not charge twice.", note:"Duplicate charge observed when retry fires before the first response is acked.", noteType:"warn" },
+  { id:12, title:"Refund restores coupon availability", status:"missing", type:"E2E", feat:"Payment", risk:"Medium", time:"—", runs:[], desc:"No test verifies a single-use coupon is re-enabled after a full refund.", note:"", noteType:"" },
+  { id:13, title:"3-D Secure challenge flow completes", status:"flaky", type:"E2E", feat:"Payment", risk:"High", time:"22m ago", runs:[1,1,0,1,0], desc:"Walks through a bank 3DS challenge during authorization.", note:"Iframe redirect timing causes intermittent failures in CI only.", noteType:"warn" },
+  { id:14, title:"Session expires after 30 min of inactivity", status:"passed", type:"Unit", feat:"User Session", risk:"Low", time:"4m ago", runs:[1,1,1,1,1], desc:"Token TTL is enforced and a re-auth prompt is shown.", note:"", noteType:"" },
+  { id:15, title:"Guest session converts to user on login", status:"passed", type:"Integration", feat:"User Session", risk:"Medium", time:"4m ago", runs:[1,1,1,1,1], desc:"Cart and applied coupon survive guest \u2192 authenticated transition.", note:"", noteType:"" },
+  { id:16, title:"Concurrent logins invalidate stale tokens", status:"missing", type:"Security", feat:"User Session", risk:"High", time:"—", runs:[], desc:"No coverage for token rotation across simultaneous sessions.", note:"No test covers session-fixation or stolen-token reuse scenarios.", noteType:"" },
+  { id:17, title:"CSRF token required on checkout POST", status:"passed", type:"Security", feat:"Checkout", risk:"Medium", time:"4m ago", runs:[1,1,1,1,1], desc:"Requests without a valid CSRF token are rejected with 403.", note:"", noteType:"" },
+  { id:18, title:"Order summary totals match line items", status:"passed", type:"Unit", feat:"Order Summary", risk:"Low", time:"4m ago", runs:[1,1,1,1,1], desc:"Sum of items + shipping + tax \u2212 discount equals displayed total.", note:"", noteType:"" },
+  { id:19, title:"Discount line shows applied coupon code", status:"passed", type:"Unit", feat:"Order Summary", risk:"Low", time:"4m ago", runs:[1,1,1,1,1], desc:"Order summary renders the coupon code and saved amount.", note:"", noteType:"" },
+  { id:20, title:"Rounding on multi-currency totals", status:"suspicious", type:"Edge Case", feat:"Order Summary", risk:"Medium", time:"18m ago", runs:[1,1,1,0,1], desc:"Checks total rounding when items use mixed currencies.", note:"Asserts round-half-up, but spec mandates banker's rounding for tax lines.", noteType:"warn" },
+  { id:21, title:"Negative quantity is rejected in cart", status:"failed", type:"Regression", feat:"Checkout", risk:"Medium", time:"4m ago", runs:[1,1,0,1,0], desc:"Regression guard: quantity field must reject values below 1.", note:"Regressed after the quantity-stepper rewrite allowed \u22121 via keyboard.", noteType:"warn" },
+  { id:22, title:"Coupon field trims whitespace before lookup", status:"passed", type:"Unit", feat:"Coupon", risk:"Low", time:"4m ago", runs:[1,1,1,1,1], desc:"\u201c SAVE15 \u201d resolves to coupon SAVE15.", note:"", noteType:"" },
+  { id:23, title:"Order confirmation email is enqueued", status:"flaky", type:"Integration", feat:"Order Summary", risk:"Medium", time:"31m ago", runs:[1,1,1,0,1], desc:"A confirmation job is pushed to the queue after purchase.", note:"Flaky due to a race with the async queue mock in CI.", noteType:"warn" },
+  { id:24, title:"Minimum order amount enforced for free shipping", status:"missing", type:"Edge Case", feat:"Checkout", risk:"Medium", time:"—", runs:[], desc:"No test for the $50 threshold that unlocks free shipping.", note:"", noteType:"" },
+];
+
+const INSIGHTS = [
+  { sev:"critical", title:"Improve failed areas first", desc:"Payment & Checkout contain most high-risk failures, including a possible double-charge. Fix these before adding new features.", action:"Explain failure", actionIcon:"bug", related:[6,11,21], meta:"3 high-risk failures · Payment, Checkout" },
+  { sev:"high", title:"Fix suspicious tests", desc:"3 tests appear inconsistent with the product spec — expected error messages, payment retry count, and rounding mode all diverge.", action:"Review suspicious tests", actionIcon:"eye", related:[2,9,20], meta:"3 tests contradict spec" },
+  { sev:"high", title:"Add missing edge-case tests", desc:"Coupon has good happy-path coverage but lacks expired-coupon, minimum-order-amount, stacking, and rounding tests.", action:"Generate missing tests", actionIcon:"sparkle", related:[3,24,12], meta:"7 recommended tests not yet written" },
+  { sev:"medium", title:"Reduce flaky tests", desc:"Payment timeout & 3DS tests failed intermittently in 3 of the last 5 runs. Stabilize latency mocks and iframe timing.", action:"Create refactor plan", actionIcon:"wrench", related:[10,13,23], meta:"4 flaky tests · 38% intermittent" },
+  { sev:"medium", title:"Increase branch coverage", desc:"Order Summary has 81% line coverage but only 42% branch coverage. Add tests for discount and multi-currency branches.", action:"Open related test cases", actionIcon:"arrow", related:[18,19,20], meta:"Branch coverage 42% · target 70%" },
+  { sev:"low", title:"Harden session security", desc:"No coverage for concurrent-login token rotation or session-fixation. Add Security-type tests for User Session.", action:"Generate missing tests", actionIcon:"sparkle", related:[16], meta:"Security gap · User Session" },
+];
+
+const STRUCTURE = [
+  { path:"src/features/", name:"checkout", cov:78, counts:[["Unit",12,"var(--pass)"],["Integration",4,"var(--missing)"],["Failed",2,"var(--fail)"],["Missing",3,"var(--gray)"]], seg:[[78,"var(--pass)"],[22,"rgba(255,255,255,0.07)"]] },
+  { path:"src/features/", name:"payment", cov:69, counts:[["Unit",8,"var(--pass)"],["Integration",2,"var(--missing)"],["Failed",2,"var(--fail)"],["Flaky",2,"var(--flaky)"]], seg:[[69,"var(--flaky)"],[31,"rgba(255,255,255,0.07)"]] },
+  { path:"src/features/", name:"coupon", cov:64, counts:[["Unit",6,"var(--pass)"],["Edge missing",4,"var(--missing)"],["Suspicious",1,"var(--suspect)"]], seg:[[64,"var(--flaky)"],[36,"rgba(255,255,255,0.07)"]] },
+  { path:"src/features/", name:"user-session", cov:71, counts:[["Unit",5,"var(--pass)"],["Integration",2,"var(--missing)"],["Security missing",2,"var(--fail)"]], seg:[[71,"var(--pass)"],[29,"rgba(255,255,255,0.07)"]] },
+  { path:"src/features/", name:"order-summary", cov:81, counts:[["Unit",7,"var(--pass)"],["Flaky",1,"var(--flaky)"],["Branch gap",1,"var(--suspect)"]], seg:[[81,"var(--pass)"],[19,"rgba(255,255,255,0.07)"]] },
+  { path:"src/lib/", name:"http-client", cov:55, counts:[["Unit",4,"var(--pass)"],["Missing",3,"var(--gray)"]], seg:[[55,"var(--fail)"],[45,"rgba(255,255,255,0.07)"]] },
+];
+
+const COVERAGE = [
+  { name:"Checkout", line:78, branch:61 },
+  { name:"Payment", line:69, branch:48 },
+  { name:"Coupon", line:64, branch:52 },
+  { name:"User Session", line:71, branch:58 },
+  { name:"Order Summary", line:81, branch:42 },
+];
+
+// heatmap: modules x issue categories, value = severity 0..3
+const HEAT_COLS = ["Failed","Flaky","Missing","Suspect"];
+const HEAT = [
+  { mod:"Checkout",      vals:[2,0,2,0] },
+  { mod:"Payment",       vals:[2,3,1,1] },
+  { mod:"Coupon",        vals:[0,0,2,1] },
+  { mod:"User Session",  vals:[0,0,2,0] },
+  { mod:"Order Summary", vals:[0,1,0,1] },
+];
+
+const TIMELINE = [
+  { state:"done", icon:'<path d="M5 12l4 4 10-10"/>', title:"Scanned repository <b>checkout-service</b>", time:"14:32:08 · 2,418 files indexed" },
+  { state:"done", icon:'<path d="M4 6h16M4 12h16M4 18h10"/>', title:"Parsed coverage report (<b>lcov</b>)", time:"14:32:21 · 71.4% line coverage" },
+  { state:"done", icon:'<path d="M12 7v10M7 12h10"/>', title:"Found <b>7 missing</b> recommended test cases", time:"14:32:44 · coupon, payment, session" },
+  { state:"done", icon:'<path d="M10.3 4l-7 12.5A1.5 1.5 0 004.6 19h14.8a1.5 1.5 0 001.3-2.5L13.7 4a1.5 1.5 0 00-3.4 0z"/><path d="M12 9v4"/>', title:"Detected <b>3 suspicious</b> tests vs. spec", time:"14:33:02 · expired coupon, retry, rounding" },
+  { state:"done", icon:'<path d="M15 8l1.5 3.5L20 13l-3.5 1.5L15 18l-1.5-3.5L10 13z"/>', title:"Generated <b>3 test suggestions</b>", time:"14:33:29 · ready to draft 4 more" },
+  { state:"active", icon:'<path d="M12 7v5l3 2"/><circle cx="12" cy="12" r="8.5"/>', title:"Waiting for approval to create test files", time:"now · 7 files staged", waiting:true },
+];
+
+/* ============ RENDER: STATS ============ */
+const counts = TESTS.reduce((a,t)=>{a[t.status]=(a[t.status]||0)+1;return a;},{});
+const STAT_TILES = [
+  { key:"total",      lbl:"Total test cases", val:TESTS.length, color:"var(--accent)", delta:"+5", deltaCls:"up" },
+  { key:"passed",     lbl:"Passed",     val:counts.passed||0,     color:"var(--pass)",    delta:"+4", deltaCls:"up" },
+  { key:"failed",     lbl:"Failed",     val:counts.failed||0,     color:"var(--fail)",    delta:"-3", deltaCls:"down-good" },
+  { key:"flaky",      lbl:"Flaky",      val:counts.flaky||0,      color:"var(--flaky)",   delta:"+1", deltaCls:"up-bad" },
+  { key:"missing",    lbl:"Missing",    val:counts.missing||0,    color:"var(--missing)", delta:"+5", deltaCls:"up-bad" },
+  { key:"suspicious", lbl:"Suspicious", val:counts.suspicious||0, color:"var(--suspect)", delta:"+1", deltaCls:"up-bad" },
+  { key:"coverage",   lbl:"Coverage",   val:"71.4%", color:"var(--accent-2)", delta:"+4.2%", deltaCls:"up", sub:true },
+  { key:"riskhigh",   lbl:"High-risk open", val:TESTS.filter(t=>t.risk==="High"&&t.status!=="passed").length, color:"var(--r-high)", delta:"-2", deltaCls:"down-good" },
+];
+function deltaIcon(cls){
+  const up = cls.includes("up");
+  return `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">${up?'<path d="M6 14l6-6 6 6"/>':'<path d="M6 10l6 6 6-6"/>'}</svg>`;
+}
+document.getElementById("statGrid").innerHTML = STAT_TILES.map(s=>`
+  <div class="stat" data-stat="${s.key}">
+    <div class="bar" style="background:${s.color}"></div>
+    <div class="top"><span class="lbl"><span class="dot" style="background:${s.color}"></span>${s.lbl}</span></div>
+    <div class="v">${s.val}</div>
+    <div class="delta ${s.deltaCls}">${deltaIcon(s.deltaCls)}${s.delta} vs last scan</div>
+  </div>`).join("");
+
+/* ============ RENDER: TEST CASES ============ */
+const TYPE_ICON = {
+  Unit:'<path d="M12 3l8 4.5v9L12 21l-8-4.5v-9z"/>',
+  Integration:'<circle cx="7" cy="7" r="3"/><circle cx="17" cy="17" r="3"/><path d="M9.5 9.5l5 5"/>',
+  E2E:'<path d="M4 12h16M4 12l4-4M4 12l4 4M20 12l-4-4M20 12l-4 4"/>',
+  Contract:'<path d="M7 3h7l4 4v14H7z"/><path d="M9 12h7M9 16h5"/>',
+  Regression:'<path d="M4 12a8 8 0 108-8"/><path d="M4 4v4h4"/>',
+  "Edge Case":'<path d="M12 3l9 16H3z"/>',
+  Security:'<path d="M12 3l7 3v6c0 5-3.5 7.5-7 9-3.5-1.5-7-4-7-9V6z"/>',
+};
+const groupSeg = document.getElementById("groupSeg");
+const tcList = document.getElementById("tcList");
+const tcMeta = document.getElementById("tcMeta");
+let groupMode = "type";
+const filters = { search:"", status:"", type:"", risk:"", feat:"" };
+
+function statusBadge(st){
+  const s = STATUS[st];
+  return `<span class="badge status" style="background:${s.bg};color:${s.color}"><span class="bd" style="background:${s.color}"></span>${s.label}</span>`;
+}
+function runbars(runs, st){
+  if(!runs.length) return `<span class="tc-time" style="opacity:.6">not run</span>`;
+  const col = STATUS[st].color;
+  return `<div class="runbars" title="last 5 runs">${runs.map((r,i)=>{
+    const h = 7 + i*2.2;
+    return `<i style="height:${h}px;background:${r?col:'rgba(255,255,255,0.13)'}"></i>`;
+  }).join("")}</div>`;
+}
+function tcCard(t){
+  const s = STATUS[t.status];
+  const note = t.note ? `<div class="ai-note ${t.noteType}">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">${t.noteType==="warn"?'<path d="M12 8v5M12 16v.5"/><circle cx="12" cy="12" r="9"/>':'<path d="M9 18h6M10 21h4M12 3a6 6 0 00-3.5 10.9c.5.4.5 1.1.5 1.6V16h6v-.5c0-.5 0-1.2.5-1.6A6 6 0 0012 3z"/>'}</svg>
+      <span>${t.note}</span></div>` : "";
+  return `<div class="tc" data-id="${t.id}">
+    <div class="status-ic" style="background:${s.bg};color:${s.color}">${icon(t.status)}</div>
+    <div class="tc-body">
+      <div class="tc-title">${t.title}</div>
+      <div class="tc-tags">
+        ${statusBadge(t.status)}
+        <span class="badge type"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:11px;height:11px">${TYPE_ICON[t.type]||""}</svg>${t.type}</span>
+        <span class="badge feat">${t.feat}</span>
+        <span class="badge risk" style="color:${RISK_COLOR[t.risk]};background:rgba(255,255,255,0.04)">${t.risk} risk</span>
+      </div>
+      <div class="tc-desc">${t.desc}</div>
+      ${note}
+    </div>
+    <div class="tc-right">
+      <span class="tc-time">${t.time}</span>
+      ${runbars(t.runs, t.status)}
+    </div>
+  </div>`;
+}
+function applyFilters(){
+  const q = filters.search.toLowerCase();
+  return TESTS.filter(t=>{
+    if(filters.status && t.status!==filters.status) return false;
+    if(filters.type && t.type!==filters.type) return false;
+    if(filters.risk && t.risk!==filters.risk) return false;
+    if(filters.feat && t.feat!==filters.feat) return false;
+    if(q){
+      const hay = (t.title+" "+t.feat+" "+t.type+" "+t.desc+" "+(t.note||"")).toLowerCase();
+      if(!hay.includes(q)) return false;
+    }
+    return true;
+  });
+}
+function groupKey(t){
+  if(groupMode==="type") return t.type;
+  if(groupMode==="feature") return t.feat;
+  return STATUS[t.status].label;
+}
+function groupIcon(mode, key){
+  if(mode==="status"){ const k = Object.keys(STATUS).find(s=>STATUS[s].label===key); return `<span style="color:${STATUS[k].color}">${icon(k)}</span>`; }
+  if(mode==="type") return `<svg class="gicon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">${TYPE_ICON[key]||""}</svg>`;
+  return `<svg class="gicon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 7h16M4 12h16M4 17h10"/></svg>`;
+}
+const TYPE_ORDER = ["Unit","Integration","E2E","Contract","Regression","Edge Case","Security"];
+const STATUS_ORDER = ["Failed","Suspicious","Flaky","Missing","Passed"];
+const FEAT_ORDER = ["Checkout","Payment","Coupon","User Session","Order Summary"];
+function renderTests(){
+  const list = applyFilters();
+  tcMeta.innerHTML = `Showing <b>&nbsp;${list.length}&nbsp;</b> of <b>&nbsp;${TESTS.length}&nbsp;</b> test cases · grouped by <b>&nbsp;${groupMode}</b>`;
+  if(!list.length){
+    tcList.innerHTML = `<div class="empty"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="7"/><path d="M21 21l-4-4"/></svg><div>No test cases match your filters.</div></div>`;
+    return;
+  }
+  const groups = {};
+  list.forEach(t=>{ const k = groupKey(t); (groups[k]=groups[k]||[]).push(t); });
+  let order = Object.keys(groups);
+  const ref = groupMode==="type"?TYPE_ORDER : groupMode==="status"?STATUS_ORDER : FEAT_ORDER;
+  order.sort((a,b)=>{ const ia=ref.indexOf(a), ib=ref.indexOf(b); return (ia<0?99:ia)-(ib<0?99:ib); });
+  tcList.innerHTML = order.map(k=>`
+    <div class="tc-group-head">${groupIcon(groupMode,k)}<span>${k}</span><span class="gc">${groups[k].length}</span></div>
+    ${groups[k].map(tcCard).join("")}`).join("");
+  bindTcClicks();
+}
+function bindTcClicks(){
+  tcList.querySelectorAll(".tc").forEach(el=>{
+    el.addEventListener("click", ()=>{
+      const id = +el.dataset.id;
+      const t = TESTS.find(x=>x.id===id);
+      toast(`Opening "${t.title}"…`, true);
+    });
+  });
+}
+
+groupSeg.addEventListener("click", e=>{
+  const b = e.target.closest("button"); if(!b) return;
+  groupSeg.querySelectorAll("button").forEach(x=>x.classList.remove("active"));
+  b.classList.add("active");
+  groupMode = b.dataset.group;
+  renderTests();
+});
+document.getElementById("search").addEventListener("input", e=>{ filters.search=e.target.value; renderTests(); });
+document.getElementById("fStatus").addEventListener("change", e=>{ filters.status=e.target.value; renderTests(); });
+document.getElementById("fType").addEventListener("change", e=>{ filters.type=e.target.value; renderTests(); });
+document.getElementById("fRisk").addEventListener("change", e=>{ filters.risk=e.target.value; renderTests(); });
+document.getElementById("fFeat").addEventListener("change", e=>{ filters.feat=e.target.value; renderTests(); });
+document.getElementById("clearFilters").addEventListener("click", ()=>{
+  filters.search=filters.status=filters.type=filters.risk=filters.feat="";
+  document.getElementById("search").value="";
+  ["fStatus","fType","fRisk","fFeat"].forEach(id=>document.getElementById(id).value="");
+  renderTests();
+});
+// "/" focuses search
+document.addEventListener("keydown", e=>{
+  if(e.key==="/" && document.activeElement.tagName!=="INPUT"){ e.preventDefault(); document.getElementById("search").focus(); }
+});
+
+/* ============ RENDER: INSIGHTS ============ */
+const insightsEl = document.getElementById("insights");
+const ACTION_ICON = {
+  sparkle:'<path d="M12 4l1.6 4.4L18 10l-4.4 1.6L12 16l-1.6-4.4L6 10l4.4-1.6z"/>',
+  eye:'<path d="M2 12s4-7 10-7 10 7 10 7-4 7-10 7S2 12 2 12z"/><circle cx="12" cy="12" r="2.5"/>',
+  bug:'<path d="M9 7V5a3 3 0 016 0v2"/><rect x="6" y="7" width="12" height="11" rx="5"/><path d="M3 11h3M18 11h3M3 16h3M18 16h3M12 7v11"/>',
+  wrench:'<path d="M14 7a4 4 0 01-5 5l-5 5 2 2 5-5a4 4 0 015-5z"/>',
+  arrow:'<path d="M5 12h14M13 6l6 6-6 6"/>',
+};
+document.getElementById("insightCount").textContent = `${INSIGHTS.length} recommendations`;
+insightsEl.innerHTML = INSIGHTS.map((ins,i)=>`
+  <div class="insight" data-i="${i}" data-related="${ins.related.join(',')}">
+    <div class="ihead"><span class="sev ${ins.sev}">${ins.sev}</span><span class="ititle">${ins.title}</span></div>
+    <div class="idesc">${ins.desc}</div>
+    <button class="iaction"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">${ACTION_ICON[ins.actionIcon]}</svg>${ins.action}</button>
+    <div class="imeta">${ins.meta}</div>
+  </div>`).join("");
+
+insightsEl.querySelectorAll(".insight").forEach(card=>{
+  const related = card.dataset.related.split(",").map(Number);
+  card.addEventListener("click", e=>{
+    if(e.target.closest(".iaction")) return;
+    const wasActive = card.classList.contains("active");
+    insightsEl.querySelectorAll(".insight").forEach(c=>c.classList.remove("active"));
+    tcList.querySelectorAll(".tc").forEach(t=>t.classList.remove("highlight"));
+    if(wasActive) return;
+    card.classList.add("active");
+    // clear filters so related are visible, switch to feature grouping is unnecessary; just highlight
+    highlightTests(related);
+  });
+  card.querySelector(".iaction").addEventListener("click", ()=>{
+    const label = card.querySelector(".iaction").textContent.trim();
+    toast(`${label}…`, true);
+  });
+});
+function highlightTests(ids){
+  // ensure filters don't hide them
+  let needReset = false;
+  const visibleIds = applyFilters().map(t=>t.id);
+  if(ids.some(id=>!visibleIds.includes(id))) needReset = true;
+  if(needReset){
+    filters.search=filters.status=filters.type=filters.risk=filters.feat="";
+    document.getElementById("search").value="";
+    ["fStatus","fType","fRisk","fFeat"].forEach(id=>document.getElementById(id).value="");
+    renderTests();
+  }
+  let first=null;
+  ids.forEach(id=>{
+    const el = tcList.querySelector(`.tc[data-id="${id}"]`);
+    if(el){ el.classList.add("highlight"); if(!first) first=el; }
+  });
+  if(first){
+    const box = tcList;
+    box.scrollTo({ top: first.offsetTop - box.offsetTop - 80, behavior:"smooth" });
+  }
+}
+
+/* ============ RENDER: STRUCTURE ============ */
+document.getElementById("structList").innerHTML = STRUCTURE.map(s=>`
+  <div class="struct-row">
+    <div class="struct-top">
+      <span class="struct-path"><span class="dir">${s.path}</span>${s.name}</span>
+      <span class="struct-cov"><b>${s.cov}%</b> cov</span>
+    </div>
+    <div class="struct-counts">
+      ${s.counts.map(c=>`<span class="scount"><span class="bd" style="background:${c[2]}"></span>${c[0]}: ${c[1]}</span>`).join("")}
+    </div>
+    <div class="struct-track">${s.seg.map(g=>`<i style="width:${g[0]}%;background:${g[1]}"></i>`).join("")}</div>
+  </div>`).join("");
+
+/* ============ RENDER: COVERAGE BARS ============ */
+function covColor(v){ return v>=75?"var(--pass)":v>=55?"var(--flaky)":"var(--fail)"; }
+document.getElementById("covBars").innerHTML = COVERAGE.map(c=>`
+  <div class="cov-bar-row">
+    <span class="cn">${c.name}<span class="pct">line / branch</span></span>
+    <div class="track">
+      <i style="width:${c.line}%;background:${covColor(c.line)};opacity:.95;height:4px;top:0"></i>
+      <i style="width:${c.branch}%;background:${covColor(c.branch)};opacity:.55;height:4px;top:4px"></i>
+    </div>
+    <span class="cov-num" style="color:${covColor(c.line)}">${c.line}%</span>
+  </div>`).join("");
+
+/* ============ RENDER: HEATMAP ============ */
+function heatColor(v){
+  return ["rgba(61,220,151,0.18)","rgba(251,191,36,0.4)","rgba(251,113,133,0.55)","rgba(251,113,133,0.9)"][v];
+}
+let hm = `<tr><th class="rowh"></th>${HEAT_COLS.map(c=>`<th>${c}</th>`).join("")}</tr>`;
+hm += HEAT.map(r=>`<tr><th class="rowh">${r.mod}</th>${r.vals.map(v=>`<td><div class="hcell" style="background:${heatColor(v)}" title="${r.mod}">${v||""}</div></td>`).join("")}</tr>`).join("");
+document.getElementById("heatmap").innerHTML = hm;
+
+/* ============ RENDER: TIMELINE ============ */
+document.getElementById("timeline").innerHTML = TIMELINE.map(t=>`
+  <div class="tl-item">
+    <div class="tl-dot ${t.state}"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">${t.icon}</svg></div>
+    <div class="tl-body">
+      <div class="tl-title">${t.title}</div>
+      <div class="tl-time">${t.time}</div>
+      ${t.waiting?`<div class="tl-waiting"><button class="btn primary" data-toast="Creating 7 test files…" data-toast-done="7 test files created · open a PR to review">Approve &amp; create files</button><button class="btn ghost" data-toast="Suggestions dismissed">Dismiss</button></div>`:""}
+    </div>
+  </div>`).join("");
+
+/* ============ TOASTS ============ */
+const toastWrap = document.getElementById("toastWrap");
+function toast(msg, loading){
+  const el = document.createElement("div");
+  el.className = "toast";
+  el.innerHTML = (loading?`<span class="spin"></span>`:`<span class="ok"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12l4 4 10-10"/></svg></span>`) + `<span>${msg}</span>`;
+  toastWrap.appendChild(el);
+  return el;
+}
+function dismiss(el){ el.classList.add("out"); setTimeout(()=>el.remove(), 300); }
+function flow(loadingMsg, doneMsg){
+  const el = toast(loadingMsg, true);
+  if(doneMsg){
+    setTimeout(()=>{
+      el.querySelector(".spin").outerHTML = `<span class="ok"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12l4 4 10-10"/></svg></span>`;
+      el.querySelector("span:last-child").textContent = doneMsg;
+      setTimeout(()=>dismiss(el), 2600);
+    }, 1400);
+  } else {
+    setTimeout(()=>dismiss(el), 2200);
+  }
+}
+document.addEventListener("click", e=>{
+  const b = e.target.closest("[data-toast]"); if(!b) return;
+  flow(b.dataset.toast, b.dataset.toastDone || "");
+});
+
+/* init */
+renderTests();
+</script>
+</body>
+</html>

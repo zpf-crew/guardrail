@@ -1,27 +1,16 @@
 {
-  "name": "weather-chat-agent",
-  "version": "1.0.0",
-  "description": "Weather forecasting chat agent for AgentBase",
-  "main": "src/server.js",
-  "type": "module",
+  "name": "guardrail",
+  "version": "0.0.1",
+  "private": true,
+  "pnpm": {
+    "onlyBuiltDependencies": ["esbuild"]
+  },
   "scripts": {
-    "start": "node src/server.js",
-    "dev": "node --watch src/server.js",
-    "test": "vitest run",
-    "test:watch": "vitest"
-  },
-  "dependencies": {
-    "better-sqlite3": "^11.0.0",
-    "express": "^4.19.0",
-    "socket.io": "^4.7.0"
-  },
-  "devDependencies": {
-    "dotenv": "^17.4.2",
-    "socket.io-client": "^4.7.0",
-    "supertest": "^7.0.0",
-    "vitest": "^2.0.0"
-  },
-  "engines": {
-    "node": ">=20.0.0"
+    "dev": "pnpm --parallel --dir frontend dev & pnpm --dir backend dev",
+    "dev:frontend": "pnpm --dir frontend dev",
+    "dev:backend": "pnpm --dir backend dev",
+    "build": "pnpm --dir frontend build && pnpm --dir backend build",
+    "typecheck": "pnpm --dir frontend typecheck && pnpm --dir backend typecheck",
+    "lint": "pnpm --dir frontend lint && pnpm --dir backend lint"
   }
 }

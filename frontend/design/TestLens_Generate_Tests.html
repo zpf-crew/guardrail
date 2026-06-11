@@ -1,0 +1,1355 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>TestLens — Generate &amp; Improve Tests</title>
+<style>
+  :root {
+    --bg: #090b10;
+    --bg-grad: radial-gradient(1200px 600px at 80% -8%, rgba(124,131,255,0.10), transparent 60%),
+               radial-gradient(900px 500px at 6% 0%, rgba(34,211,238,0.06), transparent 55%),
+               #090b10;
+    --panel: #11141c;
+    --panel-2: #161a24;
+    --panel-3: #1b2030;
+    --inset: #0d0f16;
+    --code-bg: #07090d;
+    --border: rgba(255,255,255,0.07);
+    --border-2: rgba(255,255,255,0.12);
+    --border-glow: rgba(129,140,248,0.35);
+    --text: #e8ebf2;
+    --dim: #98a1b3;
+    --faint-solid: #6b7488;
+    --accent: #818cf8;
+    --accent-2: #22d3ee;
+    --accent-soft: rgba(129,140,248,0.14);
+    --pass: #3ddc97;
+    --fail: #fb7185;
+    --flaky: #fbbf24;
+    --missing: #60a5fa;
+    --suspect: #c084fc;
+    --gray: #8b94a7;
+    --pass-bg: rgba(61,220,151,0.13);
+    --fail-bg: rgba(251,113,133,0.14);
+    --flaky-bg: rgba(251,191,36,0.14);
+    --missing-bg: rgba(96,165,250,0.14);
+    --suspect-bg: rgba(192,132,252,0.15);
+    --add: #3ddc97; --upd: #60a5fa; --del: #fb7185;
+    --radius: 14px; --radius-sm: 10px;
+    --shadow: 0 1px 0 rgba(255,255,255,0.04) inset, 0 8px 30px rgba(0,0,0,0.45);
+    --mono: ui-monospace, "SF Mono", "JetBrains Mono", "Menlo", "Cascadia Code", monospace;
+    --sans: system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", sans-serif;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; padding: 0; }
+  body { background: var(--bg-grad); background-attachment: fixed; color: var(--text); font-family: var(--sans); font-size: 14px; line-height: 1.5; -webkit-font-smoothing: antialiased; letter-spacing: 0.1px; min-height: 100vh; }
+  ::selection { background: rgba(129,140,248,0.35); }
+  *::-webkit-scrollbar { width: 10px; height: 10px; }
+  *::-webkit-scrollbar-thumb { background: #2a3142; border-radius: 99px; border: 2px solid transparent; background-clip: padding-box; }
+  *::-webkit-scrollbar-thumb:hover { background: #39425a; background-clip: padding-box; }
+  *::-webkit-scrollbar-track { background: transparent; }
+  .mono { font-family: var(--mono); }
+
+  /* TOP BAR */
+  header.topbar { position: sticky; top: 0; z-index: 50; display: flex; align-items: center; gap: 20px; padding: 12px 24px; background: rgba(11,13,19,0.8); backdrop-filter: blur(18px) saturate(140%); border-bottom: 1px solid var(--border); }
+  .brand { display: flex; align-items: center; gap: 11px; padding-right: 18px; border-right: 1px solid var(--border); }
+  .brand .logo { width: 32px; height: 32px; border-radius: 9px; flex: none; background: linear-gradient(150deg, #8b93ff, #5d68f0 55%, #22d3ee); display: grid; place-items: center; box-shadow: 0 4px 16px rgba(99,102,241,0.4), 0 0 0 1px rgba(255,255,255,0.12) inset; }
+  .brand .logo svg { width: 18px; height: 18px; }
+  .brand .name { font-size: 15.5px; font-weight: 650; letter-spacing: -0.2px; }
+  .brand .name b { color: #fff; }
+  .repo-meta { display: flex; align-items: center; gap: 8px; }
+  .chip { display: inline-flex; align-items: center; gap: 7px; background: var(--panel-2); border: 1px solid var(--border); padding: 6px 11px; border-radius: 8px; font-family: var(--mono); font-size: 12px; }
+  .chip svg { width: 13px; height: 13px; opacity: 0.7; }
+  .chip.branch { color: var(--accent); }
+  .wf-status { display: flex; align-items: center; gap: 9px; margin-left: 6px; font-size: 12.5px; color: var(--dim); }
+  .wf-status .wb { display: inline-flex; align-items: center; gap: 6px; padding: 4px 11px; border-radius: 99px; background: var(--accent-soft); border: 1px solid rgba(129,140,248,0.25); color: var(--accent); font-weight: 600; font-size: 12px; }
+  .wf-status .wb .pdot { width: 6px; height: 6px; border-radius: 50%; background: currentColor; animation: blink 1.4s ease-in-out infinite; }
+  @keyframes blink { 50% { opacity: 0.3; } }
+  .top-right { margin-left: auto; display: flex; align-items: center; gap: 10px; }
+  .btn { display: inline-flex; align-items: center; gap: 7px; font-family: var(--sans); font-size: 13px; font-weight: 550; padding: 8px 14px; border-radius: 9px; cursor: pointer; border: 1px solid var(--border-2); background: var(--panel-2); color: var(--text); transition: all 0.14s ease; white-space: nowrap; }
+  .btn svg { width: 15px; height: 15px; }
+  .btn:hover { background: var(--panel-3); transform: translateY(-1px); }
+  .btn:active { transform: translateY(0); }
+  .btn.primary { background: linear-gradient(160deg, #8b93ff, #5d68f0); border-color: transparent; color: #fff; box-shadow: 0 4px 16px rgba(99,102,241,0.35); }
+  .btn.primary:hover { box-shadow: 0 6px 22px rgba(99,102,241,0.5); }
+  .btn.ghost { background: transparent; border-color: transparent; color: var(--dim); }
+  .btn.ghost:hover { background: var(--panel-2); color: var(--text); }
+  .btn.lg { padding: 11px 20px; font-size: 14px; font-weight: 600; border-radius: 11px; }
+  .btn.danger { color: var(--fail); border-color: rgba(251,113,133,0.3); }
+  .btn.danger:hover { background: var(--fail-bg); }
+  .btn:disabled { opacity: 0.4; cursor: not-allowed; transform: none; }
+
+  /* LAYOUT */
+  .shell { display: grid; grid-template-columns: 218px minmax(0,1fr) 312px; gap: 0; align-items: stretch; max-width: 1680px; margin: 0 auto; }
+  /* WORKFLOW SIDEBAR */
+  .wf-side { border-right: 1px solid var(--border); padding: 22px 16px; position: sticky; top: 57px; align-self: start; height: calc(100vh - 57px); overflow-y: auto; }
+  .wf-side .wf-h { font-size: 11px; text-transform: uppercase; letter-spacing: 0.8px; color: var(--faint-solid); font-weight: 600; margin: 0 6px 16px; }
+  .wf-step { display: flex; gap: 12px; padding: 10px 11px; border-radius: 11px; cursor: pointer; position: relative; transition: background 0.14s; border: 1px solid transparent; margin-bottom: 2px; }
+  .wf-step:hover { background: rgba(255,255,255,0.025); }
+  .wf-step.active { background: var(--accent-soft); border-color: rgba(129,140,248,0.25); box-shadow: 0 0 0 1px rgba(129,140,248,0.12); }
+  .wf-step.locked { opacity: 0.42; cursor: not-allowed; }
+  .wf-step .m { width: 26px; height: 26px; border-radius: 50%; flex: none; display: grid; place-items: center; font-size: 12px; font-weight: 650; font-family: var(--mono); background: var(--inset); border: 1.5px solid var(--border-2); color: var(--faint-solid); transition: all 0.2s; position: relative; }
+  .wf-step .m svg { width: 14px; height: 14px; }
+  .wf-step.active .m { border-color: var(--accent); color: var(--accent); background: var(--panel); }
+  .wf-step.active .m::after { content: ""; position: absolute; inset: -4px; border-radius: 50%; border: 1.5px solid var(--accent); opacity: 0.35; animation: spulse 2s ease-out infinite; }
+  @keyframes spulse { 0% { transform: scale(0.85); opacity: 0.5; } 100% { transform: scale(1.45); opacity: 0; } }
+  .wf-step.done .m { background: var(--pass-bg); border-color: rgba(61,220,151,0.5); color: var(--pass); }
+  .wf-step.warn .m { background: var(--flaky-bg); border-color: rgba(251,191,36,0.5); color: var(--flaky); }
+  .wf-step:not(:last-child)::before { content: ""; position: absolute; left: 23.5px; top: 38px; height: calc(100% - 24px); width: 1.5px; background: var(--border-2); }
+  .wf-step.done:not(:last-child)::before { background: rgba(61,220,151,0.4); }
+  .wf-step .wt { padding-top: 3px; }
+  .wf-step .wt .t { font-size: 13.5px; font-weight: 600; color: var(--text); }
+  .wf-step.active .wt .t { color: #fff; }
+  .wf-step .wt .s { font-size: 11px; margin-top: 1px; color: var(--faint-solid); }
+  .wf-step.done .wt .s { color: var(--pass); }
+  .wf-step.active .wt .s { color: var(--accent); }
+  .wf-step.warn .wt .s { color: var(--flaky); }
+  .safety-note { margin-top: 22px; padding: 12px; background: rgba(34,211,238,0.05); border: 1px solid rgba(34,211,238,0.18); border-radius: 11px; font-size: 11px; color: var(--dim); line-height: 1.5; }
+  .safety-note svg { width: 14px; height: 14px; color: var(--accent-2); margin-bottom: 6px; }
+  .safety-note b { color: var(--text); }
+
+  /* MAIN */
+  .main { padding: 26px 28px 70px; min-width: 0; }
+  .step-panel { display: none; animation: stepin 0.35s cubic-bezier(0.2,0.8,0.3,1); }
+  .step-panel.active { display: block; }
+  @keyframes stepin { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: none; } }
+  .step-hd { margin-bottom: 20px; }
+  .step-hd .eyebrow { font-size: 11px; font-weight: 700; letter-spacing: 0.9px; text-transform: uppercase; color: var(--accent); margin-bottom: 8px; }
+  .step-hd h1 { font-size: 23px; font-weight: 680; letter-spacing: -0.4px; margin: 0 0 7px; }
+  .step-hd p { font-size: 14px; color: var(--dim); margin: 0; max-width: 720px; line-height: 1.55; }
+  .step-hd p .mono { color: var(--accent); }
+
+  .panel { background: var(--panel); border: 1px solid var(--border); border-radius: var(--radius); box-shadow: var(--shadow); }
+  .blk { margin-bottom: 22px; }
+  .blk-h { display: flex; align-items: center; gap: 9px; font-size: 12px; font-weight: 650; text-transform: uppercase; letter-spacing: 0.6px; color: var(--dim); margin-bottom: 13px; }
+  .blk-h .n { font-family: var(--mono); font-size: 11px; color: var(--faint-solid); background: var(--inset); padding: 1px 8px; border-radius: 99px; }
+  .blk-h svg { width: 15px; height: 15px; color: var(--accent); }
+
+  /* S1 INTENT */
+  .prompt-box { background: var(--panel); border: 1px solid var(--border-2); border-radius: var(--radius); padding: 18px; box-shadow: var(--shadow); margin-bottom: 22px; transition: border-color 0.15s, box-shadow 0.15s; }
+  .prompt-box:focus-within { border-color: var(--border-glow); box-shadow: 0 0 0 3px var(--accent-soft), var(--shadow); }
+  .prompt-box textarea { width: 100%; background: none; border: none; outline: none; resize: none; color: var(--text); font-family: var(--sans); font-size: 15.5px; line-height: 1.55; min-height: 54px; }
+  .prompt-box textarea::placeholder { color: var(--faint-solid); }
+  .prompt-foot { display: flex; align-items: center; gap: 10px; margin-top: 14px; padding-top: 14px; border-top: 1px solid var(--border); }
+  .pf-select { display: flex; align-items: center; gap: 8px; }
+  .fselect { appearance: none; background: var(--panel-2); border: 1px solid var(--border); color: var(--text); font-family: var(--sans); font-size: 12.5px; padding: 7px 28px 7px 12px; border-radius: 8px; cursor: pointer; background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' fill='none' stroke='%2398a1b3' stroke-width='2'%3E%3Cpath d='M3 5l3 3 3-3'/%3E%3C/svg%3E"); background-repeat: no-repeat; background-position: right 9px center; }
+  .fselect:focus { outline: none; border-color: var(--border-glow); }
+
+  .opt-row { margin-bottom: 16px; }
+  .opt-label { font-size: 11.5px; font-weight: 600; color: var(--faint-solid); text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 10px; }
+  .chips { display: flex; flex-wrap: wrap; gap: 8px; }
+  .chip-tog { display: inline-flex; align-items: center; gap: 7px; font-size: 12.5px; font-weight: 550; padding: 7px 13px; border-radius: 8px; cursor: pointer; background: var(--panel-2); border: 1px solid var(--border); color: var(--dim); transition: all 0.13s; user-select: none; }
+  .chip-tog:hover { border-color: var(--border-2); color: var(--text); }
+  .chip-tog .ci { width: 14px; height: 14px; }
+  .chip-tog.on { background: var(--accent-soft); border-color: rgba(129,140,248,0.4); color: #c7cdf5; }
+  .chip-tog .ck { width: 15px; height: 15px; opacity: 0; transition: opacity 0.13s; margin-left: -2px; }
+  .chip-tog.on .ck { opacity: 1; }
+  .chip-tog.src { font-family: var(--mono); font-size: 12px; }
+
+  .qa-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(248px, 1fr)); gap: 12px; }
+  .qa { display: flex; gap: 12px; padding: 14px; border-radius: 12px; background: var(--panel); border: 1px solid var(--border); cursor: pointer; transition: all 0.15s; text-align: left; }
+  .qa:hover { border-color: var(--border-glow); transform: translateY(-2px); box-shadow: 0 8px 24px rgba(0,0,0,0.35); }
+  .qa .qic { width: 34px; height: 34px; border-radius: 9px; flex: none; display: grid; place-items: center; }
+  .qa .qic svg { width: 17px; height: 17px; }
+  .qa .qt { font-size: 13px; font-weight: 600; color: var(--text); line-height: 1.35; margin-bottom: 4px; }
+  .qa .qm { font-size: 11.5px; color: var(--faint-solid); }
+  .qa .qm .mono { color: var(--dim); }
+
+  /* generic cards */
+  .grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+  .grid-auto { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px,1fr)); gap: 12px; }
+  .info-card { background: var(--panel); border: 1px solid var(--border); border-radius: 12px; padding: 16px; }
+  .file-line { display: flex; align-items: center; gap: 10px; padding: 9px 0; border-bottom: 1px solid var(--border); font-size: 12.5px; }
+  .file-line:last-child { border-bottom: none; }
+  .file-line .fi { width: 26px; height: 26px; border-radius: 7px; flex: none; display: grid; place-items: center; }
+  .file-line .fi svg { width: 14px; height: 14px; }
+  .file-line .fp { font-family: var(--mono); color: var(--text); font-size: 12px; }
+  .file-line .fmeta { margin-left: auto; font-size: 11px; color: var(--faint-solid); }
+
+  .badge { display: inline-flex; align-items: center; gap: 5px; font-size: 11px; font-weight: 600; padding: 2.5px 8px; border-radius: 6px; line-height: 1.4; white-space: nowrap; }
+  .badge .bd { width: 6px; height: 6px; border-radius: 50%; }
+  .risk-pill { font-family: var(--mono); font-size: 10.5px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.4px; padding: 2px 7px; border-radius: 5px; }
+  .risk-Low { color: var(--pass); background: var(--pass-bg); }
+  .risk-Medium { color: var(--flaky); background: var(--flaky-bg); }
+  .risk-High { color: var(--fail); background: var(--fail-bg); }
+  .risk-Critical { color: #fff; background: var(--fail); }
+
+  /* classification grid */
+  .cls-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px,1fr)); gap: 12px; }
+  .cls { background: var(--panel); border: 1px solid var(--border); border-radius: 12px; padding: 14px; transition: all 0.14s; position: relative; overflow: hidden; }
+  .cls::before { content: ""; position: absolute; left: 0; top: 0; bottom: 0; width: 3px; }
+  .cls.s-Covered::before { background: var(--pass); }
+  .cls.s-Missing::before { background: var(--missing); }
+  .cls.s-Weak::before { background: var(--flaky); }
+  .cls.s-Failed::before { background: var(--fail); }
+  .cls.s-Suspicious::before { background: var(--suspect); }
+  .cls:hover { border-color: var(--border-2); transform: translateY(-2px); }
+  .cls .ct { font-size: 13.5px; font-weight: 650; margin-bottom: 8px; }
+  .cls .cbadges { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 9px; align-items: center; }
+  .cls .ce { font-size: 12px; color: var(--dim); line-height: 1.45; }
+  .st-Covered { color: var(--pass); background: var(--pass-bg); }
+  .st-Missing { color: var(--missing); background: var(--missing-bg); }
+  .st-Weak { color: var(--flaky); background: var(--flaky-bg); }
+  .st-Failed { color: var(--fail); background: var(--fail-bg); }
+  .st-Suspicious { color: var(--suspect); background: var(--suspect-bg); }
+  .ttype { font-family: var(--mono); font-size: 10.5px; background: var(--panel-3); border: 1px solid var(--border); color: var(--dim); }
+
+  /* PLAN proposed actions */
+  .pa-list { display: flex; flex-direction: column; gap: 9px; }
+  .pa { display: flex; align-items: center; gap: 12px; padding: 12px 14px; background: var(--panel); border: 1px solid var(--border); border-radius: 11px; }
+  .pa .pa-ic { width: 30px; height: 30px; border-radius: 8px; flex: none; display: grid; place-items: center; }
+  .pa .pa-ic svg { width: 16px; height: 16px; }
+  .pa-add .pa-ic { background: var(--pass-bg); color: var(--add); }
+  .pa-update .pa-ic { background: var(--missing-bg); color: var(--upd); }
+  .pa-delete .pa-ic { background: var(--fail-bg); color: var(--del); }
+  .pa-run .pa-ic { background: var(--accent-soft); color: var(--accent); }
+  .pa .pa-t { font-size: 13.5px; color: var(--text); font-weight: 550; }
+  .pa .pa-c { margin-left: auto; font-family: var(--mono); font-size: 16px; font-weight: 700; }
+  .pa-add .pa-c { color: var(--add); } .pa-update .pa-c { color: var(--upd); } .pa-delete .pa-c { color: var(--del); } .pa-run .pa-c { color: var(--accent); }
+
+  .risk-row { display: flex; align-items: center; justify-content: space-between; padding: 10px 0; border-bottom: 1px solid var(--border); font-size: 13px; }
+  .risk-row:last-child { border-bottom: none; }
+  .risk-row .rk { color: var(--dim); }
+  .risk-row .rv { font-weight: 600; font-size: 12.5px; }
+  .rv.no { color: var(--pass); } .rv.yes { color: var(--flaky); } .rv.req { color: var(--fail); } .rv.opt { color: var(--gray); }
+
+  /* AI questions */
+  .q-card { background: var(--panel); border: 1px solid rgba(192,132,252,0.22); border-radius: 12px; padding: 15px; margin-bottom: 11px; }
+  .q-card .qh { display: flex; align-items: flex-start; gap: 10px; margin-bottom: 12px; }
+  .q-card .qh .qmark { width: 26px; height: 26px; border-radius: 7px; flex: none; display: grid; place-items: center; background: var(--suspect-bg); color: var(--suspect); font-weight: 700; font-size: 14px; }
+  .q-card .qtext { font-size: 13.5px; color: var(--text); font-weight: 550; line-height: 1.45; padding-top: 3px; }
+  .q-opts { display: flex; flex-wrap: wrap; gap: 8px; }
+  .q-opt { font-size: 12.5px; padding: 8px 14px; border-radius: 8px; cursor: pointer; background: var(--panel-2); border: 1px solid var(--border); color: var(--dim); transition: all 0.13s; }
+  .q-opt:hover { border-color: var(--border-2); color: var(--text); }
+  .q-opt.sel { background: var(--suspect-bg); border-color: rgba(192,132,252,0.5); color: #e8d8fa; font-weight: 600; }
+
+  .approve-bar { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; padding: 16px; background: var(--panel-2); border: 1px solid var(--border); border-radius: 12px; margin-top: 4px; }
+  .approve-bar .spacer { flex: 1; }
+
+  /* GENERATE timeline */
+  .gen-timeline { display: flex; flex-direction: column; }
+  .gl { display: flex; gap: 13px; padding-bottom: 14px; position: relative; }
+  .gl:not(:last-child)::before { content: ""; position: absolute; left: 12px; top: 26px; bottom: 0; width: 1.5px; background: var(--border-2); }
+  .gl.done:not(:last-child)::before { background: rgba(61,220,151,0.4); }
+  .gl .gd { width: 25px; height: 25px; border-radius: 50%; flex: none; display: grid; place-items: center; background: var(--inset); border: 1px solid var(--border-2); color: var(--faint-solid); z-index: 1; }
+  .gl .gd svg { width: 13px; height: 13px; }
+  .gl.running .gd { background: var(--accent-soft); border-color: var(--accent); color: var(--accent); }
+  .gl.running .gd svg { animation: spin 0.8s linear infinite; }
+  @keyframes spin { to { transform: rotate(360deg); } }
+  .gl.done .gd { background: var(--pass-bg); border-color: rgba(61,220,151,0.45); color: var(--pass); }
+  .gl .gt { font-size: 13px; color: var(--dim); padding-top: 3px; }
+  .gl.running .gt, .gl.done .gt { color: var(--text); }
+  .gl .gt .mono { font-size: 11.5px; color: var(--faint-solid); }
+
+  /* change cards */
+  .filter-bar { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-bottom: 14px; }
+  .fpill { font-size: 12px; font-weight: 550; padding: 6px 12px; border-radius: 7px; cursor: pointer; background: var(--panel-2); border: 1px solid var(--border); color: var(--dim); transition: all 0.13s; }
+  .fpill:hover { color: var(--text); }
+  .fpill.on { background: var(--panel-3); color: #fff; border-color: var(--border-2); }
+  .fpill .ct { font-family: var(--mono); font-size: 10.5px; opacity: 0.7; margin-left: 4px; }
+
+  .change { background: var(--panel); border: 1px solid var(--border); border-radius: 12px; margin-bottom: 11px; overflow: hidden; transition: border-color 0.14s; animation: stepin 0.3s ease; }
+  .change:hover { border-color: var(--border-2); }
+  .change .ch-top { display: flex; align-items: flex-start; gap: 13px; padding: 14px 16px; cursor: pointer; }
+  .change .act-ic { width: 30px; height: 30px; border-radius: 8px; flex: none; display: grid; place-items: center; margin-top: 1px; }
+  .change .act-ic svg { width: 16px; height: 16px; }
+  .ca-Add .act-ic { background: var(--pass-bg); color: var(--add); }
+  .ca-Update .act-ic { background: var(--missing-bg); color: var(--upd); }
+  .ca-Delete .act-ic { background: var(--fail-bg); color: var(--del); }
+  .change .ch-body { flex: 1; min-width: 0; }
+  .change .ch-tags { display: flex; align-items: center; gap: 7px; flex-wrap: wrap; margin-bottom: 6px; }
+  .actbadge { font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px; padding: 2px 7px; border-radius: 5px; }
+  .ab-Add { background: var(--pass-bg); color: var(--add); }
+  .ab-Update { background: var(--missing-bg); color: var(--upd); }
+  .ab-Delete { background: var(--fail-bg); color: var(--del); }
+  .change .ch-title { font-size: 14px; font-weight: 600; color: var(--text); line-height: 1.4; margin-bottom: 5px; letter-spacing: -0.1px; }
+  .change .ch-file { font-family: var(--mono); font-size: 11.5px; color: var(--accent); margin-bottom: 7px; }
+  .change .ch-reason { font-size: 12.5px; color: var(--dim); line-height: 1.45; }
+  .change .ch-reason b { color: var(--text); font-weight: 600; }
+  .change .ch-right { display: flex; flex-direction: column; align-items: flex-end; gap: 7px; flex: none; }
+  .change .ch-stat { font-size: 11px; font-weight: 600; display: inline-flex; align-items: center; gap: 5px; }
+  .change .chev { color: var(--faint-solid); transition: transform 0.2s; }
+  .change.open .chev { transform: rotate(180deg); }
+  .change .diff { display: none; border-top: 1px solid var(--border); background: var(--code-bg); padding: 13px 16px; font-family: var(--mono); font-size: 12px; line-height: 1.7; overflow-x: auto; }
+  .change.open .diff { display: block; }
+  .diff .dl { white-space: pre; }
+  .diff .add { color: var(--pass); background: rgba(61,220,151,0.08); }
+  .diff .del { color: var(--fail); background: rgba(251,113,133,0.08); }
+  .diff .ctx { color: var(--faint-solid); }
+  .diff .meta { color: var(--accent-2); }
+
+  /* before/after */
+  .ba { display: grid; grid-template-columns: 1fr auto 1fr; gap: 16px; align-items: stretch; }
+  .ba-col { background: var(--inset); border: 1px solid var(--border); border-radius: 12px; padding: 15px; }
+  .ba-col.before { border-color: rgba(251,113,133,0.2); }
+  .ba-col.after { border-color: rgba(61,220,151,0.25); }
+  .ba-col .bh { font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.6px; margin-bottom: 11px; display: flex; align-items: center; gap: 7px; }
+  .ba-col.before .bh { color: var(--fail); }
+  .ba-col.after .bh { color: var(--pass); }
+  .ba-col ul { margin: 0; padding: 0; list-style: none; display: flex; flex-direction: column; gap: 9px; }
+  .ba-col li { font-size: 12.5px; color: var(--dim); display: flex; gap: 8px; line-height: 1.45; }
+  .ba-col li svg { width: 14px; height: 14px; flex: none; margin-top: 2px; }
+  .ba-col.before li svg { color: var(--fail); }
+  .ba-col.after li svg { color: var(--pass); }
+  .ba-arrow { display: grid; place-items: center; color: var(--faint-solid); }
+  .ba-arrow svg { width: 22px; height: 22px; }
+
+  /* RUN tests */
+  .run-section { margin-bottom: 18px; }
+  .run-head { display: flex; align-items: center; gap: 11px; padding: 13px 16px; background: var(--panel-2); border: 1px solid var(--border); border-radius: 12px 12px 0 0; }
+  .run-head .rh-ic { width: 30px; height: 30px; border-radius: 8px; flex: none; display: grid; place-items: center; background: var(--accent-soft); color: var(--accent); }
+  .run-head .rh-ic svg { width: 16px; height: 16px; }
+  .run-head .rh-t { font-size: 14px; font-weight: 650; }
+  .run-head .rh-cmd { font-family: var(--mono); font-size: 11.5px; color: var(--faint-solid); margin-top: 1px; }
+  .run-head .rh-cmd .prompt { color: var(--pass); }
+  .run-head .rh-stat { margin-left: auto; }
+  .run-body { border: 1px solid var(--border); border-top: none; border-radius: 0 0 12px 12px; padding: 14px 16px; }
+  .res-stat { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; font-weight: 600; padding: 3px 10px; border-radius: 7px; }
+  .res-pass { color: var(--pass); background: var(--pass-bg); }
+  .res-fail { color: var(--fail); background: var(--fail-bg); }
+  .res-flaky { color: var(--flaky); background: var(--flaky-bg); }
+  .res-run { color: var(--accent); background: var(--accent-soft); }
+  .res-skip { color: var(--gray); background: rgba(139,148,167,0.16); }
+  .res-pending { color: var(--faint-solid); background: var(--inset); }
+
+  .meter-row { display: flex; gap: 18px; font-size: 12.5px; color: var(--dim); margin-bottom: 4px; }
+  .meter-row b { color: var(--text); font-family: var(--mono); }
+
+  /* evidence */
+  .evidence { display: flex; gap: 12px; flex-wrap: wrap; margin-top: 12px; }
+  .browser-frame { width: 280px; border: 1px solid var(--border-2); border-radius: 10px; overflow: hidden; background: var(--panel); }
+  .bf-bar { display: flex; align-items: center; gap: 6px; padding: 7px 10px; background: var(--panel-3); border-bottom: 1px solid var(--border); }
+  .bf-bar .dot { width: 8px; height: 8px; border-radius: 50%; }
+  .bf-bar .url { flex: 1; margin-left: 6px; font-family: var(--mono); font-size: 9.5px; color: var(--faint-solid); background: var(--inset); padding: 3px 8px; border-radius: 5px; }
+  .bf-screen { padding: 14px; min-height: 130px; background: linear-gradient(180deg, #0f1320, #0c0f18); position: relative; }
+  .mock-cart { font-size: 10px; color: var(--faint-solid); }
+  .mock-banner { display: flex; align-items: center; gap: 8px; background: var(--fail-bg); border: 1px solid rgba(251,113,133,0.4); color: #ffc9d2; border-radius: 8px; padding: 9px 11px; font-size: 11px; margin: 8px 0; }
+  .mock-banner svg { width: 14px; height: 14px; flex: none; color: var(--fail); }
+  .mock-row { height: 8px; border-radius: 4px; background: rgba(255,255,255,0.07); margin-bottom: 7px; }
+  .mock-row.w60 { width: 60%; } .mock-row.w80 { width: 80%; } .mock-row.w40 { width: 40%; }
+  .mock-btn { margin-top: 10px; height: 26px; border-radius: 6px; background: linear-gradient(160deg,#8b93ff,#5d68f0); width: 110px; }
+  .ev-cap { font-size: 10.5px; color: var(--faint-solid); margin-top: 8px; display: flex; align-items: center; gap: 6px; }
+  .ev-cap .vis-ok { color: var(--pass); }
+
+  .phone-frame { width: 150px; border: 2px solid var(--border-2); border-radius: 20px; overflow: hidden; background: #000; padding: 6px; }
+  .pf-notch { width: 44px; height: 5px; border-radius: 99px; background: #2a3142; margin: 2px auto 6px; }
+  .pf-screen { border-radius: 13px; overflow: hidden; background: linear-gradient(180deg,#0f1320,#0c0f18); padding: 12px 11px; min-height: 220px; position: relative; }
+  .pf-screen .ttl { font-size: 11px; color: var(--text); font-weight: 600; margin-bottom: 12px; text-align: center; }
+  .pf-field { background: var(--inset); border: 1px solid var(--border-2); border-radius: 7px; padding: 8px 9px; font-family: var(--mono); font-size: 9.5px; color: var(--text); margin-bottom: 8px; }
+  .pf-field .lbl { font-size: 7.5px; color: var(--faint-solid); display: block; margin-bottom: 2px; font-family: var(--sans); }
+  .pf-toast { background: var(--flaky-bg); border: 1px solid rgba(251,191,36,0.4); color: #f4dca0; border-radius: 7px; padding: 7px 8px; font-size: 8.5px; margin-bottom: 8px; display: flex; gap: 5px; align-items: center; }
+  .pf-toast svg { width: 11px; height: 11px; flex: none; }
+  .pf-btn { height: 24px; border-radius: 6px; background: linear-gradient(160deg,#8b93ff,#5d68f0); }
+  .device-log { flex: 1; min-width: 180px; background: var(--code-bg); border: 1px solid var(--border); border-radius: 10px; padding: 11px 13px; font-family: var(--mono); font-size: 10.5px; line-height: 1.7; color: var(--dim); }
+  .device-log .lt { color: var(--faint-solid); }
+  .device-log .ok { color: var(--pass); } .device-log .warn { color: var(--flaky); }
+
+  /* result matrix */
+  table.matrix { width: 100%; border-collapse: collapse; font-size: 12.5px; margin-top: 4px; }
+  table.matrix th { text-align: left; font-size: 10.5px; text-transform: uppercase; letter-spacing: 0.5px; color: var(--faint-solid); font-weight: 600; padding: 9px 12px; border-bottom: 1px solid var(--border); }
+  table.matrix td { padding: 11px 12px; border-bottom: 1px solid var(--border); color: var(--dim); vertical-align: middle; }
+  table.matrix tr:last-child td { border-bottom: none; }
+  table.matrix tr:hover td { background: rgba(255,255,255,0.018); }
+  table.matrix .tt { color: var(--text); font-weight: 550; }
+  table.matrix .ev-link { color: var(--accent); font-size: 11.5px; cursor: pointer; display: inline-flex; align-items: center; gap: 5px; }
+  table.matrix .ev-link:hover { text-decoration: underline; }
+  table.matrix .ev-link svg { width: 12px; height: 12px; }
+  table.matrix .mf { font-family: var(--mono); font-size: 11px; color: var(--faint-solid); }
+
+  /* coverage compare */
+  .cov-compare { display: grid; grid-template-columns: repeat(4,1fr); gap: 12px; }
+  .cov-c { background: var(--inset); border: 1px solid var(--border); border-radius: 11px; padding: 14px; }
+  .cov-c .cl { font-size: 11.5px; color: var(--dim); margin-bottom: 9px; }
+  .cov-c .cvals { display: flex; align-items: baseline; gap: 8px; }
+  .cov-c .before-v { font-family: var(--mono); font-size: 15px; color: var(--faint-solid); text-decoration: line-through; }
+  .cov-c .after-v { font-family: var(--mono); font-size: 24px; font-weight: 700; letter-spacing: -0.5px; }
+  .cov-c .delta { font-size: 11px; font-weight: 700; color: var(--pass); margin-left: auto; }
+  .cov-c .cbar { height: 6px; border-radius: 99px; background: rgba(255,255,255,0.06); margin-top: 11px; overflow: hidden; position: relative; }
+  .cov-c .cbar .bfill { position: absolute; left: 0; top: 0; bottom: 0; border-radius: 99px; background: var(--accent); }
+
+  /* failure card */
+  .fail-card { background: rgba(251,113,133,0.05); border: 1px solid rgba(251,113,133,0.28); border-radius: 12px; padding: 16px; margin-top: 14px; }
+  .fail-card .fh { display: flex; align-items: center; gap: 9px; font-size: 13.5px; font-weight: 650; color: var(--fail); margin-bottom: 12px; }
+  .fail-card .fh svg { width: 17px; height: 17px; }
+  .fail-card .frow { font-size: 12.5px; color: var(--dim); margin-bottom: 8px; line-height: 1.5; }
+  .fail-card .frow b { color: var(--text); font-weight: 600; display: inline-block; min-width: 96px; }
+  .fail-card .frow .mono { color: #ffc9d2; }
+  .fail-actions { display: flex; gap: 9px; flex-wrap: wrap; margin-top: 13px; }
+
+  /* REVIEW */
+  .rev-grid { display: grid; grid-template-columns: repeat(4,1fr); gap: 12px; margin-bottom: 20px; }
+  .rev-stat { background: var(--inset); border: 1px solid var(--border); border-radius: 11px; padding: 15px; position: relative; overflow: hidden; }
+  .rev-stat .bar { position: absolute; left: 0; top: 0; bottom: 0; width: 3px; }
+  .rev-stat .rv { font-size: 26px; font-weight: 700; letter-spacing: -0.8px; line-height: 1; }
+  .rev-stat .rl { font-size: 11.5px; color: var(--dim); margin-top: 7px; }
+  .rev-final { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; padding: 18px; background: var(--panel-2); border: 1px solid var(--border-2); border-radius: 12px; }
+  .rev-final .spacer { flex: 1; }
+  .recommend { display: flex; align-items: flex-start; gap: 11px; padding: 14px 16px; background: var(--pass-bg); border: 1px solid rgba(61,220,151,0.3); border-radius: 12px; margin-bottom: 18px; font-size: 13px; color: #b6f0d4; line-height: 1.5; }
+  .recommend svg { width: 18px; height: 18px; flex: none; color: var(--pass); margin-top: 1px; }
+  .recommend b { color: #d6fae8; }
+
+  /* RIGHT CONTEXT */
+  .ctx-side { border-left: 1px solid var(--border); padding: 22px 18px; position: sticky; top: 57px; align-self: start; height: calc(100vh - 57px); overflow-y: auto; display: flex; flex-direction: column; gap: 20px; }
+  .ctx-card .cc-h { font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.7px; color: var(--faint-solid); margin-bottom: 12px; display: flex; align-items: center; gap: 8px; }
+  .ctx-card .cc-h svg { width: 14px; height: 14px; color: var(--accent); }
+  .ctx-target { background: var(--accent-soft); border: 1px solid rgba(129,140,248,0.25); border-radius: 11px; padding: 13px; }
+  .ctx-target .tt { font-size: 14px; font-weight: 650; color: #fff; }
+  .ctx-target .ts { font-size: 11.5px; color: var(--dim); margin-top: 3px; }
+  .ctx-mini-files { display: flex; flex-direction: column; gap: 7px; }
+  .ctx-mini-files .mf { font-family: var(--mono); font-size: 11px; color: var(--dim); display: flex; align-items: center; gap: 7px; }
+  .ctx-mini-files .mf svg { width: 12px; height: 12px; flex: none; opacity: 0.6; }
+  .ctx-types { display: flex; flex-wrap: wrap; gap: 6px; }
+  .ctx-type { font-size: 11px; font-family: var(--mono); padding: 4px 9px; border-radius: 6px; background: var(--panel-2); border: 1px solid var(--border); color: var(--dim); }
+  .ctx-empty { font-size: 12px; color: var(--faint-solid); font-style: italic; }
+  .risk-meter { display: flex; align-items: center; gap: 10px; }
+  .risk-meter .rm-circle { width: 44px; height: 44px; border-radius: 50%; flex: none; display: grid; place-items: center; font-weight: 700; font-size: 15px; }
+  .risk-meter .rm-t { font-size: 12.5px; }
+  .risk-meter .rm-t b { display: block; font-size: 13px; }
+  .ctx-cov { display: flex; align-items: baseline; gap: 8px; }
+  .ctx-cov .cb { font-family: var(--mono); color: var(--faint-solid); text-decoration: line-through; font-size: 13px; }
+  .ctx-cov .ca { font-family: var(--mono); font-size: 20px; font-weight: 700; color: var(--pass); }
+  .ctx-cov .cd { font-size: 11px; color: var(--pass); font-weight: 700; margin-left: auto; }
+  .ctx-q { font-size: 12px; color: var(--dim); padding: 9px 0; border-bottom: 1px solid var(--border); line-height: 1.4; }
+  .ctx-q:last-child { border-bottom: none; }
+  .ctx-q .qa-ans { color: var(--suspect); font-weight: 600; }
+  .ctx-q.pending { color: var(--faint-solid); }
+
+  /* TOAST */
+  .toast-wrap { position: fixed; bottom: 24px; left: 50%; transform: translateX(-50%); z-index: 100; display: flex; flex-direction: column; gap: 10px; align-items: center; pointer-events: none; }
+  .toast { display: flex; align-items: center; gap: 11px; background: var(--panel-3); border: 1px solid var(--border-2); padding: 12px 16px; border-radius: 11px; box-shadow: 0 12px 40px rgba(0,0,0,0.55); font-size: 13px; color: var(--text); animation: toastin 0.3s cubic-bezier(0.2,0.8,0.3,1); min-width: 240px; }
+  @keyframes toastin { from { opacity: 0; transform: translateY(14px) scale(0.96); } to { opacity: 1; transform: none; } }
+  .toast.out { animation: toastout 0.3s ease forwards; }
+  @keyframes toastout { to { opacity: 0; transform: translateY(10px) scale(0.97); } }
+  .toast .spin2 { width: 16px; height: 16px; border-radius: 50%; border: 2px solid rgba(129,140,248,0.3); border-top-color: var(--accent); animation: spin 0.7s linear infinite; flex: none; }
+  .toast .ok { color: var(--pass); display: grid; place-items: center; }
+  .toast .ok svg { width: 17px; height: 17px; }
+
+  @media (max-width: 1320px) { .shell { grid-template-columns: 200px minmax(0,1fr); } .ctx-side { display: none; } }
+  @media (max-width: 920px) { .shell { grid-template-columns: 1fr; } .wf-side { display: none; } .grid-2, .ba, .cov-compare, .rev-grid { grid-template-columns: 1fr; } .ba-arrow { transform: rotate(90deg); } }
+</style>
+</head>
+<body>
+
+<header class="topbar">
+  <div class="brand">
+    <div class="logo"><svg viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="10.5" cy="10.5" r="6.5"/><path d="M15.5 15.5L21 21"/><path d="M8 10.5l1.8 1.8L13.5 8.5"/></svg></div>
+    <div class="name"><b>Test</b>Lens</div>
+  </div>
+  <div class="repo-meta">
+    <span class="chip"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 3h11l5 5v13H4z"/><path d="M15 3v5h5"/></svg>checkout-service</span>
+    <span class="chip branch"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="6" cy="6" r="2.5"/><circle cx="6" cy="18" r="2.5"/><circle cx="18" cy="8" r="2.5"/><path d="M6 8.5v7M18 10.5c0 4-6 2-6 5.5"/></svg>feature/coupon-refactor</span>
+  </div>
+  <div class="wf-status"><span class="wb" id="wfStatusBadge"><span class="pdot"></span><span id="wfStatusText">Intent</span></span></div>
+  <div class="top-right">
+    <button class="btn ghost" data-toast="Workflow saved as draft">Save draft</button>
+    <button class="btn" id="backDash"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 12H5M11 6l-6 6 6 6"/></svg>Back to Dashboard</button>
+  </div>
+</header>
+
+<div class="shell">
+  <!-- WORKFLOW SIDEBAR -->
+  <nav class="wf-side">
+    <div class="wf-h">Workflow</div>
+    <div id="wfSteps"></div>
+    <div class="safety-note">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l7 3v6c0 5-3.5 7.5-7 9-3.5-1.5-7-4-7-9V6z"/><path d="M9 12l2 2 4-4"/></svg>
+      <b>Production code changes require approval.</b> Test file changes are fully reviewable before apply.
+    </div>
+  </nav>
+
+  <!-- MAIN -->
+  <div class="main" id="main">
+
+    <!-- S1 INTENT -->
+    <section class="step-panel active" data-step="0">
+      <div class="step-hd">
+        <div class="eyebrow">Step 1 — Intent</div>
+        <h1>What testing do you want to improve?</h1>
+        <p>Describe a goal in plain language. TestLens first <b style="color:var(--text)">isolates behavior, classifies risk, and confirms a plan</b> — then writes and runs tests with your approval.</p>
+      </div>
+
+      <div class="prompt-box">
+        <textarea id="promptInput" placeholder="e.g. Improve tests for the coupon feature — focus on expired coupons and edge cases…"></textarea>
+        <div class="prompt-foot">
+          <div class="pf-select">
+            <select class="fselect" id="featSelect">
+              <option value="">Select feature / module…</option>
+              <option selected>Coupon</option><option>Checkout</option><option>Payment</option><option>Order Summary</option><option>User Session</option>
+            </select>
+          </div>
+          <span class="spacer" style="flex:1"></span>
+          <button class="btn primary lg" id="analyzeBtn"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="7"/><path d="M21 21l-4-4"/></svg>Analyze</button>
+        </div>
+      </div>
+
+      <div class="opt-row">
+        <div class="opt-label">Test types to consider</div>
+        <div class="chips" id="typeChips"></div>
+      </div>
+      <div class="opt-row">
+        <div class="opt-label">Source context to use</div>
+        <div class="chips" id="srcChips"></div>
+      </div>
+
+      <div class="blk" style="margin-top:26px;">
+        <div class="blk-h"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M13 3L4 14h7l-1 7 9-11h-7z"/></svg>Quick actions from dashboard insights</div>
+        <div class="qa-grid" id="quickActions"></div>
+      </div>
+    </section>
+
+    <!-- S2 ISOLATION -->
+    <section class="step-panel" data-step="1">
+      <div class="step-hd">
+        <div class="eyebrow">Step 2 — Isolation &amp; Classification</div>
+        <h1>Here's the behavior I've isolated</h1>
+        <p>TestLens scoped your request to the <b style="color:var(--text)">Coupon</b> module and classified what should be tested by status and risk.</p>
+      </div>
+
+      <div class="grid-2 blk">
+        <div class="info-card">
+          <div class="blk-h"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M8 9l-4 3 4 3M16 9l4 3-4 3M14 5l-4 14"/></svg>Source &amp; existing tests</div>
+          <div id="isoSource"></div>
+        </div>
+        <div class="info-card">
+          <div class="blk-h"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M7 3h7l4 4v14H7z"/><path d="M9 12h7M9 16h5"/></svg>Specs &amp; QC test cases</div>
+          <div id="isoSpecs"></div>
+        </div>
+      </div>
+
+      <div class="grid-auto blk">
+        <div class="info-card">
+          <div class="opt-label">Current coverage</div>
+          <div style="display:flex;align-items:baseline;gap:8px;margin-top:6px;"><span class="mono" style="font-size:24px;font-weight:700;color:var(--flaky)">64%</span><span style="font-size:12px;color:var(--faint-solid)">line · 52% branch</span></div>
+        </div>
+        <div class="info-card">
+          <div class="opt-label">Current test status</div>
+          <div style="display:flex;gap:6px;margin-top:8px;flex-wrap:wrap;"><span class="badge st-Failed">1 failed</span><span class="badge st-Suspicious">1 suspicious</span><span class="badge st-Missing">4 missing</span></div>
+        </div>
+        <div class="info-card">
+          <div class="opt-label">Detected user journeys</div>
+          <div style="font-size:12.5px;color:var(--dim);margin-top:7px;line-height:1.5;">Apply coupon → checkout → pay · Expired coupon error · Stacked coupon block</div>
+        </div>
+      </div>
+
+      <div class="blk">
+        <div class="blk-h"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 3h7v7H3zM14 3h7v7h-7zM3 14h7v7H3zM14 14h7v7h-7z"/></svg>Behavior classification <span class="n" id="clsCount"></span></div>
+        <div class="cls-grid" id="clsGrid"></div>
+      </div>
+
+      <div class="approve-bar">
+        <button class="btn ghost" data-back><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 12H5M11 6l-6 6 6 6"/></svg>Back</button>
+        <span class="spacer"></span>
+        <span style="font-size:12px;color:var(--faint-solid)">5 areas need attention · 2 high risk</span>
+        <button class="btn primary lg" id="genPlanBtn">Generate Test Plan<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14M13 6l6 6-6 6"/></svg></button>
+      </div>
+    </section>
+
+    <!-- S3 PLAN -->
+    <section class="step-panel" data-step="2">
+      <div class="step-hd">
+        <div class="eyebrow">Step 3 — Confirmation &amp; Plan</div>
+        <h1>Review the plan before I touch any files</h1>
+        <p>Nothing is written yet. Approve, edit, or narrow the scope — and answer a few questions so the generated tests match your product spec.</p>
+      </div>
+
+      <div class="grid-2 blk">
+        <div>
+          <div class="blk-h"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 01-2 2H5a2 2 0 01-2-2V5a2 2 0 012-2h11"/></svg>Proposed actions</div>
+          <div class="pa-list" id="planActions"></div>
+        </div>
+        <div>
+          <div class="blk-h"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10.3 4l-7 12.5A1.5 1.5 0 004.6 19h14.8a1.5 1.5 0 001.3-2.5L13.7 4a1.5 1.5 0 00-3.4 0z"/><path d="M12 9v4"/></svg>Risk assessment</div>
+          <div class="info-card" id="planRisk"></div>
+          <div class="blk-h" style="margin-top:18px;"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 6h16M4 12h16M4 18h10"/></svg>Files likely to change</div>
+          <div class="info-card" id="planFiles"></div>
+        </div>
+      </div>
+
+      <div class="blk">
+        <div class="blk-h"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M9.5 9a2.5 2.5 0 015 0c0 1.5-2.5 2-2.5 3.5M12 17v.5"/></svg>Questions before I write tests <span class="n">answer inline</span></div>
+        <div id="aiQuestions"></div>
+      </div>
+
+      <div class="approve-bar">
+        <button class="btn ghost" data-back><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 12H5M11 6l-6 6 6 6"/></svg>Back</button>
+        <button class="btn ghost" data-toast="Plan editor opened — adjust scope &amp; targets">Edit Plan</button>
+        <button class="btn" data-toast="UI tests removed from this run" id="skipUiBtn">Skip UI Tests</button>
+        <button class="btn" data-toast="Scope narrowed to unit tests only" id="unitOnlyBtn">Unit Tests Only</button>
+        <span class="spacer"></span>
+        <button class="btn danger" id="cancelBtn">Cancel</button>
+        <button class="btn primary lg" id="approveBtn"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12l4 4 10-10"/></svg>Approve Plan</button>
+      </div>
+    </section>
+
+    <!-- S4 GENERATE -->
+    <section class="step-panel" data-step="3">
+      <div class="step-hd">
+        <div class="eyebrow">Step 4 — Generate Changes</div>
+        <h1>Writing &amp; updating tests</h1>
+        <p>Agent activity is shown live. Every change below is a proposal — <b style="color:var(--text)">nothing is applied to your repo yet</b>.</p>
+      </div>
+
+      <div class="grid-2 blk" style="grid-template-columns: 280px 1fr; align-items:start;">
+        <div class="info-card" style="position:sticky;top:74px;">
+          <div class="blk-h"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 7v5l3 2"/><circle cx="12" cy="12" r="9"/></svg>Agent activity</div>
+          <div class="gen-timeline" id="genTimeline"></div>
+        </div>
+        <div>
+          <div class="filter-bar" id="changeFilters"></div>
+          <div id="changeCards"></div>
+        </div>
+      </div>
+
+      <div class="blk">
+        <div class="blk-h"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 12h7M11 5l-7 7 7 7M20 12h-9"/></svg>Before / After</div>
+        <div class="ba">
+          <div class="ba-col before">
+            <div class="bh"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 6l12 12M18 6L6 18"/></svg>Before</div>
+            <ul>
+              <li><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M6 6l12 12M18 6L6 18"/></svg>Missing expired-coupon, stacking &amp; rounding edge cases</li>
+              <li><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M6 6l12 12M18 6L6 18"/></svg>No UI / visual coverage for the checkout error banner</li>
+              <li><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M6 6l12 12M18 6L6 18"/></svg>Suspicious test asserts a generic error vs. the spec's specific message</li>
+              <li><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M6 6l12 12M18 6L6 18"/></svg>Branch coverage only 52%</li>
+            </ul>
+          </div>
+          <div class="ba-arrow"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14M13 6l6 6-6 6"/></svg></div>
+          <div class="ba-col after">
+            <div class="bh"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12l4 4 10-10"/></svg>After</div>
+            <ul>
+              <li><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12l4 4 10-10"/></svg>Added 4 unit tests covering expired, stacked &amp; rounding paths</li>
+              <li><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12l4 4 10-10"/></svg>Added 3 UI/visual tests for the checkout error flow</li>
+              <li><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12l4 4 10-10"/></svg>Corrected expected message to match <span class="mono" style="color:inherit">Coupon Rules.md</span></li>
+              <li><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12l4 4 10-10"/></svg>Projected branch coverage 58%, changed-files 72%</li>
+            </ul>
+          </div>
+        </div>
+      </div>
+
+      <div class="approve-bar">
+        <button class="btn ghost" data-back><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 12H5M11 6l-6 6 6 6"/></svg>Back</button>
+        <span class="spacer"></span>
+        <span style="font-size:12px;color:var(--faint-solid)" id="genSummary"></span>
+        <button class="btn primary lg" id="runTestsBtn" disabled><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 3l14 9-14 9z"/></svg>Run Tests</button>
+      </div>
+    </section>
+
+    <!-- S5 RUN -->
+    <section class="step-panel" data-step="4">
+      <div class="step-hd">
+        <div class="eyebrow">Step 5 — Run Tests</div>
+        <h1>Executing the new &amp; updated tests</h1>
+        <p>Unit, UI/browser, and mobile suites run with full evidence — screenshots, traces, device logs, and coverage deltas.</p>
+      </div>
+
+      <!-- UNIT -->
+      <div class="run-section">
+        <div class="run-head">
+          <div class="rh-ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l8 4.5v9L12 21l-8-4.5v-9z"/></svg></div>
+          <div><div class="rh-t">Unit Tests</div><div class="rh-cmd"><span class="prompt">$</span> npm test -- coupon.test.ts</div></div>
+          <div class="rh-stat"><span class="res-stat res-pending" id="unitStat">Pending</span></div>
+        </div>
+        <div class="run-body">
+          <div class="meter-row"><span>Tests: <b id="unitCount">—</b></span><span>Duration: <b id="unitDur">—</b></span><span>Suite: <b>couponRules.test.ts</b></span></div>
+        </div>
+      </div>
+
+      <!-- UI / BROWSER -->
+      <div class="run-section">
+        <div class="run-head">
+          <div class="rh-ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="14" rx="2"/><path d="M3 8h18M7 21h10"/></svg></div>
+          <div><div class="rh-t">UI / Browser Tests <span style="font-size:11px;color:var(--faint-solid);font-weight:400">· Chromium · Playwright</span></div><div class="rh-cmd"><span class="prompt">$</span> npx playwright test checkout-coupon.spec.ts</div></div>
+          <div class="rh-stat"><span class="res-stat res-pending" id="uiStat">Pending</span></div>
+        </div>
+        <div class="run-body">
+          <div class="meter-row"><span>Tests: <b id="uiCount">—</b></span><span>Duration: <b id="uiDur">—</b></span><span>Visual diff: <b id="uiVisual">—</b></span></div>
+          <div class="evidence" id="uiEvidence" style="display:none;">
+            <div class="browser-frame">
+              <div class="bf-bar"><span class="dot" style="background:#fb7185"></span><span class="dot" style="background:#fbbf24"></span><span class="dot" style="background:#3ddc97"></span><span class="url">localhost:3000/checkout</span></div>
+              <div class="bf-screen">
+                <div class="mock-cart">CART · 2 items · coupon: SAVE15</div>
+                <div class="mock-banner"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 8v5M12 16v.5"/><circle cx="12" cy="12" r="9"/></svg>This coupon expired on Mar 14, 2026</div>
+                <div class="mock-row w80"></div><div class="mock-row w60"></div>
+                <div class="mock-btn"></div>
+              </div>
+            </div>
+            <div class="device-log" style="max-width:240px;">
+              <div class="ev-cap" style="margin:0 0 8px;"><span class="vis-ok">✓ Visual match 99.8%</span> vs. approved baseline</div>
+              <div><span class="lt">12:04:18</span> <span class="ok">✓</span> error banner visible</div>
+              <div><span class="lt">12:04:18</span> <span class="ok">✓</span> message text matches spec</div>
+              <div><span class="lt">12:04:19</span> <span class="ok">✓</span> pay button disabled</div>
+              <div><span class="lt">12:04:19</span> trace saved → <span style="color:var(--accent)">trace.zip</span></div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- MOBILE -->
+      <div class="run-section">
+        <div class="run-head">
+          <div class="rh-ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="6" y="3" width="12" height="18" rx="2.5"/><path d="M11 18h2"/></svg></div>
+          <div><div class="rh-t">Mobile Tests <span style="font-size:11px;color:var(--faint-solid);font-weight:400">· iPhone 15 · Pixel 7</span></div><div class="rh-cmd"><span class="prompt">$</span> npm run test:mobile -- login-retry</div></div>
+          <div class="rh-stat"><span class="res-stat res-pending" id="mobStat">Pending</span></div>
+        </div>
+        <div class="run-body">
+          <div class="meter-row"><span>Tests: <b id="mobCount">—</b></span><span>Duration: <b id="mobDur">—</b></span><span>Network: <b>Slow 3G (throttled)</b></span></div>
+          <div class="evidence" id="mobEvidence" style="display:none;">
+            <div class="phone-frame">
+              <div class="pf-notch"></div>
+              <div class="pf-screen">
+                <div class="ttl">Sign in</div>
+                <div class="pf-field"><span class="lbl">Phone</span>+1 (555) 0148-22</div>
+                <div class="pf-toast"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 8v5M12 16v.5"/><circle cx="12" cy="12" r="9"/></svg>Network error — retrying…</div>
+                <div class="pf-field"><span class="lbl">Code</span>· · · · · ·</div>
+                <div class="pf-btn"></div>
+              </div>
+            </div>
+            <div class="device-log">
+              <div class="ev-cap" style="margin:0 0 8px;"><span class="vis-ok">✓ Input preserved after retry</span></div>
+              <div><span class="lt">iPhone 15</span> <span class="ok">✓</span> phone number retained on network drop</div>
+              <div><span class="lt">iPhone 15</span> <span class="ok">✓</span> retry triggered automatically</div>
+              <div><span class="lt">Pixel 7</span> <span class="warn">!</span> retry delayed 1.2s on Slow 3G</div>
+              <div><span class="lt">Pixel 7</span> <span class="ok">✓</span> input preserved · screenshot saved</div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- COVERAGE -->
+      <div class="blk" style="margin-top:22px;">
+        <div class="blk-h"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 3v18h18"/><path d="M7 14l4-4 3 3 5-6"/></svg>Coverage — before → after</div>
+        <div class="cov-compare" id="covCompare"></div>
+      </div>
+
+      <!-- MATRIX -->
+      <div class="blk">
+        <div class="blk-h"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 5h18M3 12h18M3 19h18"/></svg>Test result matrix</div>
+        <div class="info-card" style="padding:4px 8px;"><table class="matrix" id="matrix"></table></div>
+      </div>
+
+      <div id="failCardSlot"></div>
+
+      <div class="approve-bar">
+        <button class="btn ghost" data-back><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 12H5M11 6l-6 6 6 6"/></svg>Back</button>
+        <span class="spacer"></span>
+        <button class="btn primary lg" id="toReviewBtn" disabled>Review &amp; Apply<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14M13 6l6 6-6 6"/></svg></button>
+      </div>
+    </section>
+
+    <!-- S6 REVIEW -->
+    <section class="step-panel" data-step="5">
+      <div class="step-hd">
+        <div class="eyebrow">Step 6 — Review &amp; Apply</div>
+        <h1>Review the full change set</h1>
+        <p>You're in control. Apply changes to your working tree, open a PR, or revert everything — <b style="color:var(--text)">TestLens never commits without your action</b>.</p>
+      </div>
+
+      <div class="recommend">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 01-2 2H5a2 2 0 01-2-2V5a2 2 0 012-2h11"/></svg>
+        <span><b>Recommended: Apply changes.</b> 10 of 11 tests pass, coverage is up across the board, and the suspicious test now matches <span class="mono" style="color:inherit">Coupon Rules.md</span>. One Pixel-7 mobile test is flaky on Slow 3G — tracked but non-blocking.</span>
+      </div>
+
+      <div class="rev-grid" id="revGrid"></div>
+
+      <div class="grid-2 blk">
+        <div class="info-card">
+          <div class="blk-h"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 6h16M4 12h16M4 18h10"/></svg>Files changed <span class="n">6</span></div>
+          <div id="revFiles"></div>
+        </div>
+        <div class="info-card">
+          <div class="blk-h"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10.3 4l-7 12.5A1.5 1.5 0 004.6 19h14.8a1.5 1.5 0 001.3-2.5L13.7 4z"/><path d="M12 9v4"/></svg>Remaining risk &amp; open questions</div>
+          <div style="margin-top:4px;">
+            <div class="risk-row"><span class="rk">Pixel 7 retry timing on Slow 3G</span><span class="rv yes">Flaky · tracked</span></div>
+            <div class="risk-row"><span class="rk">Production code changes</span><span class="rv no">None</span></div>
+            <div class="risk-row"><span class="rk">Open questions</span><span class="rv no">0 unanswered</span></div>
+            <div class="risk-row"><span class="rk">Visual baselines</span><span class="rv opt">1 new · approve on apply</span></div>
+          </div>
+        </div>
+      </div>
+
+      <div class="rev-final">
+        <button class="btn danger" id="revertBtn"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 12a8 8 0 108-8" /><path d="M4 4v4h4"/></svg>Revert All</button>
+        <button class="btn" data-toast="Test plan exported · testlens-plan.md"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v12M8 11l4 4 4-4M5 21h14"/></svg>Export Test Plan</button>
+        <span class="spacer"></span>
+        <button class="btn" data-toast="Branch pushed · PR #248 opened for review"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="6" cy="6" r="2.5"/><circle cx="6" cy="18" r="2.5"/><circle cx="18" cy="8" r="2.5"/><path d="M6 8.5v7M18 10.5c0 4-6 2-6 5.5"/></svg>Create PR</button>
+        <button class="btn primary lg" id="applyBtn"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12l4 4 10-10"/></svg>Apply Changes</button>
+      </div>
+    </section>
+
+  </div>
+
+  <!-- RIGHT CONTEXT -->
+  <aside class="ctx-side">
+    <div class="ctx-card">
+      <div class="cc-h"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><circle cx="12" cy="12" r="9"/></svg>Target</div>
+      <div class="ctx-target"><div class="tt" id="ctxTarget">Coupon</div><div class="ts" id="ctxTargetSub">Module · checkout-service</div></div>
+    </div>
+    <div class="ctx-card">
+      <div class="cc-h"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10.3 4l-7 12.5A1.5 1.5 0 004.6 19h14.8a1.5 1.5 0 001.3-2.5L13.7 4z"/></svg>Risk summary</div>
+      <div class="risk-meter"><div class="rm-circle" id="ctxRiskCircle" style="background:var(--flaky-bg);color:var(--flaky)">M</div><div class="rm-t"><b id="ctxRiskLabel">Medium overall</b><span style="color:var(--faint-solid)">2 high · 1 critical area</span></div></div>
+    </div>
+    <div class="ctx-card">
+      <div class="cc-h"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l8 4.5v9L12 21l-8-4.5v-9z"/></svg>Selected test types</div>
+      <div class="ctx-types" id="ctxTypes"></div>
+    </div>
+    <div class="ctx-card">
+      <div class="cc-h"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 6h16M4 12h16M4 18h10"/></svg>Related files</div>
+      <div class="ctx-mini-files" id="ctxFiles"></div>
+    </div>
+    <div class="ctx-card">
+      <div class="cc-h"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M9.5 9a2.5 2.5 0 015 0c0 1.5-2.5 2-2.5 3.5M12 17v.5"/></svg>AI questions</div>
+      <div id="ctxQuestions"></div>
+    </div>
+    <div class="ctx-card">
+      <div class="cc-h"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 3v18h18M7 14l4-4 3 3 5-6"/></svg>Coverage delta</div>
+      <div class="ctx-cov"><span class="cb">64%</span><span class="ca" id="ctxCovAfter">64%</span><span class="cd" id="ctxCovDelta">line cov</span></div>
+    </div>
+  </aside>
+</div>
+
+<div class="toast-wrap" id="toastWrap"></div>
+
+<script>
+/* ============ TestLens Workbench — mock data ============ */
+const WF_STEPS = [
+  { id:"intent",   title:"Intent",    sub:"Describe goal" },
+  { id:"isolation",title:"Isolation", sub:"Scope & classify" },
+  { id:"plan",     title:"Plan",      sub:"Confirm actions" },
+  { id:"generate", title:"Generate",  sub:"Write tests" },
+  { id:"run",      title:"Run",       sub:"Execute & evidence" },
+  { id:"review",   title:"Review",    sub:"Apply changes" },
+];
+
+const TEST_TYPES = [
+  { k:"Unit",      ic:'<path d="M12 3l8 4.5v9L12 21l-8-4.5v-9z"/>' },
+  { k:"Integration",ic:'<circle cx="7" cy="7" r="3"/><circle cx="17" cy="17" r="3"/><path d="M9.5 9.5l5 5"/>' },
+  { k:"Contract",  ic:'<path d="M7 3h7l4 4v14H7z"/><path d="M9 12h7M9 16h5"/>' },
+  { k:"UI / Browser", ic:'<rect x="3" y="4" width="18" height="14" rx="2"/><path d="M3 8h18M7 21h10"/>' },
+  { k:"Visual Screenshot", ic:'<rect x="3" y="5" width="18" height="14" rx="2"/><circle cx="9" cy="11" r="2"/><path d="M3 17l5-4 4 3 3-2 6 5"/>' },
+  { k:"Mobile", ic:'<rect x="6" y="3" width="12" height="18" rx="2.5"/><path d="M11 18h2"/>' },
+  { k:"Regression", ic:'<path d="M4 12a8 8 0 108-8"/><path d="M4 4v4h4"/>' },
+  { k:"Edge Case", ic:'<path d="M12 3l9 16H3z"/>' },
+];
+
+const SOURCES = [
+  "Codebase", "Product specs / wiki", "QC test cases", "Existing automated tests", "Coverage report", "Previous failed runs",
+];
+
+const QUICK_ACTIONS = [
+  { t:"Generate 4 missing coupon edge-case tests", m:"Coupon · Unit + Edge", sev:"high", types:["Unit","Edge Case"], feat:"Coupon", ic:'<path d="M12 7v10M7 12h10"/>', col:"var(--missing)", bg:"var(--missing-bg)" },
+  { t:"Fix 2 suspicious payment tests", m:"Payment · vs. spec", sev:"high", types:["Integration","Contract"], feat:"Payment", ic:'<path d="M10.3 4l-7 12.5A1.5 1.5 0 004.6 19h14.8a1.5 1.5 0 001.3-2.5L13.7 4z"/><path d="M12 9v4"/>', col:"var(--suspect)", bg:"var(--suspect-bg)" },
+  { t:"Add UI coverage for checkout failure flow", m:"Checkout · UI / Visual", sev:"medium", types:["UI / Browser","Visual Screenshot"], feat:"Checkout", ic:'<rect x="3" y="4" width="18" height="14" rx="2"/><path d="M3 8h18"/>', col:"var(--accent)", bg:"var(--accent-soft)" },
+  { t:"Improve branch coverage in OrderSummary", m:"Order Summary · Unit", sev:"medium", types:["Unit","Regression"], feat:"Order Summary", ic:'<path d="M3 3v18h18M7 14l4-4 3 3 5-6"/>', col:"var(--flaky)", bg:"var(--flaky-bg)" },
+  { t:"Add mobile smoke test for login", m:"User Session · Mobile", sev:"high", types:["Mobile"], feat:"User Session", ic:'<rect x="6" y="3" width="12" height="18" rx="2.5"/><path d="M11 18h2"/>', col:"var(--pass)", bg:"var(--pass-bg)" },
+];
+
+const ISO_SOURCE = [
+  { p:"src/features/coupon/couponRules.ts", t:"src", meta:"412 LOC", col:"var(--accent)", bg:"var(--accent-soft)" },
+  { p:"src/features/checkout/CheckoutPage.tsx", t:"src", meta:"308 LOC", col:"var(--accent)", bg:"var(--accent-soft)" },
+  { p:"src/features/coupon/couponRules.test.ts", t:"test", meta:"6 tests", col:"var(--pass)", bg:"var(--pass-bg)" },
+  { p:"e2e/checkout/checkout-flow.spec.ts", t:"test", meta:"4 specs", col:"var(--pass)", bg:"var(--pass-bg)" },
+];
+const ISO_SPECS = [
+  { p:"Coupon Rules.md", t:"spec", meta:"product spec", col:"var(--missing)", bg:"var(--missing-bg)" },
+  { p:"Checkout Flow Spec.pdf", t:"spec", meta:"product spec", col:"var(--fail)", bg:"var(--fail-bg)" },
+  { p:"QC-102 · Expired coupon → specific error", t:"qc", meta:"High", col:"var(--flaky)", bg:"var(--flaky-bg)" },
+  { p:"QC-118 · Stacking blocked", t:"qc", meta:"Medium", col:"var(--flaky)", bg:"var(--flaky-bg)" },
+];
+
+const CLASSIFICATION = [
+  { t:"Expired coupon", status:"Missing", type:"Edge Case + UI", risk:"High", e:"Spec requires a specific \u201cCoupon expired\u201d message; no test asserts it today." },
+  { t:"Payment API timeout", status:"Weak", type:"Integration + UI", risk:"Critical", e:"Only a single retry is exercised; spec mandates 3 retries without clearing the cart." },
+  { t:"Order total rounding", status:"Missing", type:"Unit", risk:"Medium", e:"No coverage for banker's rounding on multi-currency totals." },
+  { t:"Checkout button loading state", status:"Weak", type:"UI / Browser", risk:"Medium", e:"Loading & disabled states aren't asserted during async submit." },
+  { t:"Login retry on mobile network error", status:"Missing", type:"Mobile", risk:"High", e:"Input persistence after a dropped connection is untested on devices." },
+  { t:"Apply valid coupon", status:"Covered", type:"Unit", risk:"Low", e:"Happy-path discount calculation is well covered." },
+  { t:"Coupon stacking blocked", status:"Missing", type:"Edge Case", risk:"Medium", e:"No test prevents applying two coupons when stacking is disabled." },
+  { t:"Generic coupon error message", status:"Suspicious", type:"Unit", risk:"High", e:"Asserts a generic error string that contradicts the product spec." },
+];
+
+const PLAN_ACTIONS = [
+  { act:"add", t:"Add unit tests", c:4, ic:'<path d="M12 5v14M5 12h14"/>' },
+  { act:"add", t:"Add UI / browser tests", c:3, ic:'<path d="M12 5v14M5 12h14"/>' },
+  { act:"add", t:"Add mobile tests", c:2, ic:'<path d="M12 5v14M5 12h14"/>' },
+  { act:"update", t:"Update suspicious tests", c:2, ic:'<path d="M4 4v6h6M20 20v-6h-6"/><path d="M20 9A8 8 0 006 5M4 15a8 8 0 0014 4"/>' },
+  { act:"delete", t:"Delete outdated tests", c:1, ic:'<path d="M5 7h14M9 7V5h6v2M6 7l1 13h10l1-13"/>' },
+  { act:"run", t:"Run related + coverage", c:"·", ic:'<path d="M5 3l14 9-14 9z"/>' },
+];
+const PLAN_RISK = [
+  { k:"Production code changes", v:"Not expected", c:"no" },
+  { k:"Test data / fixture changes", v:"Yes", c:"yes" },
+  { k:"Browser automation required", v:"Yes", c:"yes" },
+  { k:"Mobile simulator required", v:"Optional", c:"opt" },
+  { k:"External API mocking", v:"Required", c:"req" },
+];
+const PLAN_FILES = [
+  "src/features/coupon/couponRules.test.ts",
+  "e2e/checkout/coupon-expired.spec.ts",
+  "e2e/checkout/error-banner.visual.spec.ts",
+  "mobile/login-retry.spec.ts",
+  "src/features/payment/paymentService.test.ts",
+];
+
+const AI_QUESTIONS = [
+  { q:"Should expired coupons show a generic error or the specific \u201cCoupon expired\u201d message?", opts:["Specific message (per spec)","Generic error"], def:0 },
+  { q:"Should a payment timeout allow retry without clearing the cart?", opts:["Keep cart, allow retry","Clear cart on timeout"], def:0 },
+  { q:"Should mobile login retry happen automatically or require user action?", opts:["Automatic retry","Require user tap"], def:0 },
+];
+
+const GEN_TIMELINE = [
+  "Reading source files",
+  "Reading existing tests",
+  "Reading product spec — Coupon Rules.md",
+  "Creating unit test cases",
+  "Updating mocks & API stubs",
+  "Adding test fixtures",
+  "Adding UI browser flow",
+  "Capturing visual screenshots",
+  "Updating mobile test scenario",
+  "Cleaning outdated test",
+  "Generating final diff",
+];
+
+const CHANGES = [
+  { act:"Add", type:"Unit", title:"should reject expired coupon with specific error message", file:"src/features/coupon/couponRules.test.ts", feat:"Coupon", risk:"High", reason:"Covers <b>QC-102</b> & Coupon Rules.md — asserts the exact \u201cCoupon expired\u201d copy.",
+    diff:[["meta","+ describe('expired coupon', () => {"],["add","+  it('rejects with specific message', () => {"],["add","+    expect(apply('SAVE15', expired)).toThrow('Coupon expired on …')"],["add","+  })"],["meta","+ })"]] },
+  { act:"Add", type:"Unit", title:"blocks stacking when stacking is disabled", file:"src/features/coupon/couponRules.test.ts", feat:"Coupon", risk:"Medium", reason:"No test prevented applying two coupons when stacking is off.",
+    diff:[["add","+ it('rejects a second coupon when stacking disabled', () => {"],["add","+   expect(() => applyMany(['A','B'])).toThrow('Stacking not allowed')"],["add","+ })"]] },
+  { act:"Add", type:"Unit", title:"applies banker's rounding on multi-currency totals", file:"src/features/order/OrderSummary.test.tsx", feat:"Order Summary", risk:"Medium", reason:"Branch coverage gap on tax-line rounding mode.",
+    diff:[["add","+ it('uses banker rounding for tax lines', () => {"],["add","+   expect(roundTax(2.005)).toBe(2.00)"],["add","+ })"]] },
+  { act:"Add", type:"Unit", title:"enforces minimum order amount for free shipping", file:"src/features/checkout/CheckoutPage.test.tsx", feat:"Checkout", risk:"Low", reason:"$50 free-shipping threshold was uncovered.",
+    diff:[["add","+ it('locks free shipping under $50', () => {"],["add","+   expect(freeShipping(49.99)).toBe(false)"],["add","+ })"]] },
+  { act:"Add", type:"UI / Browser", title:"shows expired coupon error in checkout page", file:"e2e/checkout/coupon-expired.spec.ts", feat:"Checkout", risk:"High", reason:"Real user flow — apply expired coupon, assert banner & disabled pay button.",
+    diff:[["meta","+ test('expired coupon error', async ({ page }) => {"],["add","+   await page.fill('#coupon', 'SAVE15')"],["add","+   await expect(page.getByRole('alert')).toContainText('expired')"],["add","+   await expect(page.getByRole('button',{name:'Pay'})).toBeDisabled()"],["meta","+ })"]] },
+  { act:"Add", type:"Visual Screenshot", title:"checkout error banner should match approved screenshot", file:"e2e/checkout/error-banner.visual.spec.ts", feat:"Checkout", risk:"Medium", reason:"Locks the error banner's visual appearance against regressions.",
+    diff:[["add","+ await expect(page).toHaveScreenshot('error-banner.png', {"],["add","+   maxDiffPixelRatio: 0.01"],["add","+ })"]] },
+  { act:"Add", type:"UI / Browser", title:"checkout pay button shows loading then disabled state", file:"e2e/checkout/checkout-loading.spec.ts", feat:"Checkout", risk:"Medium", reason:"Async submit states weren't asserted.",
+    diff:[["add","+ await page.click('text=Pay')"],["add","+ await expect(page.getByTestId('spinner')).toBeVisible()"]] },
+  { act:"Add", type:"Mobile", title:"login retry preserves typed phone number after network failure", file:"mobile/login-retry.spec.ts", feat:"User Session", risk:"High", reason:"Covers <b>QC-405</b> on iPhone 15 & Pixel 7 under throttled network.",
+    diff:[["meta","+ test('preserve input on retry', async () => {"],["add","+   await device.type('#phone', '+1 555 0148 22')"],["add","+   await network.drop(); await network.restore()"],["add","+   expect(await device.value('#phone')).toBe('+1 555 0148 22')"],["meta","+ })"]] },
+  { act:"Add", type:"Mobile", title:"login retry triggers automatically on slow 3G", file:"mobile/login-retry.spec.ts", feat:"User Session", risk:"Medium", reason:"Per answered question — retry should be automatic.",
+    diff:[["add","+ await network.throttle('Slow 3G')"],["add","+ await expect(device.byText('Retrying…')).toBeVisible()"]] },
+  { act:"Update", type:"Integration", title:"should preserve cart after payment timeout", file:"src/features/payment/paymentService.test.ts", feat:"Payment", risk:"Critical", reason:"Product spec says <b>the cart must not be cleared</b> after a retryable payment failure. Old test asserted a cleared cart.",
+    diff:[["del","-   expect(cart.items).toHaveLength(0)"],["add","+   expect(cart.items).toHaveLength(2)"],["add","+   expect(retry.attempts).toBe(3)"]] },
+  { act:"Update", type:"Unit", title:"declined card shows retry prompt up to 3 times", file:"src/features/payment/paymentService.test.ts", feat:"Payment", risk:"High", reason:"Corrected retry count to match the payment retry policy.",
+    diff:[["del","-   expect(retryPrompt).toBe(1)"],["add","+   expect(retryPrompt).toBe(3)"]] },
+  { act:"Delete", type:"Unit", title:"should show generic coupon error", file:"src/features/coupon/couponRules.test.ts", feat:"Coupon", risk:"Low", reason:"<b>Superseded</b> by the spec requiring specific error messages. Replaced by the new expired-coupon test.",
+    diff:[["del","- it('shows a generic coupon error', () => {"],["del","-   expect(apply(bad)).toThrow('Invalid coupon')"],["del","- })"]] },
+];
+
+const COV_COMPARE = [
+  { l:"Line coverage", b:74, a:79 },
+  { l:"Branch coverage", b:46, a:58 },
+  { l:"Function coverage", b:81, a:88 },
+  { l:"Changed-files", b:41, a:72 },
+];
+
+const MATRIX = [
+  { t:"rejects expired coupon with specific error", type:"Unit", status:"Passed", dur:"38ms", ev:"—", file:"couponRules.test.ts" },
+  { t:"blocks stacking when disabled", type:"Unit", status:"Passed", dur:"22ms", ev:"—", file:"couponRules.test.ts" },
+  { t:"banker's rounding on multi-currency totals", type:"Unit", status:"Passed", dur:"19ms", ev:"—", file:"OrderSummary.test.tsx" },
+  { t:"min order amount for free shipping", type:"Unit", status:"Passed", dur:"15ms", ev:"—", file:"CheckoutPage.test.tsx" },
+  { t:"expired coupon error in checkout page", type:"UI", status:"Passed", dur:"1.8s", ev:"screenshot · trace", file:"coupon-expired.spec.ts" },
+  { t:"error banner matches approved screenshot", type:"Visual", status:"Passed", dur:"1.2s", ev:"visual diff 99.8%", file:"error-banner.visual.spec.ts" },
+  { t:"pay button loading then disabled", type:"UI", status:"Passed", dur:"1.4s", ev:"trace", file:"checkout-loading.spec.ts" },
+  { t:"login retry preserves phone (iPhone 15)", type:"Mobile", status:"Passed", dur:"4.1s", ev:"screenshot · log", file:"login-retry.spec.ts" },
+  { t:"login retry preserves phone (Pixel 7)", type:"Mobile", status:"Flaky", dur:"6.8s", ev:"screenshot · log", file:"login-retry.spec.ts" },
+  { t:"preserve cart after payment timeout", type:"Integration", status:"Passed", dur:"210ms", ev:"—", file:"paymentService.test.ts" },
+  { t:"declined card retry prompt ×3", type:"Unit", status:"Needs approval", dur:"—", ev:"new baseline", file:"paymentService.test.ts" },
+];
+
+const REV_STATS = [
+  { v:"+9", l:"Tests added", c:"var(--add)" },
+  { v:"2", l:"Tests updated", c:"var(--upd)" },
+  { v:"1", l:"Tests deleted", c:"var(--del)" },
+  { v:"10/11", l:"Tests passing", c:"var(--pass)" },
+  { v:"+5%", l:"Line coverage", c:"var(--pass)" },
+  { v:"+12%", l:"Branch coverage", c:"var(--accent-2)" },
+  { v:"1", l:"Flaky (tracked)", c:"var(--flaky)" },
+  { v:"6", l:"Files changed", c:"var(--accent)" },
+];
+const REV_FILES = [
+  { p:"src/features/coupon/couponRules.test.ts", s:"+38 −6", col:"var(--add)" },
+  { p:"e2e/checkout/coupon-expired.spec.ts", s:"new", col:"var(--add)" },
+  { p:"e2e/checkout/error-banner.visual.spec.ts", s:"new", col:"var(--add)" },
+  { p:"mobile/login-retry.spec.ts", s:"+41", col:"var(--add)" },
+  { p:"src/features/payment/paymentService.test.ts", s:"+7 −3", col:"var(--upd)" },
+  { p:"src/features/order/OrderSummary.test.tsx", s:"+12", col:"var(--add)" },
+];
+
+</script>
+<script>
+/* ============ TestLens Workbench — app logic ============ */
+// step state: 'locked' | 'active' | 'done' | 'warn'
+let stepState = ["active","locked","locked","locked","locked","locked"];
+let activeStep = 0;
+let maxUnlocked = 0;
+const selectedTypes = new Set(["Unit","Edge Case","UI / Browser"]);
+const selectedSources = new Set(["Codebase","Product specs / wiki","QC test cases","Existing automated tests"]);
+const answers = {};
+let generated = false;
+let ran = false;
+
+const $ = s => document.querySelector(s);
+const panels = [...document.querySelectorAll(".step-panel")];
+
+/* ---------- WORKFLOW SIDEBAR ---------- */
+const wfStepsEl = $("#wfSteps");
+function renderWf(){
+  wfStepsEl.innerHTML = WF_STEPS.map((s,i)=>{
+    const st = stepState[i];
+    const m = st==="done" ? '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12l4 4 10-10"/></svg>'
+      : st==="warn" ? '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M12 8v5M12 16v.5"/></svg>'
+      : (i+1);
+    const sub = st==="done" ? "Completed" : st==="active" ? "In progress" : st==="warn" ? "Has warnings" : s.sub;
+    return `<div class="wf-step ${st}" data-i="${i}">
+      <div class="m">${m}</div>
+      <div class="wt"><div class="t">${s.title}</div><div class="s">${sub}</div></div>
+    </div>`;
+  }).join("");
+  wfStepsEl.querySelectorAll(".wf-step").forEach(el=>{
+    el.addEventListener("click", ()=>{ const i=+el.dataset.i; if(i<=maxUnlocked) goToStep(i); });
+  });
+  $("#wfStatusText").textContent = WF_STEPS[activeStep].title;
+}
+
+/* ---------- NAVIGATION ---------- */
+function goToStep(i){
+  if(i<0 || i>=WF_STEPS.length) return;
+  activeStep = i;
+  maxUnlocked = Math.max(maxUnlocked, i);
+  stepState = stepState.map((s,idx)=>{
+    if(idx===i) return (idx===4 && ran && matrixHasFlaky()) ? "active" : "active";
+    if(idx<i) return s==="warn" ? "warn" : "done";
+    if(idx>maxUnlocked) return "locked";
+    return s==="done"||s==="warn" ? s : "locked";
+  });
+  panels.forEach(p=>p.classList.toggle("active", +p.dataset.step===i));
+  renderWf();
+  syncContext();
+  window.scrollTo({ top:0, behavior:"smooth" });
+}
+function matrixHasFlaky(){ return MATRIX.some(m=>m.status==="Flaky"); }
+document.querySelectorAll("[data-back]").forEach(b=>b.addEventListener("click", ()=>goToStep(activeStep-1)));
+
+/* ---------- S1 INTENT ---------- */
+$("#typeChips").innerHTML = TEST_TYPES.map(t=>`
+  <div class="chip-tog ${selectedTypes.has(t.k)?'on':''}" data-type="${t.k}">
+    <svg class="ck" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12l4 4 10-10"/></svg>
+    <svg class="ci" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">${t.ic}</svg>${t.k}
+  </div>`).join("");
+$("#typeChips").querySelectorAll(".chip-tog").forEach(c=>c.addEventListener("click", ()=>{
+  const k=c.dataset.type; if(selectedTypes.has(k)){selectedTypes.delete(k);c.classList.remove("on");} else {selectedTypes.add(k);c.classList.add("on");}
+  syncContext();
+}));
+$("#srcChips").innerHTML = SOURCES.map(s=>`
+  <div class="chip-tog src ${selectedSources.has(s)?'on':''}" data-src="${s}">
+    <svg class="ck" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12l4 4 10-10"/></svg>${s}
+  </div>`).join("");
+$("#srcChips").querySelectorAll(".chip-tog").forEach(c=>c.addEventListener("click", ()=>{
+  const k=c.dataset.src; if(selectedSources.has(k)){selectedSources.delete(k);c.classList.remove("on");} else {selectedSources.add(k);c.classList.add("on");}
+}));
+$("#quickActions").innerHTML = QUICK_ACTIONS.map((q,i)=>`
+  <button class="qa" data-i="${i}">
+    <div class="qic" style="background:${q.bg};color:${q.col}"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">${q.ic}</svg></div>
+    <div><div class="qt">${q.t}</div><div class="qm">${q.m}</div></div>
+  </button>`).join("");
+$("#quickActions").querySelectorAll(".qa").forEach(el=>el.addEventListener("click", ()=>{
+  const q = QUICK_ACTIONS[+el.dataset.i];
+  $("#promptInput").value = q.t;
+  $("#featSelect").value = q.feat;
+  selectedTypes.clear(); q.types.forEach(t=>selectedTypes.add(t));
+  $("#typeChips").querySelectorAll(".chip-tog").forEach(c=>c.classList.toggle("on", selectedTypes.has(c.dataset.type)));
+  syncContext();
+  toast("Prompt filled from insight — review &amp; Analyze", false);
+  $("#promptInput").focus();
+}));
+$("#analyzeBtn").addEventListener("click", ()=>{
+  if(!$("#promptInput").value.trim()){ $("#promptInput").value = "Improve tests for the coupon feature — expired coupons and edge cases"; }
+  const btn = $("#analyzeBtn");
+  btn.disabled = true; btn.innerHTML = `<span class="spin2" style="border-color:rgba(255,255,255,.4);border-top-color:#fff;width:15px;height:15px;border-radius:50%;border-style:solid;border-width:2px;display:inline-block;animation:spin .7s linear infinite"></span>Analyzing…`;
+  setTimeout(()=>{ btn.disabled=false; btn.innerHTML = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="7"/><path d="M21 21l-4-4"/></svg>Analyze`; goToStep(1); }, 1100);
+});
+
+/* ---------- S2 ISOLATION ---------- */
+function fileLine(f){
+  const icon = f.t==="src" ? '<path d="M8 9l-4 3 4 3M16 9l4 3-4 3"/>' : f.t==="test" ? '<path d="M9 11l3 3L20 4"/><path d="M21 12v7a2 2 0 01-2 2H5a2 2 0 01-2-2V5a2 2 0 012-2h7"/>' : f.t==="qc" ? '<path d="M4 4h16v16H4z"/><path d="M4 9h16"/>' : '<path d="M7 3h7l4 4v14H7z"/>';
+  return `<div class="file-line"><div class="fi" style="background:${f.bg};color:${f.col}"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">${icon}</svg></div><span class="fp">${f.p}</span><span class="fmeta">${f.meta}</span></div>`;
+}
+$("#isoSource").innerHTML = ISO_SOURCE.map(fileLine).join("");
+$("#isoSpecs").innerHTML = ISO_SPECS.map(fileLine).join("");
+$("#clsCount").textContent = `${CLASSIFICATION.length} areas`;
+$("#clsGrid").innerHTML = CLASSIFICATION.map(c=>`
+  <div class="cls s-${c.status}">
+    <div class="ct">${c.t}</div>
+    <div class="cbadges">
+      <span class="badge st-${c.status}">${c.status}</span>
+      <span class="badge ttype">${c.type}</span>
+      <span class="risk-pill risk-${c.risk}">${c.risk}</span>
+    </div>
+    <div class="ce">${c.e}</div>
+  </div>`).join("");
+$("#genPlanBtn").addEventListener("click", ()=>goToStep(2));
+
+/* ---------- S3 PLAN ---------- */
+$("#planActions").innerHTML = PLAN_ACTIONS.map(p=>`
+  <div class="pa pa-${p.act}">
+    <div class="pa-ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">${p.ic}</svg></div>
+    <span class="pa-t">${p.t}</span><span class="pa-c">${p.c}</span>
+  </div>`).join("");
+$("#planRisk").innerHTML = PLAN_RISK.map(r=>`<div class="risk-row"><span class="rk">${r.k}</span><span class="rv ${r.c}">${r.v}</span></div>`).join("");
+$("#planFiles").innerHTML = PLAN_FILES.map(f=>`<div class="file-line"><span class="fp" style="font-size:11.5px">${f}</span></div>`).join("");
+
+const aiQEl = $("#aiQuestions");
+function renderQuestions(){
+  aiQEl.innerHTML = AI_QUESTIONS.map((q,i)=>`
+    <div class="q-card">
+      <div class="qh"><span class="qmark">?</span><span class="qtext">${q.q}</span></div>
+      <div class="q-opts">${q.opts.map((o,j)=>`<button class="q-opt ${answers[i]===j?'sel':''}" data-q="${i}" data-o="${j}">${o}</button>`).join("")}</div>
+    </div>`).join("");
+  aiQEl.querySelectorAll(".q-opt").forEach(b=>b.addEventListener("click", ()=>{
+    answers[+b.dataset.q] = +b.dataset.o;
+    renderQuestions(); syncContext();
+  }));
+}
+// default-answer first option to model "recommended"
+AI_QUESTIONS.forEach((q,i)=>{ if(answers[i]===undefined) answers[i]=q.def; });
+renderQuestions();
+
+$("#cancelBtn").addEventListener("click", ()=>{ toast("Workflow cancelled — no files changed", false); setTimeout(()=>goToStep(0), 400); });
+$("#approveBtn").addEventListener("click", ()=>{ goToStep(3); startGenerate(); });
+
+/* ---------- S4 GENERATE ---------- */
+const ACT_IC = { Add:'<path d="M12 5v14M5 12h14"/>', Update:'<path d="M4 4v6h6M20 20v-6h-6"/><path d="M20 9A8 8 0 006 5M4 15a8 8 0 0014 4"/>', Delete:'<path d="M5 7h14M9 7V5h6v2M6 7l1 13h10l1-13"/>' };
+let changeFilter = "all";
+function changeStat(act){
+  const map = { Add:["Generated","var(--add)"], Update:["Updated","var(--upd)"], Delete:["Removed","var(--del)"] };
+  const [t,c]=map[act]; return `<span class="ch-stat" style="color:${c}"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" style="width:13px;height:13px"><path d="M5 12l4 4 10-10"/></svg>${t}</span>`;
+}
+function renderChangeFilters(){
+  const types = ["all","Add","Update","Delete","Unit","UI / Browser","Visual Screenshot","Mobile","Integration"];
+  const counts = t => t==="all"?CHANGES.length : CHANGES.filter(c=>c.act===t||c.type===t).length;
+  $("#changeFilters").innerHTML = types.filter(t=>t==="all"||counts(t)>0).map(t=>`<button class="fpill ${changeFilter===t?'on':''}" data-f="${t}">${t==="all"?"All changes":t}<span class="ct">${counts(t)}</span></button>`).join("");
+  $("#changeFilters").querySelectorAll(".fpill").forEach(b=>b.addEventListener("click", ()=>{ changeFilter=b.dataset.f; renderChangeFilters(); renderChanges(); }));
+}
+function renderChanges(){
+  const list = changeFilter==="all" ? CHANGES : CHANGES.filter(c=>c.act===changeFilter||c.type===changeFilter);
+  $("#changeCards").innerHTML = list.map((c,idx)=>{
+    const realIdx = CHANGES.indexOf(c);
+    return `<div class="change ca-${c.act}" data-i="${realIdx}">
+      <div class="ch-top">
+        <div class="act-ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">${ACT_IC[c.act]}</svg></div>
+        <div class="ch-body">
+          <div class="ch-tags"><span class="actbadge ab-${c.act}">${c.act}</span><span class="badge ttype">${c.type}</span><span class="badge feat" style="background:var(--inset);border:1px solid var(--border);color:var(--dim)">${c.feat}</span><span class="risk-pill risk-${c.risk}">${c.risk}</span></div>
+          <div class="ch-title">${c.title}</div>
+          <div class="ch-file">${c.file}</div>
+          <div class="ch-reason">${c.reason}</div>
+        </div>
+        <div class="ch-right">${changeStat(c.act)}<svg class="chev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:16px;height:16px"><path d="M6 9l6 6 6-6"/></svg></div>
+      </div>
+      <div class="diff">${c.diff.map(d=>`<div class="dl ${d[0]}">${d[1].replace(/</g,'&lt;')}</div>`).join("")}</div>
+    </div>`;
+  }).join("");
+  $("#changeCards").querySelectorAll(".change").forEach(el=>{
+    el.querySelector(".ch-top").addEventListener("click", ()=>el.classList.toggle("open"));
+  });
+}
+
+const genTlEl = $("#genTimeline");
+function renderGenTimeline(states){
+  genTlEl.innerHTML = GEN_TIMELINE.map((g,i)=>{
+    const st = states[i]||"pending";
+    const ic = st==="done" ? '<path d="M5 12l4 4 10-10"/>' : st==="running" ? '<path d="M12 3a9 9 0 109 9"/>' : '<circle cx="12" cy="12" r="8"/>';
+    return `<div class="gl ${st}"><div class="gd"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round">${ic}</svg></div><div class="gt">${g}</div></div>`;
+  }).join("");
+}
+function startGenerate(){
+  renderChangeFilters();
+  if(generated){ renderChanges(); renderGenTimeline(GEN_TIMELINE.map(()=>"done")); $("#runTestsBtn").disabled=false; $("#genSummary").textContent="11 changes ready · nothing applied yet"; return; }
+  $("#changeCards").innerHTML = `<div style="padding:40px;text-align:center;color:var(--faint-solid);font-size:13px;">Agent is writing tests…</div>`;
+  $("#runTestsBtn").disabled = true;
+  const states = GEN_TIMELINE.map(()=>"pending");
+  // changes revealed progressively, mapped to timeline indices
+  const revealAt = { 3:[0,1], 5:[2,3], 6:[4,6], 7:[5], 8:[7,8], 9:[9,10], 10:[11] };
+  let shown = [];
+  let i = 0;
+  renderGenTimeline(states);
+  function tick(){
+    if(i>0){ states[i-1]="done"; }
+    if(i>=GEN_TIMELINE.length){
+      states[GEN_TIMELINE.length-1]="done"; renderGenTimeline(states);
+      generated = true; $("#runTestsBtn").disabled=false; $("#genSummary").textContent="11 changes ready · nothing applied yet";
+      renderChanges();
+      return;
+    }
+    states[i]="running"; renderGenTimeline(states);
+    if(revealAt[i]){ revealAt[i].forEach(ci=>{ if(CHANGES[ci]&&!shown.includes(ci)) shown.push(ci); }); }
+    // render only shown changes
+    if(shown.length){
+      $("#changeCards").innerHTML = shown.map(ci=>{ const c=CHANGES[ci]; return changeCardHtml(c, ci); }).join("");
+      bindChangeToggles();
+    }
+    i++;
+    setTimeout(tick, 560 + Math.random()*220);
+  }
+  setTimeout(tick, 300);
+}
+function changeCardHtml(c, realIdx){
+  return `<div class="change ca-${c.act}" data-i="${realIdx}">
+    <div class="ch-top">
+      <div class="act-ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">${ACT_IC[c.act]}</svg></div>
+      <div class="ch-body">
+        <div class="ch-tags"><span class="actbadge ab-${c.act}">${c.act}</span><span class="badge ttype">${c.type}</span><span class="badge feat" style="background:var(--inset);border:1px solid var(--border);color:var(--dim)">${c.feat}</span><span class="risk-pill risk-${c.risk}">${c.risk}</span></div>
+        <div class="ch-title">${c.title}</div>
+        <div class="ch-file">${c.file}</div>
+        <div class="ch-reason">${c.reason}</div>
+      </div>
+      <div class="ch-right">${changeStat(c.act)}<svg class="chev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:16px;height:16px"><path d="M6 9l6 6 6-6"/></svg></div>
+    </div>
+    <div class="diff">${c.diff.map(d=>`<div class="dl ${d[0]}">${d[1].replace(/</g,'&lt;')}</div>`).join("")}</div>
+  </div>`;
+}
+function bindChangeToggles(){
+  $("#changeCards").querySelectorAll(".change").forEach(el=>{
+    const top = el.querySelector(".ch-top");
+    top.onclick = ()=>el.classList.toggle("open");
+  });
+}
+$("#runTestsBtn").addEventListener("click", ()=>{ goToStep(4); startRun(); });
+
+/* ---------- S5 RUN ---------- */
+$("#covCompare").innerHTML = COV_COMPARE.map(c=>`
+  <div class="cov-c">
+    <div class="cl">${c.l}</div>
+    <div class="cvals"><span class="before-v">${c.b}%</span><span class="after-v" style="color:${c.a>=70?'var(--pass)':c.a>=50?'var(--flaky)':'var(--fail)'}">${c.a}%</span><span class="delta">+${c.a-c.b}%</span></div>
+    <div class="cbar"><div class="bfill" data-w="${c.a}" style="width:0%"></div></div>
+  </div>`).join("");
+
+function matrixStatClass(s){ return {Passed:"res-pass",Failed:"res-fail",Flaky:"res-flaky",Skipped:"res-skip","Needs approval":"res-skip"}[s]||"res-pending"; }
+function renderMatrix(reveal){
+  $("#matrix").innerHTML = `<tr><th>Test case</th><th>Type</th><th>Status</th><th>Duration</th><th>Evidence</th><th>File</th></tr>` +
+    MATRIX.map((m,i)=>{
+      const show = reveal===undefined || i<reveal;
+      const stat = show ? `<span class="res-stat ${matrixStatClass(m.status)}">${m.status}</span>` : `<span class="res-stat res-run">Running…</span>`;
+      return `<tr style="${show?'':'opacity:.45'}">
+        <td class="tt">${m.t}</td><td>${m.type}</td><td>${stat}</td>
+        <td class="mono" style="font-size:11.5px">${show?m.dur:'—'}</td>
+        <td>${show&&m.ev!=="—"?`<span class="ev-link"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2 12s4-7 10-7 10 7 10 7-4 7-10 7S2 12 2 12z"/><circle cx="12" cy="12" r="2.5"/></svg>${m.ev}</span>`:'<span style="color:var(--faint-solid)">—</span>'}</td>
+        <td class="mf">${m.file}</td>
+      </tr>`;
+    }).join("");
+}
+function setRunStat(id, cls, txt){ const el=$(id); el.className=`res-stat ${cls}`; el.textContent=txt; }
+
+function startRun(){
+  renderMatrix(0);
+  if(ran){ finishRun(); return; }
+  $("#toReviewBtn").disabled = true;
+  // unit
+  setRunStat("#unitStat","res-run","Running");
+  setTimeout(()=>{
+    setRunStat("#unitStat","res-pass","Passed"); $("#unitCount").textContent="6 passed"; $("#unitDur").textContent="0.4s";
+    renderMatrix(4);
+    // ui
+    setRunStat("#uiStat","res-run","Running");
+    setTimeout(()=>{
+      setRunStat("#uiStat","res-pass","Passed"); $("#uiCount").textContent="3 passed"; $("#uiDur").textContent="4.4s"; $("#uiVisual").textContent="match 99.8%";
+      $("#uiEvidence").style.display="flex"; renderMatrix(7);
+      // mobile
+      setRunStat("#mobStat","res-run","Running");
+      setTimeout(()=>{
+        setRunStat("#mobStat","res-flaky","1 flaky"); $("#mobCount").textContent="1 passed · 1 flaky"; $("#mobDur").textContent="10.9s";
+        $("#mobEvidence").style.display="flex"; renderMatrix(MATRIX.length);
+        finishRun();
+      }, 1500);
+    }, 1500);
+  }, 1300);
+}
+function finishRun(){
+  ran = true;
+  renderMatrix(MATRIX.length);
+  setRunStat("#unitStat","res-pass","Passed"); $("#unitCount").textContent="6 passed"; $("#unitDur").textContent="0.4s";
+  setRunStat("#uiStat","res-pass","Passed"); $("#uiCount").textContent="3 passed"; $("#uiDur").textContent="4.4s"; $("#uiVisual").textContent="match 99.8%"; $("#uiEvidence").style.display="flex";
+  setRunStat("#mobStat","res-flaky","1 flaky"); $("#mobCount").textContent="1 passed · 1 flaky"; $("#mobDur").textContent="10.9s"; $("#mobEvidence").style.display="flex";
+  document.querySelectorAll("#covCompare .bfill").forEach(b=>b.style.width=b.dataset.w+"%");
+  // failure / attention card for flaky
+  $("#failCardSlot").innerHTML = `
+    <div class="fail-card" style="background:rgba(251,191,36,0.05);border-color:rgba(251,191,36,0.3)">
+      <div class="fh" style="color:var(--flaky)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 7v5l3 2"/><circle cx="12" cy="12" r="9"/></svg>Flaky · login retry preserves phone (Pixel 7)</div>
+      <div class="frow"><b>Reason</b> Passed on re-run, but retry fired <span class="mono">1.2s late</span> under Slow 3G throttling on the first attempt.</div>
+      <div class="frow"><b>Likely cause</b> Device emulator network throttle warm-up; not a product defect.</div>
+      <div class="frow"><b>Suggested fix</b> Increase retry-visible timeout to 2s for throttled mobile profiles.</div>
+      <div class="fail-actions">
+        <button class="btn" data-toast="Agent drafting a timeout fix…" data-toast-done="Patch staged: bump mobile retry timeout to 2s"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 7a4 4 0 01-5 5l-5 5 2 2 5-5a4 4 0 015-5z"/></svg>Ask agent to fix</button>
+        <button class="btn ghost" data-toast="Kept as flaky · tracked in report">Accept &amp; keep test</button>
+        <button class="btn ghost danger" data-toast="Generated mobile test reverted">Revert generated test</button>
+      </div>
+    </div>`;
+  $("#toReviewBtn").disabled = false;
+  stepState[4]="warn"; renderWf();
+  $("#wfStatusText").textContent = "Run";
+  syncContext();
+}
+$("#toReviewBtn").addEventListener("click", ()=>goToStep(5));
+
+/* ---------- S6 REVIEW ---------- */
+$("#revGrid").innerHTML = REV_STATS.map(s=>`
+  <div class="rev-stat"><div class="bar" style="background:${s.c}"></div><div class="rv" style="color:${s.c}">${s.v}</div><div class="rl">${s.l}</div></div>`).join("");
+$("#revFiles").innerHTML = REV_FILES.map(f=>`
+  <div class="file-line"><span class="fp" style="font-size:11.5px">${f.p}</span><span class="fmeta mono" style="color:${f.col}">${f.s}</span></div>`).join("");
+$("#applyBtn").addEventListener("click", ()=>{
+  flow("Applying changes to working tree…","Applied · 6 files updated, 1 visual baseline added");
+  stepState[5]="done"; renderWf();
+});
+$("#revertBtn").addEventListener("click", ()=>toast("All generated changes reverted — repo untouched", false));
+$("#backDash").addEventListener("click", ()=>{ toast("Returning to dashboard…", true); setTimeout(()=>{ window.location.href="TestLens Dashboard.html"; }, 850); });
+
+/* ---------- RIGHT CONTEXT SYNC ---------- */
+function syncContext(){
+  const feat = $("#featSelect") ? ($("#featSelect").value||"Coupon") : "Coupon";
+  $("#ctxTarget").textContent = feat;
+  $("#ctxTypes").innerHTML = selectedTypes.size ? [...selectedTypes].map(t=>`<span class="ctx-type">${t}</span>`).join("") : `<span class="ctx-empty">None selected</span>`;
+  $("#ctxFiles").innerHTML = ISO_SOURCE.slice(0,4).map(f=>`<div class="mf"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M7 3h7l4 4v14H7z"/></svg>${f.p.split('/').pop()}</div>`).join("");
+  // questions
+  const answered = Object.keys(answers).filter(k=>answers[k]!==undefined).length;
+  $("#ctxQuestions").innerHTML = AI_QUESTIONS.map((q,i)=>{
+    const a = answers[i]!==undefined ? q.opts[answers[i]] : null;
+    return `<div class="ctx-q ${a?'':'pending'}">${q.q.length>52?q.q.slice(0,50)+'…':q.q}${a?`<br><span class="qa-ans">→ ${a}</span>`:'<br>Awaiting answer'}</div>`;
+  }).join("");
+  // coverage delta by step
+  if(activeStep>=4 && ran){ $("#ctxCovAfter").textContent="79%"; $("#ctxCovDelta").textContent="+5% line"; }
+  else { $("#ctxCovAfter").textContent="64%"; $("#ctxCovDelta").textContent="line cov"; }
+}
+$("#featSelect").addEventListener("change", ()=>{ $("#ctxTargetSub").textContent="Module · checkout-service"; syncContext(); });
+
+/* ---------- TOASTS ---------- */
+const toastWrap = $("#toastWrap");
+function toast(msg, loading){
+  const el = document.createElement("div");
+  el.className = "toast";
+  el.innerHTML = (loading?`<span class="spin2"></span>`:`<span class="ok"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12l4 4 10-10"/></svg></span>`) + `<span>${msg}</span>`;
+  toastWrap.appendChild(el);
+  setTimeout(()=>{ el.classList.add("out"); setTimeout(()=>el.remove(),300); }, loading?2400:2200);
+  return el;
+}
+function flow(loadingMsg, doneMsg){
+  const el = toast(loadingMsg, true);
+  if(doneMsg){
+    setTimeout(()=>{
+      const sp=el.querySelector(".spin2"); if(sp) sp.outerHTML = `<span class="ok"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12l4 4 10-10"/></svg></span>`;
+      el.querySelector("span:last-child").textContent = doneMsg;
+    }, 1200);
+  }
+}
+document.addEventListener("click", e=>{
+  const b = e.target.closest("[data-toast]"); if(!b) return;
+  flow(b.dataset.toast, b.dataset.toastDone || "");
+});
+
+/* ---------- INIT ---------- */
+renderWf();
+syncContext();
+
+</script>
+</body>
+</html>
