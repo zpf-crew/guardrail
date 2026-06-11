@@ -8,7 +8,7 @@ export interface RepoInfo {
 
 export interface DocFile {
   name: string;
-  type: string;
+  type: 'pdf' | 'md' | 'txt' | 'csv' | 'xlsx';
   size: string;
 }
 
@@ -17,8 +17,8 @@ export interface QCRow {
   feature: string;
   scenario: string;
   expected: string;
-  priority: string;
-  automated: string;
+  priority: 'Critical' | 'High' | 'Medium' | 'Low';
+  automated: 'Yes' | 'No';
 }
 
 export interface ScanTask {
@@ -87,7 +87,13 @@ export const scanLogs: string[] = [
   '[00:25] Scan complete.',
 ];
 
-export const summaryStats = [
+export interface SummaryStat {
+  label: string;
+  value: string;
+  icon: string;
+}
+
+export const summaryStats: SummaryStat[] = [
   { label: 'Tests found', value: '847', icon: '📋' },
   { label: 'QC imported', value: '8', icon: '📥' },
   { label: 'Docs indexed', value: '3', icon: '📄' },

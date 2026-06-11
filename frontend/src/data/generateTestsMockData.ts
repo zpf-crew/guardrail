@@ -45,43 +45,9 @@ export interface MatrixRow {
   file: string;
 }
 
-export const quickActions: QuickAction[] = [
-  { title: 'Generate missing coupon tests', description: '4 edge-case tests for coupon validation', icon: '🧪' },
-  { title: 'Fix suspicious payment tests', description: '2 tests conflict with product specs', icon: '🔍' },
-  { title: 'Fix flaky payment decline test', description: 'T-006 fails intermittently', icon: '⚡' },
-  { title: 'Add UI tests for checkout timeout', description: 'T-021 does not trigger timeout', icon: '🖥️' },
-  { title: 'Update mobile test devices', description: 'Add iPhone 15 and Pixel 7', icon: '📱' },
-];
+export type PlanFilePath = string;
 
-export const classification: ClassificationCard[] = [
-  { behavior: 'Apply valid coupon', status: 'covered', type: 'Unit', risk: 'high', explanation: 'Well-covered with 5 assertions' },
-  { behavior: 'Reject expired coupon', status: 'covered', type: 'Unit', risk: 'high', explanation: 'Covered, passes consistently' },
-  { behavior: 'Stack multiple coupons', status: 'suspicious', type: 'Integration', risk: 'high', explanation: 'Test allows stacking, spec says no' },
-  { behavior: 'Coupon minimum purchase', status: 'missing', type: 'Unit', risk: 'high', explanation: 'No test for minimum cart value' },
-  { behavior: 'Coupon usage limit', status: 'suspicious', type: 'Unit', risk: 'high', explanation: 'Tests per-email, spec says per-account' },
-  { behavior: 'Card payment success', status: 'covered', type: 'Integration', risk: 'high', explanation: 'Covered, passes consistently' },
-  { behavior: 'Card payment declined', status: 'weak', type: 'Integration', risk: 'high', explanation: 'Flaky due to mock server timing' },
-  { behavior: 'Checkout timeout', status: 'missing', type: 'UI/Browser', risk: 'high', explanation: 'No test triggers actual timeout' },
-];
-
-export const planActions: PlanAction[] = [
-  { action: 'Add unit tests', count: 4 },
-  { action: 'Add UI/browser tests', count: 3 },
-  { action: 'Add mobile tests', count: 2 },
-  { action: 'Update suspicious tests', count: 2 },
-  { action: 'Delete outdated tests', count: 1 },
-  { action: 'Run related + coverage', count: 12 },
-];
-
-export const planRisk: PlanRisk[] = [
-  { item: 'Production code changes', level: 'medium' },
-  { item: 'Test data changes', level: 'low' },
-  { item: 'Browser automation', level: 'medium' },
-  { item: 'Mobile simulator', level: 'low' },
-  { item: 'External API mocking', level: 'high' },
-];
-
-export const planFiles = [
+export const planFiles: PlanFilePath[] = [
   'src/services/coupon/coupon.test.ts',
   'src/services/coupon/coupon.ts',
   'src/services/payment/payment.test.ts',
@@ -89,7 +55,12 @@ export const planFiles = [
   'tests/mobile/checkout.mobile.ts',
 ];
 
-export const aiQuestions = [
+export interface AIQuestion {
+  question: string;
+  options: string[];
+}
+
+export const aiQuestions: AIQuestion[] = [
   {
     question: 'Should expired coupons show a generic error or specific message?',
     options: ['Generic: "Invalid coupon"', 'Specific: "Coupon expired on [date]"', 'Both: specific with fallback'],
@@ -104,7 +75,12 @@ export const aiQuestions = [
   },
 ];
 
-export const genTimeline = [
+export interface TimelineItem {
+  label: string;
+  state: string;
+}
+
+export const genTimeline: TimelineItem[] = [
   { label: 'Analyzing source files', state: 'done' },
   { label: 'Reading product specs', state: 'done' },
   { label: 'Importing QC cases', state: 'done' },
@@ -282,7 +258,13 @@ export const changes: ChangeCard[] = [
   },
 ];
 
-export const covCompare = [
+export interface CovCompare {
+  metric: string;
+  before: number;
+  after: number;
+}
+
+export const covCompare: CovCompare[] = [
   { metric: 'Line coverage', before: 64, after: 78 },
   { metric: 'Branch coverage', before: 52, after: 65 },
   { metric: 'Function coverage', before: 58, after: 72 },
@@ -303,7 +285,12 @@ export const matrix: MatrixRow[] = [
   { name: 'Payment sheet on iPhone 15', type: 'Mobile', status: 'fail', duration: '7.2s', evidence: 'device', file: 'checkout.mobile.ts' },
 ];
 
-export const reviewStats = [
+export interface ReviewStat {
+  label: string;
+  value: string;
+}
+
+export const reviewStats: ReviewStat[] = [
   { label: 'Tests added', value: '9' },
   { label: 'Tests updated', value: '1' },
   { label: 'Tests deleted', value: '1' },
@@ -314,7 +301,13 @@ export const reviewStats = [
   { label: 'Files changed', value: '6' },
 ];
 
-export const reviewFiles = [
+export interface ReviewFile {
+  path: string;
+  additions: number;
+  deletions: number;
+}
+
+export const reviewFiles: ReviewFile[] = [
   { path: 'src/services/coupon/coupon.test.ts', additions: 42, deletions: 5 },
   { path: 'src/services/coupon/coupon.ts', additions: 3, deletions: 1 },
   { path: 'src/routes/checkout/checkout.e2e.ts', additions: 28, deletions: 0 },

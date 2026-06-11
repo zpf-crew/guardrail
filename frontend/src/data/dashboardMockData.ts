@@ -2,7 +2,7 @@ export interface TestCase {
   id: string;
   title: string;
   status: 'pass' | 'fail' | 'flaky' | 'missing' | 'suspect';
-  type: string;
+  type: 'Unit' | 'Integration' | 'UI/Browser' | 'Mobile';
   feature: string;
   risk: 'low' | 'medium' | 'high';
   description: string;
