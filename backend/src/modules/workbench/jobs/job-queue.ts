@@ -43,6 +43,21 @@ export class WorkbenchJobQueue {
   private async run({ job, resolve }: PendingQueueJob): Promise<void> {
     const abortController = new AbortController();
     let timedOut = false;
+    let settled = false;
+    let emittedError = false;
+
+    const settle = (): void => {
+      if (settled) return;
+      settled = true;
+      this.active -= 1;
+      resolve();
+      this.drain();
+    };
+
+    const emitError = (message: string): void => {
+      emittedError = true;
+      job.onError(message);
+    };
 
     job.onStatus('running');
 
@@ -66,14 +81,14 @@ export class WorkbenchJobQueue {
 
       if (result.type === 'completed') {
         job.onStatus('succeeded');
-        resolve();
+        settle();
         return;
       }
 
       if (result.type === 'failed') {
         job.onStatus('failed');
-        job.onError(errorMessage(result.error));
-        resolve();
+        emitError(errorMessage(result.error));
+        settle();
         return;
       }
 
@@ -81,7 +96,11 @@ export class WorkbenchJobQueue {
       abortController.abort();
       job.onStatus('timeout');
 
-      const abortError = await Promise.race([
+      runPromise.catch(error => {
+        emitError(errorMessage(error));
+      });
+
+      const firstAbortError = await Promise.race([
         runPromise.then(
           () => undefined,
           error => error,
@@ -89,19 +108,17 @@ export class WorkbenchJobQueue {
         delay(TIMEOUT_ERROR_GRACE_MS).then(() => undefined),
       ]);
 
-      job.onError(
-        abortError === undefined
-          ? `Job timed out after ${job.timeoutMs}ms and was aborted`
-          : errorMessage(abortError),
-      );
-      resolve();
+      if (firstAbortError === undefined && !emittedError) {
+        emitError(`Job timed out after ${job.timeoutMs}ms and was aborted`);
+      }
+
+      settle();
     } catch (error) {
       if (!timedOut) job.onStatus('failed');
-      job.onError(errorMessage(error));
-      resolve();
+      emitError(errorMessage(error));
+      settle();
     } finally {
-      this.active -= 1;
-      this.drain();
+      settle();
     }
   }
 }
