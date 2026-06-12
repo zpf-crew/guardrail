@@ -8,7 +8,8 @@
     "build": "tsc",
     "start": "node dist/server.js",
     "typecheck": "tsc --noEmit",
-    "lint": "echo 'no lint yet'"
+    "lint": "echo 'no lint yet'",
+    "test": "node --import tsx --test src/**/*.test.ts"
   },
   "dependencies": {
     "fastify": "^4.28.0",
