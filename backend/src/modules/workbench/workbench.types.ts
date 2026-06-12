@@ -17,6 +17,8 @@ export type TestType =
 
 export type RiskLevel = 'Low' | 'Medium' | 'High' | 'Critical';
 
+export type Severity = 'Critical' | 'High' | 'Medium' | 'Low';
+
 export type FeatureModule =
   | 'Checkout'
   | 'Coupon'
@@ -81,6 +83,15 @@ export type SourceContext =
   | 'Existing automated tests'
   | 'Coverage report'
   | 'Previous failed runs';
+
+export interface QuickAction {
+  id: string;
+  label: string;
+  feature: FeatureModule;
+  severity: Severity;
+  testTypes: TestType[];
+  sourceInsightId?: string;
+}
 
 export interface IsolationResult {
   target: { feature: FeatureModule; repo: RepoRef };
@@ -265,6 +276,12 @@ export interface RiskRow {
   value: string;
   sentiment: 'good' | 'bad' | 'neutral';
 }
+
+export type ReviewDecision =
+  | { type: 'apply' }
+  | { type: 'create-pr' }
+  | { type: 'export-plan' }
+  | { type: 'revert-all' };
 
 export type WorkbenchJobStatus = 'queued' | 'running' | 'succeeded' | 'failed' | 'timeout';
 

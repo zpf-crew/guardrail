@@ -1,6 +1,12 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import type { WorkbenchSession, TestRunResult, ReviewSummary } from './workbench.types.js';
+import type {
+  WorkbenchSession,
+  TestRunResult,
+  ReviewSummary,
+  QuickAction,
+  ReviewDecision,
+} from './workbench.types.js';
 
 test('workbench schema mirror accepts the shared frontend workbench shapes', () => {
   const session: WorkbenchSession = {
@@ -51,7 +57,20 @@ test('workbench schema mirror accepts the shared frontend workbench shapes', () 
     recommendation: 'Review generated evidence before applying future changes.',
   };
 
+  const quickAction: QuickAction = {
+    id: 'qa-onboarding-ui',
+    label: 'Generate onboarding UI browser test',
+    feature: 'Checkout',
+    severity: 'High',
+    testTypes: ['UI / Browser'],
+    sourceInsightId: 'insight-1',
+  };
+
+  const decision: ReviewDecision = { type: 'export-plan' };
+
   assert.equal(session.intent.testTypes[0], 'UI / Browser');
   assert.equal(run.ui.evidence[0]?.kind, 'screenshot');
   assert.equal(review.filesChanged[0]?.changeKind, 'add');
+  assert.equal(quickAction.severity, 'High');
+  assert.equal(decision.type, 'export-plan');
 });
