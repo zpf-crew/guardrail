@@ -5,20 +5,21 @@ import { TestStatusFlakyIcon } from './test-status-flaky-icon';
 import { TestStatusMissingIcon } from './test-status-missing-icon';
 import { TestStatusSuspectIcon } from './test-status-suspect-icon';
 
+// Keyed to the contract TestStatus enum (`passed`/`failed`/`suspicious`).
 const statusColor: Record<string, string> = {
-  pass: '#3ddc97',
-  fail: '#fb7185',
+  passed: '#3ddc97',
+  failed: '#fb7185',
   flaky: '#fbbf24',
   missing: '#60a5fa',
-  suspect: '#c084fc',
+  suspicious: '#c084fc',
 };
 
 const statusIcons = {
-  pass: TestStatusPassIcon,
-  fail: TestStatusFailIcon,
+  passed: TestStatusPassIcon,
+  failed: TestStatusFailIcon,
   flaky: TestStatusFlakyIcon,
   missing: TestStatusMissingIcon,
-  suspect: TestStatusSuspectIcon,
+  suspicious: TestStatusSuspectIcon,
 } as const;
 
 export function TestStatusIcon({ status, className }: { status: string; className?: string }) {
