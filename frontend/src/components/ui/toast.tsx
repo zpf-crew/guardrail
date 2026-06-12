@@ -16,13 +16,16 @@ export const ToastContext = React.createContext<ToastContextType | null>(null);
 export function ToastProvider({ children }: { children: React.ReactNode }) {
   const [toasts, setToasts] = React.useState<ToastItem[]>([]);
   const timersRef = React.useRef<Map<string, ReturnType<typeof setTimeout>>>(new Map());
+  // Tracks messages currently on screen so repeated clicks don't stack duplicates.
+  const activeMessages = React.useRef<Set<string>>(new Set());
 
-  const removeToast = React.useCallback((id: string) => {
+  const removeToast = React.useCallback((id: string, message: string) => {
     const timer = timersRef.current.get(id);
     if (timer) {
       clearTimeout(timer);
       timersRef.current.delete(id);
     }
+    activeMessages.current.delete(message);
     setToasts(prev => prev.filter(t => t.id !== id));
   }, []);
 
@@ -34,9 +37,11 @@ export function ToastProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   const toast = React.useCallback((message: string, type: 'loading' | 'success' = 'success') => {
+    if (activeMessages.current.has(message)) return; // same message already showing — skip
+    activeMessages.current.add(message);
     const id = Math.random().toString(36).slice(2);
     setToasts(prev => [...prev, { id, message, type }]);
-    const timer = setTimeout(() => { removeToast(id); }, type === 'loading' ? 2400 : 2200);
+    const timer = setTimeout(() => { removeToast(id, message); }, type === 'loading' ? 2400 : 2200);
     timersRef.current.set(id, timer);
   }, [removeToast]);
   return (
