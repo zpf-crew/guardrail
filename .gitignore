@@ -4,3 +4,12 @@ coverage
 *.log
 .agentbase/
 dist/
+
+# Claude Code
+CLAUDE.md
+.claude/
+.opencode/
+plans/
+.repomixignore
+release-manifest.json
+repomix-output.xml

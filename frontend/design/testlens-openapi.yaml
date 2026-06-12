@@ -1,0 +1,990 @@
+openapi: 3.1.0
+info:
+  title: TestLens API
+  version: 1.0.0
+  description: >
+    Contract for the three TestLens surfaces — Dashboard, Onboarding, and the
+    Generate/Improve workbench. OpenAPI 3.1 schema objects are JSON Schema
+    (2020-12), so every entry under `components/schemas` is a standalone JSON
+    Schema you can extract and reuse independently.
+
+
+    Conventions:
+      * Timestamps are ISO-8601 UTC strings; the UI does relative formatting.
+      * Percentages / coverage are numbers 0..100 (never strings, never 0..1).
+      * ids are stable opaque strings.
+      * Fields marked "display only" in the description are presentation text,
+        not normalized data.
+
+servers:
+  - url: /api/repos/{repoId}
+    description: All operations are scoped to a single repository.
+    variables:
+      repoId:
+        default: checkout-service
+
+tags:
+  - name: Dashboard
+    description: Read-only snapshot of repository testing health.
+  - name: Onboarding
+    description: First-run wizard collecting knowledge sources + commands.
+  - name: Workbench
+    description: 6-step, human-approved Generate/Improve workflow.
+
+paths:
+  # ───────────────────────────── DASHBOARD ─────────────────────────────
+  /dashboard:
+    get:
+      tags: [Dashboard]
+      operationId: getDashboard
+      summary: Full dashboard snapshot.
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/DashboardPayload' }
+
+  /scan:
+    post:
+      tags: [Dashboard]
+      operationId: runScan
+      summary: Kick off a full repository scan.
+      responses:
+        '202':
+          description: Scan accepted; poll/stream progress with the returned jobId.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [jobId]
+                properties:
+                  jobId: { type: string }
+        '200':
+          description: Live progress stream (Server-Sent Events of ScanProgress).
+          content:
+            text/event-stream:
+              schema: { $ref: '#/components/schemas/ScanProgress' }
+
+  /tests:
+    get:
+      tags: [Dashboard]
+      operationId: listTests
+      summary: List test cases (server-side filterable).
+      parameters:
+        - { in: query, name: status,  schema: { $ref: '#/components/schemas/TestStatus' } }
+        - { in: query, name: type,    schema: { $ref: '#/components/schemas/TestType' } }
+        - { in: query, name: risk,    schema: { $ref: '#/components/schemas/RiskLevel' } }
+        - { in: query, name: feature, schema: { type: string } }
+        - { in: query, name: q,       schema: { type: string }, description: Free-text search. }
+        - in: query
+          name: groupBy
+          schema: { type: string, enum: [type, feature, status] }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/TestCase' }
+
+  # ───────────────────────────── ONBOARDING ────────────────────────────
+  /onboarding/detect:
+    get:
+      tags: [Onboarding]
+      operationId: detectRepository
+      summary: Auto-detect repo, branch, and stack for step 1.
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/RepositorySelection' }
+
+  /onboarding/docs:
+    post:
+      tags: [Onboarding]
+      operationId: uploadDoc
+      summary: Upload a product/spec document (step 2, optional).
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              properties:
+                file: { type: string, format: binary }
+      responses:
+        '200':
+          description: Indexed document.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/KnowledgeDoc' }
+
+  /onboarding/qc:
+    post:
+      tags: [Onboarding]
+      operationId: uploadQc
+      summary: Upload QC test cases & return a parsed preview (step 3, optional).
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              properties:
+                file: { type: string, format: binary }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [files, preview]
+                properties:
+                  files:
+                    type: array
+                    items: { $ref: '#/components/schemas/UploadedFile' }
+                  preview:
+                    type: array
+                    items: { $ref: '#/components/schemas/QCTestCase' }
+
+  /onboarding/commit:
+    post:
+      tags: [Onboarding]
+      operationId: commitOnboarding
+      summary: Submit the assembled draft and start the initial scan.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/OnboardingDraft' }
+      responses:
+        '202':
+          description: Accepted; stream ScanProgress via the returned jobId.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [jobId]
+                properties:
+                  jobId: { type: string }
+
+  /onboarding/result:
+    get:
+      tags: [Onboarding]
+      operationId: getOnboardingResult
+      summary: Final scan summary (the 8 success cards).
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ScanSummary' }
+
+  # ───────────────────────────── WORKBENCH ─────────────────────────────
+  /workbench/sessions:
+    post:
+      tags: [Workbench]
+      operationId: createSession
+      summary: Start a workflow from an intent (S1).
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/IntentInput' }
+      responses:
+        '201':
+          description: Created
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/WorkbenchSession' }
+
+  /workbench/{sessionId}/analyze:
+    parameters: [{ $ref: '#/components/parameters/SessionId' }]
+    post:
+      tags: [Workbench]
+      operationId: analyze
+      summary: Isolate & classify the target behavior (S2).
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/IsolationResult' }
+
+  /workbench/{sessionId}/plan:
+    parameters: [{ $ref: '#/components/parameters/SessionId' }]
+    post:
+      tags: [Workbench]
+      operationId: generatePlan
+      summary: Produce the proposed test plan & questions (S3).
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/TestPlan' }
+
+  /workbench/{sessionId}/approve:
+    parameters: [{ $ref: '#/components/parameters/SessionId' }]
+    post:
+      tags: [Workbench]
+      operationId: approvePlan
+      summary: Approve the plan and generate changes (S4).
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/PlanApproval' }
+      responses:
+        '200':
+          description: Generated changes (also streamable as a timeline of GenerationStep).
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/GenerationResult' }
+            text/event-stream:
+              schema: { $ref: '#/components/schemas/GenerationStep' }
+
+  /workbench/{sessionId}/run:
+    parameters: [{ $ref: '#/components/parameters/SessionId' }]
+    post:
+      tags: [Workbench]
+      operationId: runTests
+      summary: Execute the generated/updated tests (S5).
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/TestRunResult' }
+
+  /workbench/{sessionId}/review:
+    parameters: [{ $ref: '#/components/parameters/SessionId' }]
+    get:
+      tags: [Workbench]
+      operationId: getReview
+      summary: Final review summary (S6).
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ReviewSummary' }
+
+  /workbench/{sessionId}/decision:
+    parameters: [{ $ref: '#/components/parameters/SessionId' }]
+    post:
+      tags: [Workbench]
+      operationId: submitDecision
+      summary: Apply / Create PR / Export / Revert (S6). Explicit user action.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/ReviewDecision' }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [ok]
+                properties:
+                  ok: { type: boolean }
+
+components:
+  parameters:
+    SessionId:
+      in: path
+      name: sessionId
+      required: true
+      schema: { type: string }
+
+  schemas:
+    # ───────────────── 0. SHARED PRIMITIVES & ENUMS ─────────────────
+    TestStatus:
+      type: string
+      description: Lifecycle status of an automated test case.
+      enum: [passed, failed, flaky, missing, suspicious]
+
+    TestType:
+      type: string
+      description: >
+        Category of a test. Closed enum — last three are first-class in the
+        workbench. Add new members here so all surfaces stay in sync.
+      enum:
+        - Unit
+        - Integration
+        - E2E
+        - Contract
+        - Regression
+        - Edge Case
+        - Security
+        - UI / Browser
+        - Visual Screenshot
+        - Mobile
+
+    RiskLevel:
+      type: string
+      description: Critical is only used in workbench classification.
+      enum: [Low, Medium, High, Critical]
+
+    Severity:
+      type: string
+      description: Severity of an AI insight / recommendation.
+      enum: [Critical, High, Medium, Low]
+
+    FeatureModule:
+      type: string
+      description: >
+        Product feature/module. Open string enum — demo values listed in
+        examples; real repos may introduce their own.
+      examples: [Checkout, Coupon, Payment, User Session, Order Summary]
+
+    RunOutcome:
+      type: string
+      description: Outcome of executing a test in a run (superset of TestStatus).
+      enum: [Passed, Failed, Flaky, Skipped, Needs approval]
+
+    RepoRef:
+      type: object
+      required: [name, path, branch]
+      properties:
+        name:   { type: string, description: 'Repo slug, e.g. "checkout-service".' }
+        path:   { type: string, description: Absolute local path. }
+        branch: { type: string }
+        commit: { type: string, description: SHA the scan ran against. }
+
+    Trend:
+      type: object
+      description: A delta vs. previous scan. sentiment is semantic, not just sign.
+      required: [value, sentiment]
+      properties:
+        value:     { type: number, description: 'Signed change (count, points, or %).' }
+        sentiment: { type: string, enum: [good, bad, neutral] }
+        basis:     { type: string, description: 'e.g. "vs last scan", "this week".' }
+
+    # ───────────────── 1. DASHBOARD ─────────────────
+    DashboardPayload:
+      type: object
+      required: [repo, lastScanAt, filesIndexed, health, metrics, testCases, insights, structure, coverage, riskHeatmap, activity]
+      properties:
+        repo:        { $ref: '#/components/schemas/RepoRef' }
+        lastScanAt:  { type: string, format: date-time }
+        filesIndexed:{ type: integer }
+        health:      { $ref: '#/components/schemas/HealthScore' }
+        metrics:     { $ref: '#/components/schemas/HealthMetrics' }
+        testCases:   { type: array, items: { $ref: '#/components/schemas/TestCase' } }
+        insights:    { type: array, items: { $ref: '#/components/schemas/Insight' } }
+        structure:   { type: array, items: { $ref: '#/components/schemas/StructureNode' } }
+        coverage:    { type: array, items: { $ref: '#/components/schemas/ModuleCoverage' } }
+        riskHeatmap: { $ref: '#/components/schemas/RiskHeatmap' }
+        activity:    { type: array, items: { $ref: '#/components/schemas/ActivityEvent' } }
+
+    HealthScore:
+      type: object
+      required: [score, max, grade, trend]
+      properties:
+        score: { type: number, minimum: 0, maximum: 100 }
+        max:   { type: integer, const: 100 }
+        grade: { type: string, description: 'Derived letter grade, e.g. "C+".' }
+        trend: { $ref: '#/components/schemas/Trend' }
+        note:  { type: string, description: One-line explanation. }
+
+    MetricTile:
+      type: object
+      required: [value]
+      properties:
+        value:     { type: number }
+        isPercent: { type: boolean }
+        trend:     { $ref: '#/components/schemas/Trend' }
+
+    HealthMetrics:
+      type: object
+      description: The 8 summary tiles.
+      required: [totalTests, passed, failed, flaky, missing, suspicious, coverage, highRiskOpen]
+      properties:
+        totalTests:   { $ref: '#/components/schemas/MetricTile' }
+        passed:       { $ref: '#/components/schemas/MetricTile' }
+        failed:       { $ref: '#/components/schemas/MetricTile' }
+        flaky:        { $ref: '#/components/schemas/MetricTile' }
+        missing:      { $ref: '#/components/schemas/MetricTile' }
+        suspicious:   { $ref: '#/components/schemas/MetricTile' }
+        coverage:     { $ref: '#/components/schemas/MetricTile' }
+        highRiskOpen: { $ref: '#/components/schemas/MetricTile' }
+
+    AINote:
+      type: object
+      required: [text, tone]
+      properties:
+        text: { type: string }
+        tone: { type: string, enum: [warn, info], description: warn=amber problem, info=indigo observation. }
+
+    TestCase:
+      type: object
+      description: Behavior-level test case (not source code).
+      required: [id, title, status, type, feature, risk, lastRunAt, recentRuns, description]
+      properties:
+        id:          { type: string }
+        title:       { type: string }
+        status:      { $ref: '#/components/schemas/TestStatus' }
+        type:        { $ref: '#/components/schemas/TestType' }
+        feature:     { $ref: '#/components/schemas/FeatureModule' }
+        risk:        { $ref: '#/components/schemas/RiskLevel' }
+        lastRunAt:
+          type: [string, 'null']
+          format: date-time
+          description: null when never run (status === missing).
+        recentRuns:
+          type: array
+          description: Last N run outcomes, newest last. Empty if never run.
+          items: { type: integer, enum: [0, 1] }
+        description: { type: string }
+        aiNote:      { $ref: '#/components/schemas/AINote' }
+
+    InsightAction:
+      type: string
+      enum:
+        - Generate missing tests
+        - Review suspicious tests
+        - Explain failure
+        - Create refactor plan
+        - Open related test cases
+
+    Insight:
+      type: object
+      required: [id, severity, title, description, action, relatedTestIds]
+      properties:
+        id:             { type: string }
+        severity:       { $ref: '#/components/schemas/Severity' }
+        title:          { type: string }
+        description:    { type: string }
+        action:         { $ref: '#/components/schemas/InsightAction' }
+        relatedTestIds: { type: array, items: { type: string }, description: TestCase.id[] to highlight. }
+        meta:           { type: string }
+
+    StructureCount:
+      type: object
+      required: [label, count, kind]
+      properties:
+        label: { type: string }
+        count: { type: integer }
+        kind:
+          type: string
+          enum: [unit, integration, failed, flaky, missing, suspicious, other]
+
+    StructureNode:
+      type: object
+      required: [pathPrefix, name, coverage, counts]
+      properties:
+        pathPrefix: { type: string, description: 'e.g. "src/features/".' }
+        name:       { type: string, description: 'Leaf name, e.g. "checkout".' }
+        coverage:   { type: number, minimum: 0, maximum: 100 }
+        counts:     { type: array, items: { $ref: '#/components/schemas/StructureCount' } }
+
+    ModuleCoverage:
+      type: object
+      required: [module, line, branch]
+      properties:
+        module: { $ref: '#/components/schemas/FeatureModule' }
+        line:   { type: number, minimum: 0, maximum: 100 }
+        branch: { type: number, minimum: 0, maximum: 100 }
+
+    RiskHeatmapRow:
+      type: object
+      required: [module, values]
+      properties:
+        module: { $ref: '#/components/schemas/FeatureModule' }
+        values:
+          type: array
+          description: Severity per column, same order as columns. 0=none..3=severe.
+          items: { type: integer, enum: [0, 1, 2, 3] }
+
+    RiskHeatmap:
+      type: object
+      required: [columns, rows]
+      properties:
+        columns:
+          type: array
+          items: { type: string, enum: [Failed, Flaky, Missing, Suspect] }
+        rows:
+          type: array
+          items: { $ref: '#/components/schemas/RiskHeatmapRow' }
+
+    ActivityEvent:
+      type: object
+      required: [id, state, title, at]
+      properties:
+        id:    { type: string }
+        state: { type: string, enum: [done, active, pending] }
+        title: { type: string, description: Plain text (no HTML). }
+        at:    { type: string, format: date-time }
+        detail:{ type: string }
+        awaitingApproval: { type: boolean }
+
+    # ───────────────── 2. ONBOARDING ─────────────────
+    OnboardingStepId:
+      type: string
+      enum: [repository, product-knowledge, qc-cases, commands, scan]
+
+    StepStatus:
+      type: string
+      enum: [todo, current, done, skipped]
+
+    UploadedFile:
+      type: object
+      required: [name, type, size]
+      properties:
+        name: { type: string }
+        type: { type: string, enum: [pdf, md, txt, csv, xlsx, json], description: Lowercased extension. }
+        size: { type: string, description: 'Human-readable, e.g. "1.4 MB".' }
+        bytes:{ type: integer }
+
+    KnowledgeDoc:
+      type: object
+      required: [id, file, status]
+      properties:
+        id:     { type: string }
+        file:   { $ref: '#/components/schemas/UploadedFile' }
+        status: { type: string, enum: [indexed, indexing, failed] }
+
+    QCTestCase:
+      type: object
+      description: A manual QC test case (also reused by the workbench).
+      required: [id, feature, scenario, expectedResult, priority, automationStatus]
+      properties:
+        id:             { type: string, description: 'External QC id, e.g. "QC-102".' }
+        feature:        { $ref: '#/components/schemas/FeatureModule' }
+        scenario:       { type: string }
+        expectedResult: { type: string }
+        priority:       { type: string, enum: [Critical, High, Medium, Low] }
+        automationStatus: { type: string, enum: [automated, missing, unknown] }
+
+    RepositorySelection:
+      type: object
+      required: [repo, detectedStack, uncommittedChanges]
+      properties:
+        repo:          { $ref: '#/components/schemas/RepoRef' }
+        detectedStack: { type: array, items: { type: string }, description: 'e.g. ["TypeScript","React","Jest"].' }
+        uncommittedChanges: { type: integer, minimum: 0 }
+
+    CommandConfig:
+      type: object
+      required: [packageManager, test, relatedTest, coverage]
+      properties:
+        packageManager: { type: string, enum: [npm, pnpm, yarn] }
+        test:        { type: string, examples: ['npm test'] }
+        relatedTest: { type: string, examples: ['npm test -- --runInBand'] }
+        coverage:    { type: string, examples: ['npm run test:coverage'] }
+        typecheck:   { type: string }
+        lint:        { type: string }
+
+    ScanOptions:
+      type: object
+      required: [runFullSuite, runCoverage, runTypecheck, runLint, detectFlakyByRerun, allowTestGeneration]
+      properties:
+        runFullSuite:        { type: boolean }
+        runCoverage:         { type: boolean }
+        runTypecheck:        { type: boolean }
+        runLint:             { type: boolean }
+        detectFlakyByRerun:  { type: boolean }
+        allowTestGeneration: { type: boolean, description: Agent may draft files (staged, not applied). }
+
+    OnboardingDraft:
+      type: object
+      required: [repository, productDocs, docSources, qcFiles, qcPreview, commands, scanOptions, steps]
+      properties:
+        repository:  { $ref: '#/components/schemas/RepositorySelection' }
+        productDocs: { type: array, items: { $ref: '#/components/schemas/KnowledgeDoc' } }
+        docSources:  { type: array, items: { type: string }, description: 'Named sources, e.g. "Confluence Space: Checkout".' }
+        qcFiles:     { type: array, items: { $ref: '#/components/schemas/UploadedFile' } }
+        qcPreview:   { type: array, items: { $ref: '#/components/schemas/QCTestCase' } }
+        commands:    { $ref: '#/components/schemas/CommandConfig' }
+        scanOptions: { $ref: '#/components/schemas/ScanOptions' }
+        steps:
+          type: object
+          description: Per-step status keyed by OnboardingStepId.
+          additionalProperties: { $ref: '#/components/schemas/StepStatus' }
+
+    ScanTaskId:
+      type: string
+      enum: [analyze-structure, detect-framework, discover-tests, parse-docs, import-qc, map-files, run-tests, run-coverage, detect-missing, detect-suspicious, generate-insights]
+
+    ScanTask:
+      type: object
+      required: [id, label, status]
+      properties:
+        id:     { $ref: '#/components/schemas/ScanTaskId' }
+        label:  { type: string }
+        status: { type: string, enum: [pending, running, done, warning] }
+
+    ScanLogEntry:
+      type: object
+      required: [at, level, message]
+      properties:
+        at:      { type: string, format: date-time }
+        level:   { type: string, enum: [info, ok, warn] }
+        message: { type: string }
+
+    ScanProgress:
+      type: object
+      description: Streamed progress envelope (SSE/WebSocket).
+      required: [percent, currentTaskId, tasks, log, done]
+      properties:
+        percent:       { type: number, minimum: 0, maximum: 100 }
+        currentTaskId: { oneOf: [ { $ref: '#/components/schemas/ScanTaskId' }, { type: 'null' } ] }
+        tasks:         { type: array, items: { $ref: '#/components/schemas/ScanTask' } }
+        log:           { type: array, items: { $ref: '#/components/schemas/ScanLogEntry' } }
+        done:          { type: boolean }
+
+    ScanSummary:
+      type: object
+      description: Final success summary; seeds the dashboard HealthMetrics.
+      required: [automatedTestsFound, qcCasesImported, productDocsIndexed, missingRecommended, suspiciousTests, failedTests, flakyTests, coverage]
+      properties:
+        automatedTestsFound: { type: integer }
+        qcCasesImported:     { type: integer }
+        productDocsIndexed:  { type: integer }
+        missingRecommended:  { type: integer }
+        suspiciousTests:     { type: integer }
+        failedTests:         { type: integer }
+        flakyTests:          { type: integer }
+        coverage:            { type: number, minimum: 0, maximum: 100 }
+
+    # ───────────────── 3. WORKBENCH ─────────────────
+    WorkflowStepId:
+      type: string
+      enum: [intent, isolation, plan, generate, run, review]
+
+    WorkflowStepStatus:
+      type: string
+      enum: [locked, active, done, warn]
+
+    SourceContext:
+      type: string
+      enum:
+        - Codebase
+        - Product specs / wiki
+        - QC test cases
+        - Existing automated tests
+        - Coverage report
+        - Previous failed runs
+
+    IntentInput:
+      type: object
+      required: [prompt, feature, testTypes, sources]
+      properties:
+        prompt:    { type: string }
+        feature:   { oneOf: [ { $ref: '#/components/schemas/FeatureModule' }, { type: 'null' } ] }
+        testTypes: { type: array, items: { $ref: '#/components/schemas/TestType' } }
+        sources:   { type: array, items: { $ref: '#/components/schemas/SourceContext' } }
+
+    QuickAction:
+      type: object
+      required: [id, label, feature, severity, testTypes]
+      properties:
+        id:        { type: string }
+        label:     { type: string }
+        feature:   { $ref: '#/components/schemas/FeatureModule' }
+        severity:  { $ref: '#/components/schemas/Severity' }
+        testTypes: { type: array, items: { $ref: '#/components/schemas/TestType' } }
+        sourceInsightId: { type: string, description: Round-trips back to a dashboard Insight.id. }
+
+    RelatedFile:
+      type: object
+      required: [path, kind]
+      properties:
+        path: { type: string }
+        kind: { type: string, enum: [source, test, spec, qc] }
+        meta: { type: string, description: 'e.g. "412 LOC", "6 tests".' }
+
+    BehaviorClassification:
+      type: object
+      required: [behavior, status, suggestedTypes, risk, explanation]
+      properties:
+        behavior:       { type: string }
+        status:         { type: string, enum: [Covered, Missing, Weak, Failed, Suspicious] }
+        suggestedTypes: { type: array, items: { $ref: '#/components/schemas/TestType' } }
+        risk:           { $ref: '#/components/schemas/RiskLevel' }
+        explanation:    { type: string }
+
+    IsolationResult:
+      type: object
+      required: [target, sourceFiles, existingTestFiles, specDocs, qcCases, currentCoverage, currentStatus, userJourneys, classifications]
+      properties:
+        target:
+          type: object
+          required: [feature, repo]
+          properties:
+            feature: { $ref: '#/components/schemas/FeatureModule' }
+            repo:    { $ref: '#/components/schemas/RepoRef' }
+        sourceFiles:       { type: array, items: { $ref: '#/components/schemas/RelatedFile' } }
+        existingTestFiles: { type: array, items: { $ref: '#/components/schemas/RelatedFile' } }
+        specDocs:          { type: array, items: { $ref: '#/components/schemas/RelatedFile' } }
+        qcCases:           { type: array, items: { $ref: '#/components/schemas/QCTestCase' } }
+        currentCoverage:
+          type: object
+          required: [line, branch]
+          properties:
+            line:   { type: number, minimum: 0, maximum: 100 }
+            branch: { type: number, minimum: 0, maximum: 100 }
+        currentStatus:
+          type: object
+          required: [failed, suspicious, missing]
+          properties:
+            failed:     { type: integer }
+            suspicious: { type: integer }
+            missing:    { type: integer }
+            flaky:      { type: integer }
+        userJourneys:    { type: array, items: { type: string } }
+        classifications: { type: array, items: { $ref: '#/components/schemas/BehaviorClassification' } }
+
+    PlanAction:
+      type: object
+      required: [action, label, count]
+      properties:
+        action: { type: string, enum: [add, update, delete, run] }
+        label:  { type: string }
+        count:  { type: [integer, 'null'], description: null for run/coverage actions. }
+
+    PlanRiskAssessment:
+      type: object
+      required: [productionCodeChanges, testDataChanges, browserAutomationRequired, mobileSimulatorRequired, externalApiMocking]
+      properties:
+        productionCodeChanges:     { type: string, enum: [none, expected] }
+        testDataChanges:           { type: boolean }
+        browserAutomationRequired: { type: boolean }
+        mobileSimulatorRequired:   { type: string, enum: [required, optional, no] }
+        externalApiMocking:        { type: string, enum: [required, optional, no] }
+
+    AIQuestion:
+      type: object
+      required: [id, question, options]
+      properties:
+        id:       { type: string }
+        question: { type: string }
+        options:  { type: array, items: { type: string }, description: First is typically spec-recommended. }
+        answerIndex: { type: integer, description: Index into options; absent until answered. }
+
+    TestPlan:
+      type: object
+      required: [proposedActions, risk, filesToChange, questions]
+      properties:
+        proposedActions: { type: array, items: { $ref: '#/components/schemas/PlanAction' } }
+        risk:            { $ref: '#/components/schemas/PlanRiskAssessment' }
+        filesToChange:   { type: array, items: { type: string } }
+        questions:       { type: array, items: { $ref: '#/components/schemas/AIQuestion' } }
+
+    PlanApproval:
+      type: object
+      required: [decision, answers]
+      properties:
+        decision:      { type: string, enum: [approve, edit, cancel] }
+        skipUiTests:   { type: boolean }
+        unitTestsOnly: { type: boolean }
+        answers:
+          type: object
+          description: Answers keyed by AIQuestion.id (value = option index).
+          additionalProperties: { type: integer }
+
+    GenerationStep:
+      type: object
+      required: [label, status]
+      properties:
+        label:  { type: string }
+        status: { type: string, enum: [pending, running, done] }
+
+    DiffLine:
+      type: object
+      required: [kind, text]
+      properties:
+        kind: { type: string, enum: [add, del, context, meta] }
+        text: { type: string }
+
+    GeneratedChange:
+      type: object
+      description: A proposed change to the test suite. Never auto-applied.
+      required: [id, action, testType, title, file, feature, risk, reason, diff, status]
+      properties:
+        id:       { type: string }
+        action:   { type: string, enum: [Add, Update, Delete] }
+        testType: { $ref: '#/components/schemas/TestType' }
+        title:    { type: string }
+        file:     { type: string }
+        feature:  { $ref: '#/components/schemas/FeatureModule' }
+        risk:     { $ref: '#/components/schemas/RiskLevel' }
+        reason:   { type: string }
+        diff:     { type: array, items: { $ref: '#/components/schemas/DiffLine' } }
+        status:   { type: string, enum: [staged, applied, reverted] }
+
+    GenerationResult:
+      type: object
+      required: [timeline, changes, beforeAfter]
+      properties:
+        timeline: { type: array, items: { $ref: '#/components/schemas/GenerationStep' } }
+        changes:  { type: array, items: { $ref: '#/components/schemas/GeneratedChange' } }
+        beforeAfter:
+          type: object
+          description: Narrative bullets (display only).
+          required: [before, after]
+          properties:
+            before: { type: array, items: { type: string } }
+            after:  { type: array, items: { type: string } }
+
+    Evidence:
+      type: object
+      required: [kind, label]
+      properties:
+        kind:  { type: string, enum: [screenshot, video, trace, device-log, visual-diff] }
+        label: { type: string }
+        href:  { type: string, description: Local path or signed URL. }
+
+    UnitRunResult:
+      type: object
+      required: [command, outcome, passed, durationMs, suite]
+      properties:
+        command:    { type: string }
+        outcome:    { $ref: '#/components/schemas/RunOutcome' }
+        passed:     { type: integer }
+        failed:     { type: integer }
+        durationMs: { type: integer }
+        suite:      { type: string }
+
+    UIRunResult:
+      type: object
+      required: [command, browser, outcome, passed, durationMs, evidence]
+      properties:
+        command:    { type: string }
+        browser:    { type: string }
+        outcome:    { $ref: '#/components/schemas/RunOutcome' }
+        passed:     { type: integer }
+        durationMs: { type: integer }
+        visual:
+          type: object
+          properties:
+            matchPercent: { type: number, minimum: 0, maximum: 100 }
+            baseline:     { type: string }
+        evidence: { type: array, items: { $ref: '#/components/schemas/Evidence' } }
+
+    MobileRunResult:
+      type: object
+      required: [command, devices, outcome, passed, durationMs, evidence]
+      properties:
+        command:    { type: string }
+        devices:    { type: array, items: { type: string } }
+        network:    { type: string, description: 'Throttle profile, e.g. "Slow 3G (throttled)".' }
+        outcome:    { $ref: '#/components/schemas/RunOutcome' }
+        passed:     { type: integer }
+        flaky:      { type: integer }
+        durationMs: { type: integer }
+        evidence:   { type: array, items: { $ref: '#/components/schemas/Evidence' } }
+
+    CoverageDelta:
+      type: object
+      required: [metric, before, after]
+      properties:
+        metric: { type: string, enum: [Line coverage, Branch coverage, Function coverage, Changed-files] }
+        before: { type: number, minimum: 0, maximum: 100 }
+        after:  { type: number, minimum: 0, maximum: 100 }
+
+    TestResultRow:
+      type: object
+      required: [title, type, status, duration, evidence, file]
+      properties:
+        title:    { type: string }
+        type:     { $ref: '#/components/schemas/TestType' }
+        status:   { $ref: '#/components/schemas/RunOutcome' }
+        duration: { type: [string, 'null'], description: 'Human duration ("38ms") or null.' }
+        evidence: { type: [string, 'null'] }
+        file:     { type: string }
+
+    FailureCard:
+      type: object
+      required: [testTitle, kind, reason, likelyCause, suggestedFix, actions]
+      properties:
+        testTitle:    { type: string }
+        kind:         { type: string, enum: [failed, flaky] }
+        reason:       { type: string }
+        likelyCause:  { type: string }
+        suggestedFix: { type: string }
+        actions:
+          type: array
+          items: { type: string, enum: [ask-agent-to-fix, accept-and-keep, revert-generated-test] }
+
+    TestRunResult:
+      type: object
+      required: [unit, ui, mobile, coverage, matrix]
+      properties:
+        unit:      { $ref: '#/components/schemas/UnitRunResult' }
+        ui:        { $ref: '#/components/schemas/UIRunResult' }
+        mobile:    { $ref: '#/components/schemas/MobileRunResult' }
+        coverage:  { type: array, items: { $ref: '#/components/schemas/CoverageDelta' } }
+        matrix:    { type: array, items: { $ref: '#/components/schemas/TestResultRow' } }
+        attention: { $ref: '#/components/schemas/FailureCard' }
+
+    ChangedFile:
+      type: object
+      required: [path, diffStat, changeKind]
+      properties:
+        path:       { type: string }
+        diffStat:   { type: string, description: '"new" | "+38 −6" | "+41".' }
+        changeKind: { type: string, enum: [add, update, delete] }
+
+    RiskRow:
+      type: object
+      required: [label, value, sentiment]
+      properties:
+        label:     { type: string }
+        value:     { type: string }
+        sentiment: { type: string, enum: [good, bad, neutral] }
+
+    ReviewSummary:
+      type: object
+      required: [testsAdded, testsUpdated, testsDeleted, testsPassing, coverage, flakyTracked, filesChanged, remainingRisk, openQuestions, recommendation]
+      properties:
+        testsAdded:   { type: integer }
+        testsUpdated: { type: integer }
+        testsDeleted: { type: integer }
+        testsPassing: { type: string, description: 'e.g. "10/11".' }
+        coverage:
+          type: object
+          required: [lineDelta, branchDelta]
+          properties:
+            lineDelta:   { type: number }
+            branchDelta: { type: number }
+        flakyTracked:   { type: integer }
+        filesChanged:   { type: array, items: { $ref: '#/components/schemas/ChangedFile' } }
+        remainingRisk:  { type: array, items: { $ref: '#/components/schemas/RiskRow' } }
+        openQuestions:  { type: integer }
+        recommendation: { type: string, description: Display only. }
+
+    ReviewDecision:
+      type: object
+      description: Terminal S6 decision. Discriminated by `type`.
+      required: [type]
+      properties:
+        type: { type: string, enum: [apply, create-pr, export-plan, revert-all] }
+      discriminator:
+        propertyName: type
+
+    WorkbenchSession:
+      type: object
+      required: [id, repo, createdAt, steps, intent]
+      properties:
+        id:        { type: string }
+        repo:      { $ref: '#/components/schemas/RepoRef' }
+        createdAt: { type: string, format: date-time }
+        steps:
+          type: object
+          description: Per-step status keyed by WorkflowStepId.
+          additionalProperties: { $ref: '#/components/schemas/WorkflowStepStatus' }
+        intent:     { $ref: '#/components/schemas/IntentInput' }
+        isolation:  { $ref: '#/components/schemas/IsolationResult' }
+        plan:       { $ref: '#/components/schemas/TestPlan' }
+        generation: { $ref: '#/components/schemas/GenerationResult' }
+        run:        { $ref: '#/components/schemas/TestRunResult' }
+        review:     { $ref: '#/components/schemas/ReviewSummary' }
