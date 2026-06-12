@@ -3,8 +3,8 @@ services:
     image: pgvector/pgvector:pg16
     container_name: guardrail-postgres
     environment:
-      POSTGRES_USER: guardrail
-      POSTGRES_PASSWORD: guardrail
+      POSTGRES_USER: ${POSTGRES_USER:-guardrail}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-guardrail}
       POSTGRES_DB: guardrail
     ports:
       - "5432:5432"
