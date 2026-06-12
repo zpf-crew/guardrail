@@ -18,3 +18,39 @@ test('job queue marks a timed-out job as timeout and emits retryable error', asy
 
   assert.deepEqual(events, ['queued', 'running', 'timeout', 'aborted by timeout']);
 });
+
+test('job queue frees concurrency when a timed-out job ignores abort', async () => {
+  const events: string[] = [];
+  const queue = new WorkbenchJobQueue({ concurrency: 1 });
+
+  const ignoredAbort = queue.enqueue({
+    timeoutMs: 5,
+    onStatus: status => events.push(`first:${status}`),
+    onError: message => events.push(`first:${message}`),
+    run: async () => {
+      await new Promise<void>(() => {});
+    },
+  });
+
+  const nextJob = queue.enqueue({
+    timeoutMs: 0,
+    onStatus: status => events.push(`second:${status}`),
+    onError: message => events.push(`second:${message}`),
+    run: async () => {
+      events.push('second:run');
+    },
+  });
+
+  await Promise.all([ignoredAbort, nextJob]);
+
+  assert.deepEqual(events, [
+    'first:queued',
+    'first:running',
+    'second:queued',
+    'first:timeout',
+    'first:Job timed out after 5ms and was aborted',
+    'second:running',
+    'second:run',
+    'second:succeeded',
+  ]);
+});

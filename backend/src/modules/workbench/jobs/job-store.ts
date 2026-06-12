@@ -7,9 +7,18 @@ import type {
   WorkbenchJobEvent,
   WorkbenchJobStatus,
   WorkbenchSession,
-  WorkbenchStepResult,
   WorkflowStepId,
 } from '../workbench.types.js';
+
+type WorkbenchResultStepId = Exclude<WorkflowStepId, 'intent'>;
+
+type WorkbenchStepResultByStep = {
+  isolation: NonNullable<WorkbenchSession['isolation']>;
+  plan: NonNullable<WorkbenchSession['plan']>;
+  generate: NonNullable<WorkbenchSession['generation']>;
+  run: NonNullable<WorkbenchSession['run']>;
+  review: NonNullable<WorkbenchSession['review']>;
+};
 
 const DEFAULT_REPO: RepoRef = {
   name: 'guardrail',
@@ -49,7 +58,7 @@ export class WorkbenchJobStore {
     this.jobs.set(session.id, new Map());
     this.events.set(session.id, new Map());
 
-    return session;
+    return clone(session);
   }
 
   createJob(sessionId: string, step: WorkflowStepId): WorkbenchJob {
@@ -69,15 +78,15 @@ export class WorkbenchJobStore {
     this.jobsFor(sessionId).set(job.id, job);
     this.eventsFor(sessionId).set(job.id, []);
 
-    return job;
+    return clone(job);
   }
 
   getSession(sessionId: string): WorkbenchSession | undefined {
-    return this.sessions.get(sessionId);
+    return cloneIfDefined(this.sessions.get(sessionId));
   }
 
   getJob(sessionId: string, jobId: string): WorkbenchJob | undefined {
-    return this.jobs.get(sessionId)?.get(jobId);
+    return cloneIfDefined(this.jobs.get(sessionId)?.get(jobId));
   }
 
   setJobStatus(
@@ -86,7 +95,7 @@ export class WorkbenchJobStore {
     status: WorkbenchJobStatus,
     error?: string,
   ): void {
-    const job = this.getJob(sessionId, jobId);
+    const job = this.jobs.get(sessionId)?.get(jobId);
     if (!job) throw new Error(`Workbench job not found: ${jobId}`);
 
     job.status = status;
@@ -99,34 +108,36 @@ export class WorkbenchJobStore {
     const events = this.events.get(sessionId)?.get(jobId);
     if (!events) throw new Error(`Workbench job events not found: ${jobId}`);
 
-    events.push(event);
+    events.push(clone(event));
   }
 
   getEvents(sessionId: string, jobId: string): WorkbenchJobEvent[] {
-    return [...(this.events.get(sessionId)?.get(jobId) ?? [])];
+    return clone(this.events.get(sessionId)?.get(jobId) ?? []);
   }
 
-  setStepResult(sessionId: string, step: WorkflowStepId, result: WorkbenchStepResult): void {
+  setStepResult<Step extends WorkbenchResultStepId>(
+    sessionId: string,
+    step: Step,
+    result: WorkbenchStepResultByStep[Step],
+  ): void {
     const session = this.sessions.get(sessionId);
     if (!session) throw new Error(`Workbench session not found: ${sessionId}`);
 
     switch (step) {
       case 'isolation':
-        session.isolation = result as WorkbenchSession['isolation'];
+        session.isolation = clone(result) as WorkbenchSession['isolation'];
         break;
       case 'plan':
-        session.plan = result as WorkbenchSession['plan'];
+        session.plan = clone(result) as WorkbenchSession['plan'];
         break;
       case 'generate':
-        session.generation = result as WorkbenchSession['generation'];
+        session.generation = clone(result) as WorkbenchSession['generation'];
         break;
       case 'run':
-        session.run = result as WorkbenchSession['run'];
+        session.run = clone(result) as WorkbenchSession['run'];
         break;
       case 'review':
-        session.review = result as WorkbenchSession['review'];
-        break;
-      case 'intent':
+        session.review = clone(result) as WorkbenchSession['review'];
         break;
     }
 
@@ -144,4 +155,12 @@ export class WorkbenchJobStore {
     if (!events) throw new Error(`Workbench session events not found: ${sessionId}`);
     return events;
   }
+}
+
+function clone<T>(value: T): T {
+  return structuredClone(value);
+}
+
+function cloneIfDefined<T>(value: T | undefined): T | undefined {
+  return value === undefined ? undefined : clone(value);
 }

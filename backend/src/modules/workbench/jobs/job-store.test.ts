@@ -31,3 +31,17 @@ test('job store records sessions, jobs, events, and step results', () => {
   assert.equal(store.getEvents(session.id, job.id).length, 1);
   assert.equal(store.getSession(session.id)?.isolation?.currentStatus.missing, 1);
 });
+
+test('job store returns snapshots that do not mutate internal state', () => {
+  const store = new WorkbenchJobStore();
+  const session = store.createSession({ prompt: 'Check snapshots' });
+  const job = store.createJob(session.id, 'plan');
+
+  session.intent.prompt = 'mutated prompt';
+  session.steps.plan = 'done';
+  job.status = 'failed';
+
+  assert.equal(store.getSession(session.id)?.intent.prompt, 'Check snapshots');
+  assert.equal(store.getSession(session.id)?.steps.plan, 'locked');
+  assert.equal(store.getJob(session.id, job.id)?.status, 'queued');
+});
