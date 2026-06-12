@@ -105,3 +105,84 @@ test('job queue frees concurrency before a late cooperative abort error is emitt
     'first:late cooperative abort',
   ]);
 });
+
+test('job queue continues when running status callback throws', async () => {
+  const events: string[] = [];
+  const queue = new WorkbenchJobQueue({ concurrency: 1 });
+
+  const throwingStatus = queue.enqueue({
+    timeoutMs: 0,
+    onStatus: status => {
+      events.push(`first:${status}`);
+      if (status === 'running') throw new Error('status callback failed');
+    },
+    onError: message => events.push(`first:${message}`),
+    run: async () => {
+      events.push('first:run');
+    },
+  });
+
+  const nextJob = queue.enqueue({
+    timeoutMs: 0,
+    onStatus: status => events.push(`second:${status}`),
+    onError: message => events.push(`second:${message}`),
+    run: async () => {
+      events.push('second:run');
+    },
+  });
+
+  await Promise.all([throwingStatus, nextJob]);
+
+  assert.deepEqual(events, [
+    'first:queued',
+    'first:running',
+    'first:run',
+    'second:queued',
+    'first:succeeded',
+    'second:running',
+    'second:run',
+    'second:succeeded',
+  ]);
+});
+
+test('job queue continues when late timeout error callback throws', async () => {
+  const events: string[] = [];
+  const queue = new WorkbenchJobQueue({ concurrency: 1 });
+
+  const lateAbort = queue.enqueue({
+    timeoutMs: 5,
+    onStatus: status => events.push(`first:${status}`),
+    onError: message => {
+      events.push(`first:${message}`);
+      throw new Error('error callback failed');
+    },
+    run: async signal => {
+      await new Promise<void>(resolve => setTimeout(resolve, 80));
+      if (signal.aborted) throw new Error('late error callback abort');
+    },
+  });
+
+  const nextJob = queue.enqueue({
+    timeoutMs: 0,
+    onStatus: status => events.push(`second:${status}`),
+    onError: message => events.push(`second:${message}`),
+    run: async () => {
+      events.push('second:run');
+    },
+  });
+
+  await Promise.all([lateAbort, nextJob]);
+  await new Promise<void>(resolve => setTimeout(resolve, 40));
+
+  assert.deepEqual(events, [
+    'first:queued',
+    'first:running',
+    'second:queued',
+    'first:timeout',
+    'first:Job timed out after 5ms and was aborted',
+    'second:running',
+    'second:run',
+    'second:succeeded',
+    'first:late error callback abort',
+  ]);
+});

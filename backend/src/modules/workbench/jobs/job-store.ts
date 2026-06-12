@@ -39,7 +39,7 @@ export class WorkbenchJobStore {
   private readonly events = new Map<string, Map<string, WorkbenchJobEvent[]>>();
 
   createSession(intent: Partial<IntentInput> = {}): WorkbenchSession {
-    const session: WorkbenchSession = {
+    const session = clone<WorkbenchSession>({
       id: randomUUID(),
       repo: DEFAULT_REPO,
       createdAt: new Date().toISOString(),
@@ -52,7 +52,7 @@ export class WorkbenchJobStore {
         review: 'locked',
       },
       intent: { ...DEFAULT_INTENT, ...intent },
-    };
+    });
 
     this.sessions.set(session.id, session);
     this.jobs.set(session.id, new Map());

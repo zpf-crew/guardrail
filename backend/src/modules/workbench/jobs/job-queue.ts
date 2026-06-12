@@ -10,6 +10,7 @@ const TIMEOUT_ERROR_GRACE_MS = 50;
 interface PendingQueueJob {
   job: QueueJob;
   resolve: () => void;
+  settled: boolean;
 }
 
 export class WorkbenchJobQueue {
@@ -22,10 +23,10 @@ export class WorkbenchJobQueue {
   }
 
   enqueue(job: QueueJob): Promise<void> {
-    job.onStatus('queued');
+    safeStatus(job, 'queued');
 
     return new Promise<void>(resolve => {
-      this.pending.push({ job, resolve });
+      this.pending.push({ job, resolve, settled: false });
       this.drain();
     });
   }
@@ -36,38 +37,33 @@ export class WorkbenchJobQueue {
       if (!pendingJob) return;
 
       this.active += 1;
-      void this.run(pendingJob);
+      void this.run(pendingJob).catch(() => {
+        this.settle(pendingJob);
+      });
     }
   }
 
-  private async run({ job, resolve }: PendingQueueJob): Promise<void> {
+  private async run(pendingJob: PendingQueueJob): Promise<void> {
+    const { job } = pendingJob;
     const abortController = new AbortController();
     let timedOut = false;
-    let settled = false;
     let emittedError = false;
-
-    const settle = (): void => {
-      if (settled) return;
-      settled = true;
-      this.active -= 1;
-      resolve();
-      this.drain();
-    };
+    let timeoutTimer: NodeJS.Timeout | undefined;
 
     const emitError = (message: string): void => {
       emittedError = true;
-      job.onError(message);
+      safeError(job, message);
     };
 
-    job.onStatus('running');
+    safeStatus(job, 'running');
 
     try {
       const runPromise = job.run(abortController.signal);
 
       if (job.timeoutMs <= 0) {
         await runPromise;
-        job.onStatus('succeeded');
-        resolve();
+        safeStatus(job, 'succeeded');
+        this.settle(pendingJob);
         return;
       }
 
@@ -76,25 +72,28 @@ export class WorkbenchJobQueue {
           () => ({ type: 'completed' as const }),
           error => ({ type: 'failed' as const, error }),
         ),
-        delay(job.timeoutMs).then(() => ({ type: 'timeout' as const })),
+        new Promise<{ type: 'timeout' }>(resolve => {
+          timeoutTimer = setTimeout(() => resolve({ type: 'timeout' }), job.timeoutMs);
+        }),
       ]);
+      if (timeoutTimer) clearTimeout(timeoutTimer);
 
       if (result.type === 'completed') {
-        job.onStatus('succeeded');
-        settle();
+        safeStatus(job, 'succeeded');
+        this.settle(pendingJob);
         return;
       }
 
       if (result.type === 'failed') {
-        job.onStatus('failed');
+        safeStatus(job, 'failed');
         emitError(errorMessage(result.error));
-        settle();
+        this.settle(pendingJob);
         return;
       }
 
       timedOut = true;
       abortController.abort();
-      job.onStatus('timeout');
+      safeStatus(job, 'timeout');
 
       runPromise.catch(error => {
         emitError(errorMessage(error));
@@ -112,14 +111,24 @@ export class WorkbenchJobQueue {
         emitError(`Job timed out after ${job.timeoutMs}ms and was aborted`);
       }
 
-      settle();
+      this.settle(pendingJob);
     } catch (error) {
-      if (!timedOut) job.onStatus('failed');
+      if (!timedOut) safeStatus(job, 'failed');
       emitError(errorMessage(error));
-      settle();
+      this.settle(pendingJob);
     } finally {
-      settle();
+      if (timeoutTimer) clearTimeout(timeoutTimer);
+      this.settle(pendingJob);
     }
+  }
+
+  private settle(pendingJob: PendingQueueJob): void {
+    if (pendingJob.settled) return;
+
+    pendingJob.settled = true;
+    this.active -= 1;
+    pendingJob.resolve();
+    this.drain();
   }
 }
 
@@ -129,4 +138,23 @@ function delay(ms: number): Promise<void> {
 
 function errorMessage(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
+}
+
+function safeStatus(
+  job: QueueJob,
+  status: 'queued' | 'running' | 'succeeded' | 'failed' | 'timeout',
+): void {
+  try {
+    job.onStatus(status);
+  } catch {
+    // Callback failures must not compromise queue liveness.
+  }
+}
+
+function safeError(job: QueueJob, message: string): void {
+  try {
+    job.onError(message);
+  } catch {
+    // Callback failures must not compromise queue liveness.
+  }
 }

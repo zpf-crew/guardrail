@@ -45,3 +45,25 @@ test('job store returns snapshots that do not mutate internal state', () => {
   assert.equal(store.getSession(session.id)?.steps.plan, 'locked');
   assert.equal(store.getJob(session.id, job.id)?.status, 'queued');
 });
+
+test('job store does not retain caller-owned intent arrays', () => {
+  const store = new WorkbenchJobStore();
+  const testTypes: Array<'UI / Browser' | 'Unit'> = ['UI / Browser'];
+  const sources: Array<'Codebase' | 'QC test cases'> = ['Codebase'];
+  const session = store.createSession({
+    prompt: 'Check caller arrays',
+    testTypes,
+    sources,
+  });
+
+  testTypes.push('Unit');
+  sources.push('QC test cases');
+
+  const mutableTestTypes = session.intent.testTypes;
+  const mutableSources = session.intent.sources;
+  mutableTestTypes.push('Unit');
+  mutableSources.push('QC test cases');
+
+  assert.deepEqual(store.getSession(session.id)?.intent.testTypes, ['UI / Browser']);
+  assert.deepEqual(store.getSession(session.id)?.intent.sources, ['Codebase']);
+});
