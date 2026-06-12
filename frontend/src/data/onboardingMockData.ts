@@ -1,4 +1,5 @@
 export interface GitHubRepo {
+  id: number;
   org: string;
   name: string;
   fullName: string;
@@ -47,9 +48,9 @@ export interface SummaryStat {
 }
 
 export const githubRepos: GitHubRepo[] = [
-  { org: 'acme-corp', name: 'checkout-service', fullName: 'acme-corp/checkout-service', branch: 'feature/coupon-refactor', private: true },
-  { org: 'acme-corp', name: 'payment-gateway', fullName: 'acme-corp/payment-gateway', branch: 'main', private: true },
-  { org: 'acme-corp', name: 'mobile-checkout', fullName: 'acme-corp/mobile-checkout', branch: 'develop', private: false },
+  { id: 1001, org: 'acme-corp', name: 'checkout-service', fullName: 'acme-corp/checkout-service', branch: 'feature/coupon-refactor', private: true },
+  { id: 1002, org: 'acme-corp', name: 'payment-gateway', fullName: 'acme-corp/payment-gateway', branch: 'main', private: true },
+  { id: 1003, org: 'acme-corp', name: 'mobile-checkout', fullName: 'acme-corp/mobile-checkout', branch: 'develop', private: false },
 ];
 
 export const repoInfo: RepoInfo = {

@@ -9,6 +9,7 @@
     "dev": "pnpm --parallel --dir frontend dev & pnpm --dir backend dev",
     "dev:frontend": "pnpm --dir frontend dev",
     "dev:backend": "pnpm --dir backend dev",
+    "migrate:backend": "pnpm --dir backend migrate",
     "build": "pnpm --dir frontend build && pnpm --dir backend build",
     "typecheck": "pnpm --dir frontend typecheck && pnpm --dir backend typecheck",
     "lint": "pnpm --dir frontend lint && pnpm --dir backend lint"

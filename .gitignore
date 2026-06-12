@@ -1,6 +1,8 @@
 node_modules
 coverage
 .env
+.guardrail-workspaces/
+backend/.guardrail-workspaces/
 *.log
 .agentbase/
 dist/

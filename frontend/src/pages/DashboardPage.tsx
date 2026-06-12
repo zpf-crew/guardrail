@@ -14,6 +14,7 @@ import { formatPercent } from '@/lib/format-percent';
 import { trendPresentation } from '@/lib/trend-presentation';
 import { startScan } from '@/data/scan-api';
 import { exportDashboardReport } from '@/lib/export-dashboard-report';
+import { useAuth } from '@/app/auth-context';
 import {
   TEST_STATUS_VIEW,
   TEST_STATUS_COLOR,
@@ -98,6 +99,7 @@ const HEAT_COLOR = ['rgba(61,220,151,0.22)', 'rgba(251,191,36,0.4)', 'rgba(251,1
 export function DashboardPage() {
   const navigate = useNavigate();
   const { toast } = useToast();
+  const { user, logout } = useAuth();
 
   const { status, data, error, refetch } = useDashboard();
 
@@ -131,13 +133,13 @@ export function DashboardPage() {
 
   const shellStyle = { fontFamily: 'var(--sans)' } as const;
   if (status === 'loading') {
-    return <div className="min-h-screen" style={shellStyle}><TopBar /><DashboardSkeleton /></div>;
+    return <div className="min-h-screen" style={shellStyle}><TopBar user={user} onLogout={() => void logout()} /><DashboardSkeleton /></div>;
   }
   if (status === 'error' || !data) {
-    return <div className="min-h-screen" style={shellStyle}><TopBar /><DashboardError message={error ?? 'Unknown error'} onRetry={refetch} /></div>;
+    return <div className="min-h-screen" style={shellStyle}><TopBar user={user} onLogout={() => void logout()} /><DashboardError message={error ?? 'Unknown error'} onRetry={refetch} /></div>;
   }
   if (status === 'empty') {
-    return <div className="min-h-screen" style={shellStyle}><TopBar /><DashboardEmpty onRunScan={refetch} /></div>;
+    return <div className="min-h-screen" style={shellStyle}><TopBar user={user} onLogout={() => void logout()} /><DashboardEmpty onRunScan={refetch} /></div>;
   }
 
   const { repo, lastScanAt, filesIndexed, health, metrics, testCases, insights, structure, coverage, riskHeatmap } = data;
@@ -222,6 +224,8 @@ export function DashboardPage() {
         repo={repo.name}
         branch={repo.branch}
         scanTime={`${formatRelativeTime(lastScanAt)} · ${filesIndexed.toLocaleString()} files`}
+        user={user}
+        onLogout={() => void logout()}
         actions={
           <>
             <Button variant="outline" onClick={handleRunScan} disabled={scanning}>

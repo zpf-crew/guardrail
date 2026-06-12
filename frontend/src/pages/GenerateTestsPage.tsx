@@ -14,6 +14,7 @@ import { PlanStep } from '@/pages/generate-tests/steps/plan-step';
 import { GenerateStep } from '@/pages/generate-tests/steps/generate-step';
 import { RunStep } from '@/pages/generate-tests/steps/run-step';
 import { ReviewStep } from '@/pages/generate-tests/steps/review-step';
+import { useAuth } from '@/app/auth-context';
 
 /** Insight handoff from the Dashboard (navigate('/tests', { state })). */
 interface HandoffState {
@@ -36,6 +37,7 @@ export function GenerateTestsPage() {
   const navigate = useNavigate();
   const location = useLocation();
   const { toast } = useToast();
+  const { user, logout } = useAuth();
 
   const initialIntent = buildInitialIntent(location.state as HandoffState | null);
   const wb = useWorkbench(initialIntent);
@@ -62,6 +64,8 @@ export function GenerateTestsPage() {
         repo={session.repo.name}
         branch={session.repo.branch}
         contentClassName="mx-auto max-w-[1118px]"
+        user={user}
+        onLogout={() => void logout()}
         actions={
           <Button variant="outline" onClick={() => navigate('/dashboard')}>
             <ArrowLeftIcon className="w-[15px] h-[15px] mr-[6px]" />

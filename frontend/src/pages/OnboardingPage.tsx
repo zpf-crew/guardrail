@@ -6,10 +6,10 @@ import { Stepper, type Step } from '@/components/ui/stepper';
 import { Button } from '@/components/ui/button';
 import { FileRow } from '@/components/ui/file-row';
 import { ProgressBar } from '@/components/ui/progress-bar';
+import { SearchInput } from '@/components/ui/search-input';
 import { useToast } from '@/components/ui/toast';
 import {
   repoInfo,
-  githubRepos,
   mockDocs,
   extraDocs,
   defaultDocSources,
@@ -36,6 +36,9 @@ import {
   InfoCircleIcon,
   ScanTaskStatusIcon,
 } from '@/components/icons';
+import type { ConnectedRepo, GitHubRepoSummary } from '@/types/testlens';
+import { connectRepo, listGitHubRepos } from '@/data/repos-api';
+import { useAuth } from '@/app/auth-context';
 
 const stepDefs = [
   { title: 'Select Repository', optional: false },
@@ -103,10 +106,16 @@ function Dropzone({ title, subtitle, accept, onClick }: { title: string; subtitl
 export function OnboardingPage() {
   const navigate = useNavigate();
   const { toast } = useToast();
+  const { user, logout } = useAuth();
   const [currentStep, setCurrentStep] = React.useState(0);
   const [stepStates, setStepStates] = React.useState<Step['state'][]>(['current', 'todo', 'todo', 'todo']);
-  const [selectedRepo, setSelectedRepo] = React.useState(repoInfo.fullName);
-  const [selectedBranch, setSelectedBranch] = React.useState(repoInfo.branch);
+  const [repos, setRepos] = React.useState<GitHubRepoSummary[]>([]);
+  const [repoLoading, setRepoLoading] = React.useState(true);
+  const [repoError, setRepoError] = React.useState<string | null>(null);
+  const [selectedGithubRepoId, setSelectedGithubRepoId] = React.useState<number | null>(null);
+  const [connectingRepo, setConnectingRepo] = React.useState(false);
+  const [connectedRepo, setConnectedRepo] = React.useState<ConnectedRepo | null>(null);
+  const [repoSearch, setRepoSearch] = React.useState('');
   const [docs, setDocs] = React.useState(mockDocs);
   const [docQueue, setDocQueue] = React.useState(0);
   const [qcs, setQCs] = React.useState(mockQCs);
@@ -129,6 +138,24 @@ export function OnboardingPage() {
       if (scanTimerRef.current) clearTimeout(scanTimerRef.current);
     };
   }, []);
+
+  const loadRepos = React.useCallback(async () => {
+    setRepoLoading(true);
+    setRepoError(null);
+    try {
+      const nextRepos = await listGitHubRepos();
+      setRepos(nextRepos);
+      setSelectedGithubRepoId(current => current ?? nextRepos[0]?.githubRepoId ?? null);
+    } catch (e) {
+      setRepoError(e instanceof Error ? e.message : 'Failed to load repositories.');
+    } finally {
+      setRepoLoading(false);
+    }
+  }, []);
+
+  React.useEffect(() => {
+    void loadRepos();
+  }, [loadRepos]);
 
   const steps: Step[] = stepDefs.map((s, i) => ({ ...s, state: stepStates[i] }));
 
@@ -188,11 +215,37 @@ export function OnboardingPage() {
     setDocSourceInput('');
   };
 
-  const handleRepoChange = (fullName: string) => {
-    const repo = githubRepos.find(r => r.fullName === fullName);
-    if (!repo) return;
-    setSelectedRepo(repo.fullName);
-    setSelectedBranch(repo.branch);
+  const selectedRepo = repos.find(repo => repo.githubRepoId === selectedGithubRepoId);
+  const selectedRepoName = selectedRepo?.fullName ?? repoInfo.fullName;
+  const selectedBranch = connectedRepo?.repo.branch ?? selectedRepo?.defaultBranch ?? repoInfo.branch;
+  const normalizedRepoSearch = repoSearch.trim().toLowerCase();
+  const visibleRepos = normalizedRepoSearch
+    ? repos.filter(repo => {
+        const haystack = `${repo.fullName} ${repo.name} ${repo.owner}`.toLowerCase();
+        return haystack.includes(normalizedRepoSearch);
+      })
+    : repos;
+
+  const handleRepoChange = (githubRepoId: string) => {
+    const id = Number(githubRepoId);
+    if (!Number.isSafeInteger(id)) return;
+    setSelectedGithubRepoId(id);
+    setConnectedRepo(null);
+  };
+
+  const handleConnectRepo = async () => {
+    if (!selectedGithubRepoId || connectingRepo) return;
+    setConnectingRepo(true);
+    try {
+      const connected = await connectRepo(selectedGithubRepoId);
+      setConnectedRepo(connected);
+      toast(`Connected ${connected.repo.name}`, 'success');
+      goToStep(1);
+    } catch (e) {
+      toast(e instanceof Error ? e.message : 'Failed to connect repository', 'success');
+    } finally {
+      setConnectingRepo(false);
+    }
   };
 
   const finishScan = React.useCallback(() => {
@@ -267,6 +320,8 @@ export function OnboardingPage() {
     <div className="min-h-screen" style={{ fontFamily: 'var(--sans)' }}>
       <TopBar
         contentClassName="mx-auto max-w-[1100px]"
+        user={user}
+        onLogout={() => void logout()}
         actions={
           <>
             <span className="inline-flex items-center gap-[7px] text-[12px] text-[#98a1b3] border border-[rgba(255,255,255,0.07)] bg-[#161a24] px-[11px] py-[5px] rounded-[99px] ml-[4px]">
@@ -291,7 +346,7 @@ export function OnboardingPage() {
         </div>
 
         <div className="grid grid-cols-1 lg:grid-cols-[252px_minmax(0,1fr)] gap-[26px] items-start max-w-[1100px] mx-auto">
-          <nav className="sticky top-[80px] h-fit">
+          <nav className="h-fit lg:sticky lg:top-[80px]">
             <Stepper steps={steps} onStepClick={goToStep} />
           </nav>
 
@@ -309,32 +364,87 @@ export function OnboardingPage() {
                       <GithubIcon className="w-[22px] h-[22px]" />
                     </div>
                     <div className="flex-1 min-w-0">
-                      <div className="font-mono text-[13px] text-[#e8ebf2]">{selectedRepo}</div>
-                      <div className="text-[12px] text-[#6b7488] mt-[2px]">GitHub repository · connected via OAuth</div>
+                      <div className="text-[10.5px] uppercase tracking-[0.7px] text-[#6b7488] font-bold mb-[3px]">Selected repository</div>
+                      <div className="font-mono text-[13px] text-[#e8ebf2] truncate">{selectedRepoName}</div>
+                      <div className="text-[12px] text-[#6b7488] mt-[2px]">
+                        {connectedRepo ? `Cloned to ${connectedRepo.repo.path}` : `${repos.length.toLocaleString()} repositories available from GitHub`}
+                      </div>
                     </div>
-                    <Button variant="outline" onClick={() => toast('Opening GitHub repository picker…', 'loading')}>Browse GitHub</Button>
+                    <Button variant="outline" onClick={() => void loadRepos()} disabled={repoLoading}>
+                      {repoLoading ? 'Loading…' : 'Refresh'}
+                    </Button>
                   </div>
 
+                  {repoError && (
+                    <div className="mb-[18px] rounded-[10px] border border-[rgba(251,113,133,0.3)] bg-[rgba(251,113,133,0.1)] px-[13px] py-[10px] text-[12.5px] text-[#fb7185]">
+                      {repoError}
+                    </div>
+                  )}
+
                   <div className="mb-[18px]">
-                    <label className="text-[11px] uppercase tracking-[0.6px] text-[#6b7488] font-semibold mb-[7px] block">Repository</label>
-                    <select
-                      className="w-full appearance-none bg-[#0d0f16] border border-[rgba(255,255,255,0.07)] rounded-[10px] px-[15px] py-[12px] text-[#e8ebf2] font-mono text-[13.5px] outline-none focus:border-[rgba(129,140,248,0.35)] cursor-pointer"
-                      value={selectedRepo}
-                      onChange={e => handleRepoChange(e.target.value)}
-                    >
-                      {githubRepos.map(repo => (
-                        <option key={repo.fullName} value={repo.fullName}>
-                          {repo.fullName}{repo.private ? ' · private' : ''}
-                        </option>
-                      ))}
-                    </select>
+                    <div className="flex items-center justify-between gap-[12px] mb-[9px]">
+                      <label className="text-[11px] uppercase tracking-[0.6px] text-[#6b7488] font-semibold block">Repository</label>
+                      <span className="text-[12px] text-[#6b7488]">
+                        {repoLoading ? 'Loading repositories…' : `${visibleRepos.length.toLocaleString()} of ${repos.length.toLocaleString()} repositories`}
+                      </span>
+                    </div>
+                    <SearchInput
+                      type="search"
+                      placeholder="Search by owner, repo name, or full path…"
+                      value={repoSearch}
+                      onChange={e => setRepoSearch(e.target.value)}
+                      className="mb-[10px]"
+                    />
+                    <div className="max-h-[272px] overflow-y-auto rounded-[11px] border border-[rgba(255,255,255,0.07)] bg-[#0d0f16]">
+                      {repoLoading && (
+                        <div className="px-[14px] py-[13px] text-[13px] text-[#98a1b3]">Loading GitHub repositories…</div>
+                      )}
+                      {!repoLoading && repos.length === 0 && (
+                        <div className="px-[14px] py-[13px] text-[13px] text-[#98a1b3]">No repositories available for this GitHub account.</div>
+                      )}
+                      {!repoLoading && repos.length > 0 && visibleRepos.length === 0 && (
+                        <div className="px-[14px] py-[13px] text-[13px] text-[#98a1b3]">No repositories match “{repoSearch}”.</div>
+                      )}
+                      {!repoLoading && visibleRepos.map(repo => {
+                        const selected = repo.githubRepoId === selectedGithubRepoId;
+                        return (
+                          <button
+                            key={repo.githubRepoId}
+                            type="button"
+                            onClick={() => handleRepoChange(String(repo.githubRepoId))}
+                            className={`w-full text-left px-[14px] py-[12px] border-0 border-b border-[rgba(255,255,255,0.07)] last:border-b-0 bg-transparent cursor-pointer transition-colors ${
+                              selected ? 'bg-[rgba(129,140,248,0.14)]' : 'hover:bg-[rgba(255,255,255,0.035)]'
+                            }`}
+                          >
+                            <div className="flex items-start justify-between gap-[12px]">
+                              <div className="min-w-0">
+                                <div className="font-mono text-[13px] text-[#e8ebf2] truncate">{repo.fullName}</div>
+                                <div className="mt-[4px] flex flex-wrap items-center gap-[8px] text-[11.5px] text-[#6b7488]">
+                                  <span>{repo.owner}</span>
+                                  <span>·</span>
+                                  <span>{repo.defaultBranch}</span>
+                                  {selected && <span className="text-[#818cf8]">Selected</span>}
+                                </div>
+                              </div>
+                              <span className={`flex-none rounded-[999px] px-[8px] py-[3px] text-[10.5px] font-bold uppercase tracking-[0.4px] ${
+                                repo.private
+                                  ? 'bg-[rgba(192,132,252,0.15)] text-[#c084fc]'
+                                  : 'bg-[rgba(61,220,151,0.13)] text-[#3ddc97]'
+                              }`}>
+                                {repo.private ? 'Private' : 'Public'}
+                              </span>
+                            </div>
+                          </button>
+                        );
+                      })}
+                    </div>
                   </div>
 
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-[14px]">
                     <div className="bg-[#0d0f16] border border-[rgba(255,255,255,0.07)] rounded-[10px] p-[13px_15px]">
                       <div className="text-[11px] uppercase tracking-[0.6px] text-[#6b7488] font-semibold mb-[7px]">Organization</div>
                       <div className="font-mono text-[13.5px] text-[#e8ebf2]">
-                        {githubRepos.find(r => r.fullName === selectedRepo)?.org ?? repoInfo.fullName.split('/')[0]}
+                        {selectedRepo?.owner ?? repoInfo.fullName.split('/')[0]}
                       </div>
                     </div>
                     <div className="bg-[#0d0f16] border border-[rgba(255,255,255,0.07)] rounded-[10px] p-[13px_15px]">
@@ -348,8 +458,13 @@ export function OnboardingPage() {
                 </div>
                 <StepFoot>
                   <div className="flex-1" />
-                  <Button variant="primary" size="lg" onClick={() => goToStep(1)}>
-                    Continue
+                  <Button
+                    variant="primary"
+                    size="lg"
+                    onClick={handleConnectRepo}
+                    disabled={!selectedGithubRepoId || repoLoading || connectingRepo}
+                  >
+                    {connectingRepo ? 'Cloning…' : 'Connect Repository'}
                     <ChevronRightIcon className="w-[15px] h-[15px]" />
                   </Button>
                 </StepFoot>
