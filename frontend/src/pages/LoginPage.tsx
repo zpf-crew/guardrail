@@ -1,9 +1,17 @@
-import { useNavigate } from 'react-router-dom';
+import { Navigate, useSearchParams } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
 import { BrandIcon } from '@/components/icons';
+import { useAuth } from '@/app/auth-context';
 
 export function LoginPage() {
-  const navigate = useNavigate();
+  const { status, login } = useAuth();
+  const [params] = useSearchParams();
+  const error = params.get('error');
+
+  if (status === 'authenticated') {
+    return <Navigate to="/onboarding" replace />;
+  }
+
   return (
     <div className="flex min-h-screen items-center justify-center" style={{ fontFamily: 'var(--sans)' }}>
       <div className="w-full max-w-sm rounded-[14px] border border-[rgba(255,255,255,0.07)] bg-[#11141c] p-8 shadow-[0_1px_0_rgba(255,255,255,0.04)_inset,0_8px_30px_rgba(0,0,0,0.45)]">
@@ -14,7 +22,14 @@ export function LoginPage() {
           <h1 className="text-[22px] font-semibold text-[#e8ebf2]"><b className="text-white">Guard</b>rail</h1>
         </div>
         <p className="mb-6 text-[14.5px] text-[#98a1b3] leading-[1.55]">AI testing agent for your repositories.</p>
-        <Button variant="primary" className="w-full" onClick={() => navigate('/onboarding')}>Continue with GitHub</Button>
+        {error && (
+          <div className="mb-4 rounded-[9px] border border-[rgba(251,113,133,0.3)] bg-[rgba(251,113,133,0.1)] px-3 py-2 text-[12.5px] text-[#fb7185]">
+            GitHub login failed: {error}
+          </div>
+        )}
+        <Button variant="primary" className="w-full" onClick={login} disabled={status === 'loading'}>
+          {status === 'loading' ? 'Checking session…' : 'Continue with GitHub'}
+        </Button>
       </div>
     </div>
   );

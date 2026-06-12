@@ -8,9 +8,14 @@ export interface TopBarProps {
   scanTime?: string;
   actions?: React.ReactNode;
   contentClassName?: string;
+  user?: {
+    login: string;
+    avatarUrl: string | null;
+  } | null;
+  onLogout?: () => void;
 }
 
-export function TopBar({ repo, branch, scanTime, actions, contentClassName }: TopBarProps) {
+export function TopBar({ repo, branch, scanTime, actions, contentClassName, user, onLogout }: TopBarProps) {
   return (
     <header className="sticky top-0 z-[50] bg-[rgba(11,13,19,0.78)] backdrop-blur-[18px] saturate-[140%] border-b border-[rgba(255,255,255,0.07)]">
       <div className={cn('flex items-center gap-[22px] px-[26px] py-[12px] w-full', contentClassName)}>
@@ -41,7 +46,32 @@ export function TopBar({ repo, branch, scanTime, actions, contentClassName }: To
           <span className="text-[12.5px] text-[#98a1b3]"><span className="text-[#3ddc97]">●</span> {scanTime}</span>
         </div>
       )}
-      {actions && <div className="ml-auto flex items-center gap-[9px]">{actions}</div>}
+      {(actions || user || onLogout) && (
+        <div className="ml-auto flex items-center gap-[9px]">
+          {actions}
+          {user && (
+            <span className="inline-flex items-center gap-[8px] border-l border-[rgba(255,255,255,0.07)] pl-[12px] text-[12.5px] text-[#98a1b3]">
+              {user.avatarUrl ? (
+                <img src={user.avatarUrl} alt="" className="h-[24px] w-[24px] rounded-full border border-[rgba(255,255,255,0.12)]" />
+              ) : (
+                <span className="h-[24px] w-[24px] rounded-full grid place-items-center bg-[#161a24] border border-[rgba(255,255,255,0.12)] text-[10px] uppercase">
+                  {user.login.slice(0, 1)}
+                </span>
+              )}
+              <span className="font-mono text-[#e8ebf2] max-w-[140px] truncate">{user.login}</span>
+            </span>
+          )}
+          {onLogout && (
+            <button
+              type="button"
+              onClick={onLogout}
+              className="text-[12.5px] text-[#6b7488] bg-transparent border border-transparent rounded-[8px] px-[10px] py-[6px] cursor-pointer hover:text-[#e8ebf2] hover:bg-[#161a24] hover:border-[rgba(255,255,255,0.07)]"
+            >
+              Logout
+            </button>
+          )}
+        </div>
+      )}
       </div>
     </header>
   );

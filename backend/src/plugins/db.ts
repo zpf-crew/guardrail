@@ -1,6 +1,18 @@
 import type { FastifyInstance } from 'fastify';
+import fp from 'fastify-plugin';
+import { Pool } from 'pg';
+import { env } from '../config/env.js';
 
-export async function dbPlugin(app: FastifyInstance) {
-  // TODO: connect to PostgreSQL via DATABASE_URL
-  app.log.info('Database plugin placeholder registered');
+async function registerDb(app: FastifyInstance) {
+  if (!env.DATABASE_URL) {
+    throw new Error('DATABASE_URL is required');
+  }
+
+  const pool = new Pool({ connectionString: env.DATABASE_URL });
+  app.decorate('db', pool);
+  app.addHook('onClose', async () => {
+    await pool.end();
+  });
 }
+
+export const dbPlugin = fp(registerDb, { name: 'db' });

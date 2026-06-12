@@ -90,6 +90,47 @@ export interface RepoRef {
   commit?: string;
 }
 
+export interface AuthUser {
+  id: string;
+  githubId: number;
+  login: string;
+  name: string | null;
+  avatarUrl: string | null;
+}
+
+export interface AuthMeResponse {
+  user: AuthUser;
+}
+
+/** GitHub repository before Guardrail has cloned it locally. */
+export interface GitHubRepoSummary {
+  githubRepoId: number;
+  fullName: string;
+  name: string;
+  owner: string;
+  private: boolean;
+  defaultBranch: string;
+  htmlUrl: string;
+}
+
+export interface ConnectedRepo {
+  repoId: string;
+  repo: RepoRef;
+}
+
+export interface RepoFileNode {
+  name: string;
+  path: string;
+  type: 'file' | 'directory';
+  size?: number;
+}
+
+export interface RepoFileContent {
+  path: string;
+  content: string;
+  size: number;
+}
+
 /** A delta vs. the previous scan. `direction` is semantic, not just sign:
  *  e.g. fewer failed tests is "good" even though the number went down. */
 export interface Trend {
@@ -690,6 +731,16 @@ export type ReviewDecision =
  * ========================================================================== */
 
 export interface TestLensApi {
+  /* Auth + repo access */
+  // GET  /api/auth/github                  -> GitHub OAuth redirect
+  // GET  /api/auth/github/callback         -> sets gr_session cookie, redirects /onboarding
+  // GET  /api/auth/me                      -> AuthMeResponse
+  // POST /api/auth/logout                  -> { ok: true }
+  // GET  /api/repos                        -> GitHubRepoSummary[]
+  // POST /api/repos/:githubRepoId/connect  -> ConnectedRepo
+  // GET  /api/repos/:repoId/files?path     -> { nodes: RepoFileNode[] }
+  // GET  /api/repos/:repoId/file?path      -> RepoFileContent
+
   /* Dashboard */
   // GET  /dashboard                  -> DashboardPayload
   // POST /scan                       -> { jobId } ; then stream ScanProgress
