@@ -65,6 +65,43 @@ test('artifact store keeps metadata when local file cannot be copied', async () 
   assert.equal(evidence.href, undefined);
 });
 
+test('artifact store refuses screenshot sources outside allowed roots', async () => {
+  const root = await mkdtemp(path.join(os.tmpdir(), 'guardrail-artifacts-'));
+  const allowedRoot = await mkdtemp(path.join(os.tmpdir(), 'guardrail-allowed-source-'));
+  const untrustedRoot = await mkdtemp(path.join(os.tmpdir(), 'guardrail-untrusted-source-'));
+  const source = path.join(untrustedRoot, 'secret.png');
+  await writeFile(source, Buffer.from('secret'));
+
+  const store = new WorkbenchArtifactStore({ rootDir: root, allowedSourceRoots: [allowedRoot] });
+  const evidence = await store.registerEvidence({
+    sessionId: 'session-4',
+    jobId: 'job-4',
+    evidence: { kind: 'screenshot', label: 'Untrusted screenshot', href: source },
+  });
+
+  assert.equal(evidence.kind, 'screenshot');
+  assert.equal(evidence.label, 'Untrusted screenshot');
+  assert.equal(evidence.href, undefined);
+});
+
+test('artifact store rejects traversal-like destination ids', async () => {
+  const root = await mkdtemp(path.join(os.tmpdir(), 'guardrail-artifacts-'));
+  const sourceDir = await mkdtemp(path.join(os.tmpdir(), 'guardrail-source-'));
+  const source = path.join(sourceDir, 'screen.png');
+  await writeFile(source, Buffer.from('png'));
+
+  const store = new WorkbenchArtifactStore({ rootDir: root });
+  const evidence = await store.registerEvidence({
+    sessionId: '../session-5',
+    jobId: 'job-5/../../escape',
+    evidence: { kind: 'screenshot', label: 'Traversal screenshot', href: source },
+  });
+
+  assert.equal(evidence.kind, 'screenshot');
+  assert.equal(evidence.label, 'Traversal screenshot');
+  assert.equal(evidence.href, undefined);
+});
+
 test('artifact store returns undefined for unknown artifacts', async () => {
   const root = await mkdtemp(path.join(os.tmpdir(), 'guardrail-artifacts-'));
   const store = new WorkbenchArtifactStore({ rootDir: root });

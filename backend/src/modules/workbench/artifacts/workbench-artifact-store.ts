@@ -1,5 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import { copyFile, mkdir } from 'node:fs/promises';
+import os from 'node:os';
 import path from 'node:path';
 import type { Evidence } from '../workbench.types.js';
 
@@ -17,12 +18,19 @@ export interface RegisterEvidenceInput {
   evidence: Evidence;
 }
 
+export interface WorkbenchArtifactStoreOptions {
+  rootDir?: string;
+  allowedSourceRoots?: string[];
+}
+
 export class WorkbenchArtifactStore {
   private readonly rootDir: string;
+  private readonly allowedSourceRoots: string[];
   private readonly artifacts = new Map<string, RegisteredArtifact>();
 
-  constructor(options: { rootDir?: string } = {}) {
-    this.rootDir = options.rootDir ?? path.join(process.cwd(), '.artifacts', 'workbench');
+  constructor(options: WorkbenchArtifactStoreOptions = {}) {
+    this.rootDir = path.resolve(options.rootDir ?? path.join(process.cwd(), '.artifacts', 'workbench'));
+    this.allowedSourceRoots = (options.allowedSourceRoots ?? defaultAllowedSourceRoots()).map(root => path.resolve(root));
   }
 
   async registerEvidence(input: RegisterEvidenceInput): Promise<Evidence> {
@@ -30,11 +38,14 @@ export class WorkbenchArtifactStore {
 
     const sourcePath = extractLocalPath(input.evidence.href);
     if (!sourcePath) return { ...input.evidence, href: undefined };
+    if (!isInsideAnyRoot(sourcePath, this.allowedSourceRoots)) return { ...input.evidence, href: undefined };
+    if (!isSafePathSegment(input.sessionId) || !isSafePathSegment(input.jobId)) return { ...input.evidence, href: undefined };
 
     const ext = extensionFor(sourcePath);
     const artifactId = `${randomUUID()}${ext}`;
     const dir = path.join(this.rootDir, input.sessionId, input.jobId);
     const filePath = path.join(dir, artifactId);
+    if (!isInsideRoot(filePath, this.rootDir)) return { ...input.evidence, href: undefined };
 
     try {
       await mkdir(dir, { recursive: true });
@@ -73,7 +84,7 @@ function extractLocalPath(value: string | undefined): string | undefined {
   const savedMatch = trimmed.match(/Screenshot saved to\s+(.+)$/i);
   const candidate = savedMatch?.[1]?.trim() ?? trimmed;
   if (!path.isAbsolute(candidate)) return undefined;
-  return candidate;
+  return path.resolve(candidate);
 }
 
 function extensionFor(filePath: string): string {
@@ -85,4 +96,21 @@ function contentTypeFor(ext: string): string {
   if (ext === '.jpg' || ext === '.jpeg') return 'image/jpeg';
   if (ext === '.webp') return 'image/webp';
   return 'image/png';
+}
+
+function defaultAllowedSourceRoots(): string[] {
+  return [os.tmpdir(), path.join(os.homedir(), '.agent-browser', 'tmp', 'screenshots')];
+}
+
+function isSafePathSegment(value: string): boolean {
+  return /^[A-Za-z0-9][A-Za-z0-9._-]*$/.test(value);
+}
+
+function isInsideAnyRoot(filePath: string, roots: string[]): boolean {
+  return roots.some(root => isInsideRoot(filePath, root));
+}
+
+function isInsideRoot(filePath: string, root: string): boolean {
+  const relative = path.relative(root, filePath);
+  return relative === '' || (!relative.startsWith('..') && !path.isAbsolute(relative));
 }
