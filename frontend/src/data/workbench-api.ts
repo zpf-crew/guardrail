@@ -25,7 +25,7 @@ import { mockWorkbenchForIntent } from './generateTestsMockData';
 const configuredApiBase = import.meta.env.VITE_API_BASE_URL?.trim();
 const API_BASE = configuredApiBase && configuredApiBase.length > 0
   ? configuredApiBase
-  : 'http://127.0.0.1:3000';
+  : 'http://localhost:3000';
 const USE_MOCK = import.meta.env.VITE_WORKBENCH_USE_MOCK === 'true';
 const delay = (ms: number) => new Promise<void>(resolve => setTimeout(resolve, ms));
 const mockSessions = new Map<string, WorkbenchSession>();
@@ -67,15 +67,13 @@ export class WorkbenchApiError extends Error {
 }
 
 async function request<T>(method: 'POST' | 'PATCH', path: string, body?: unknown): Promise<T> {
-  const init: RequestInit = { method };
+  const init: RequestInit = { method, credentials: 'include' };
   if (body !== undefined) {
     init.headers = { 'Content-Type': 'application/json' };
     init.body = JSON.stringify(body);
   }
 
-  const res = await fetch(`${API_BASE}${path}`, {
-    ...init,
-  });
+  const res = await fetch(`${API_BASE}${path}`, init);
   if (!res.ok) throw new WorkbenchApiError(`${path} failed (${res.status} ${res.statusText})`);
   return (await res.json()) as T;
 }
@@ -124,8 +122,6 @@ function normalizeJobEvent(event: JobEvent): JobEvent {
   return event;
 }
 
-const repoId = () => getActiveRepoId() ?? 'mock';
-
 function mockSession(id: string): WorkbenchSession {
   return mockSessions.get(id) ?? mockWorkbenchForIntent();
 }
@@ -138,6 +134,44 @@ const JOB_ENDPOINT_BY_STEP: Record<JobStep, string> = {
   review: 'review',
 };
 
+async function consumeJobEventStream(
+  url: string,
+  onSseEvent: (eventType: string, data: string) => void,
+  signal: AbortSignal,
+): Promise<void> {
+  const res = await fetch(url, { credentials: 'include', signal });
+  if (!res.ok || !res.body) {
+    throw new WorkbenchApiError(`Job event stream failed (${res.status} ${res.statusText})`);
+  }
+
+  const reader = res.body.getReader();
+  const decoder = new TextDecoder();
+  let buffer = '';
+
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) break;
+
+    buffer += decoder.decode(value, { stream: true });
+
+    let boundary = buffer.indexOf('\n\n');
+    while (boundary !== -1) {
+      const chunk = buffer.slice(0, boundary);
+      buffer = buffer.slice(boundary + 2);
+
+      let eventType = 'message';
+      let data = '';
+      for (const line of chunk.split('\n')) {
+        if (line.startsWith('event: ')) eventType = line.slice(7);
+        else if (line.startsWith('data: ')) data = line.slice(6);
+      }
+
+      if (data) onSseEvent(eventType, data);
+      boundary = buffer.indexOf('\n\n');
+    }
+  }
+}
+
 async function runJob<T extends JobResult>(
   sessionId: string,
   step: JobStep,
@@ -147,48 +181,49 @@ async function runJob<T extends JobResult>(
   const start = await post<JobStartResponse>(`/api/workbench/${sessionId}/${endpoint}/jobs`);
 
   return new Promise<T>((resolve, reject) => {
-    const source = new EventSource(`${API_BASE}/api/workbench/${sessionId}/jobs/${start.jobId}/events`);
+    const abortController = new AbortController();
     let settled = false;
 
-    const close = () => source.close();
     const settleResolve = (value: T) => {
       if (settled) return;
       settled = true;
-      close();
+      abortController.abort();
       resolve(value);
     };
     const settleReject = (error: Error) => {
       if (settled) return;
       settled = true;
-      close();
+      abortController.abort();
       reject(error);
     };
-    const parseEvent = (event: Event) => normalizeJobEvent(JSON.parse((event as MessageEvent).data) as JobEvent);
 
-    source.addEventListener('result', event => {
-      const parsed = parseEvent(event) as Extract<JobEvent, { type: 'result' }>;
+    const handleSseEvent = (eventType: string, data: string) => {
+      const parsed = normalizeJobEvent(JSON.parse(data) as JobEvent);
       onEvent?.(parsed);
-      settleResolve(parsed.payload as T);
-    });
 
-    source.addEventListener('error', event => {
-      const data = (event as MessageEvent).data;
-      if (data) {
-        onEvent?.(JSON.parse(data) as JobEvent);
+      if (eventType === 'result') {
+        const resultEvent = parsed as Extract<JobEvent, { type: 'result' }>;
+        settleResolve(resultEvent.payload as T);
+      } else if (eventType === 'error') {
+        settleReject(new WorkbenchApiError(`Job ${start.jobId} failed`));
       }
-      settleReject(new WorkbenchApiError(`Job ${start.jobId} failed`));
-    });
-
-    source.onerror = () => {
-      if (settled) return;
-      settleReject(new WorkbenchApiError(`Job ${start.jobId} event stream disconnected`));
     };
 
-    ['status', 'progress', 'thinking', 'artifact', 'screenshot'].forEach(type => {
-      source.addEventListener(type, event => {
-        onEvent?.(parseEvent(event));
+    void consumeJobEventStream(
+      `${API_BASE}/api/workbench/${sessionId}/jobs/${start.jobId}/events`,
+      handleSseEvent,
+      abortController.signal,
+    )
+      .then(() => {
+        if (!settled) {
+          settleReject(new WorkbenchApiError(`Job ${start.jobId} event stream disconnected`));
+        }
+      })
+      .catch(error => {
+        if (settled) return;
+        if (error instanceof DOMException && error.name === 'AbortError') return;
+        settleReject(error instanceof Error ? error : new WorkbenchApiError(`Job ${start.jobId} event stream failed`));
       });
-    });
   });
 }
 
@@ -200,7 +235,11 @@ export async function createWorkbenchSession(intent?: Partial<IntentInput>): Pro
     mockSessions.set(session.id, session);
     return session;
   }
-  return post<WorkbenchSession>('/api/workbench/sessions', { repoId: repoId(), intent });
+  const repoId = getActiveRepoId();
+  if (!repoId) {
+    throw new WorkbenchApiError('Complete onboarding and select a repository first.');
+  }
+  return post<WorkbenchSession>('/api/workbench/sessions', { repoId, intent });
 }
 
 export async function updateWorkbenchIntent(id: string, intent: IntentInput): Promise<WorkbenchSession> {
