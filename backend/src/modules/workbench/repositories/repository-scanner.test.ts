@@ -39,6 +39,20 @@ test('scanner ranks source files from real repo files by non-onboarding intent t
   assert.notEqual(context.relatedFiles[0]?.path, 'frontend/src/pages/OnboardingPage.tsx');
 });
 
+test('scanFiles returns ranked files and snippets without hardcoded frontend or qc', async () => {
+  const scanner = new RepositoryScanner({ rootDir: process.cwd() });
+  const result = await scanner.scanFiles({
+    prompt: 'improve onboarding UI test',
+    feature: null,
+    testTypes: ['UI / Browser'],
+  });
+
+  assert.ok(result.relatedFiles.some(file => file.path.includes('Onboarding')));
+  assert.ok(result.sourceSnippets.length > 0);
+  assert.equal('frontend' in result, false);
+  assert.equal('qcCases' in result, false);
+});
+
 test('scanner snippet endLine reflects lines included after char truncation', async () => {
   const scanner = new RepositoryScanner({ rootDir: process.cwd(), maxSnippetChars: 200 });
 

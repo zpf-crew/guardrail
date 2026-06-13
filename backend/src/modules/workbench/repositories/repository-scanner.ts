@@ -12,6 +12,7 @@ const maxRelatedFiles = 8;
 const maxSpecDocs = 5;
 
 type ScanIntent = Pick<IntentInput, 'prompt' | 'feature' | 'testTypes'>;
+export type RepositoryScanFiles = Pick<RepositoryContext, 'relatedFiles' | 'specDocs' | 'sourceSnippets'>;
 interface WeightedToken {
   value: string;
   weight: number;
@@ -28,6 +29,23 @@ export class RepositoryScanner {
 
   async scan(intent: ScanIntent): Promise<RepositoryContext> {
     const repo = await this.#repoRef();
+    const scanFiles = await this.scanFiles(intent);
+
+    return {
+      repo,
+      frontend: {
+        startCommand: 'pnpm --dir frontend dev --host localhost',
+        healthUrl: 'http://localhost:5173',
+        url: 'http://localhost:5173/onboarding',
+        route: '/onboarding',
+      },
+      ...scanFiles,
+      qcCases: this.#seededQcCases(),
+      onboarding: { lastScanAt: null, health: null, coverage: null, testCases: [], insights: [] },
+    };
+  }
+
+  async scanFiles(intent: ScanIntent): Promise<RepositoryScanFiles> {
     const inventory = await this.#fileInventory();
     const sourceFiles = this.#rankFiles(
       inventory.flatMap(path => classifySourceFile(path)),
@@ -47,16 +65,8 @@ export class RepositoryScanner {
     const sourceSnippets = await this.#snippets(sourceFiles.slice(0, 5));
 
     return {
-      repo,
-      frontend: {
-        startCommand: 'pnpm --dir frontend dev --host 127.0.0.1',
-        healthUrl: 'http://127.0.0.1:5173',
-        url: 'http://127.0.0.1:5173/onboarding',
-        route: '/onboarding',
-      },
       relatedFiles: [...sourceFiles, ...existingTestFiles],
       specDocs,
-      qcCases: this.#seededQcCases(),
       sourceSnippets,
     };
   }
