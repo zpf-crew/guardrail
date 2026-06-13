@@ -17,7 +17,13 @@ export class WorkbenchJobEventBus {
   }
 
   publish(key: string, event: WorkbenchJobEvent): void {
-    this.listeners.get(key)?.forEach(listener => listener(event));
+    this.listeners.get(key)?.forEach(listener => {
+      try {
+        listener(event);
+      } catch {
+        // Listener failures must not block other subscribers or job progress.
+      }
+    });
   }
 }
 
