@@ -4,6 +4,7 @@ coverage
 *.log
 .agentbase/
 dist/
+backend/.artifacts/
 
 # Claude Code
 CLAUDE.md
