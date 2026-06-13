@@ -1,54 +1,48 @@
 import { execFile } from 'node:child_process';
-import { access, readFile } from 'node:fs/promises';
-import { basename, dirname, join, relative } from 'node:path';
+import { readFile } from 'node:fs/promises';
+import { basename, dirname, join } from 'node:path';
 import { promisify } from 'node:util';
 import type { IntentInput, QCTestCase, RelatedFile, RepoRef } from '../workbench.types.js';
 import type { RepositoryContext, SourceSnippet } from './repository-context-provider.js';
 
 const execFileAsync = promisify(execFile);
-const maxSnippetChars = 6000;
+const defaultMaxSnippetChars = 6000;
 const maxSnippetLines = 160;
-
-const sourceCandidates = [
-  'frontend/src/pages/OnboardingPage.tsx',
-  'frontend/src/data/onboardingMockData.ts',
-  'frontend/src/pages/GenerateTestsPage.tsx',
-  'frontend/src/data/workbench-api.ts',
-];
-
-const specDocCandidates = [
-  'docs/superpowers/specs/2026-06-13-real-workbench-skill-pipeline-design.md',
-  'docs/superpowers/specs/2026-06-11-guardrail-frontend-pages-design.md',
-  'docs/superpowers/specs/2026-06-12-ui-browser-workbench-backend-design.md',
-];
-
-const testGlobArgs = [
-  '-g',
-  'frontend/src/**/*.test.ts',
-  '-g',
-  'frontend/src/**/*.test.tsx',
-  '-g',
-  'backend/src/**/*.test.ts',
-];
+const maxRelatedFiles = 8;
+const maxSpecDocs = 5;
 
 type ScanIntent = Pick<IntentInput, 'prompt' | 'feature' | 'testTypes'>;
+interface WeightedToken {
+  value: string;
+  weight: number;
+}
 
 export class RepositoryScanner {
   readonly #rootDir: string;
+  readonly #maxSnippetChars: number;
 
-  constructor(options: { rootDir: string }) {
+  constructor(options: { rootDir: string; maxSnippetChars?: number }) {
     this.#rootDir = normalizeRootDir(options.rootDir);
+    this.#maxSnippetChars = options.maxSnippetChars ?? defaultMaxSnippetChars;
   }
 
   async scan(intent: ScanIntent): Promise<RepositoryContext> {
     const repo = await this.#repoRef();
-    const rankedSources = this.#rankSourceCandidates(intent);
-    const sourceFiles = await this.#existingFiles(rankedSources, 'source', 'Discovered from selected repository scan.');
-    const existingTestFiles = await this.#findTests(intent);
-    const specDocs = await this.#existingFiles(
-      this.#rankSpecDocCandidates(intent),
-      'spec',
-      'Discovered product or architecture specification.',
+    const inventory = await this.#fileInventory();
+    const sourceFiles = this.#rankFiles(
+      inventory.flatMap(path => classifySourceFile(path)),
+      intent,
+      maxRelatedFiles,
+    );
+    const existingTestFiles = this.#rankFiles(
+      inventory.flatMap(path => classifyTestFile(path)),
+      intent,
+      maxRelatedFiles,
+    );
+    const specDocs = this.#rankFiles(
+      inventory.flatMap(path => classifySpecFile(path)),
+      intent,
+      maxSpecDocs,
     );
     const sourceSnippets = await this.#snippets(sourceFiles.slice(0, 5));
 
@@ -78,30 +72,8 @@ export class RepositoryScanner {
     return { name: 'guardrail', path: this.#rootDir, branch, commit };
   }
 
-  #rankSourceCandidates(intent: ScanIntent): string[] {
-    const terms = intentTerms(intent);
-    if (terms.includes('onboarding')) return sourceCandidates;
-    return sourceCandidates;
-  }
-
-  #rankSpecDocCandidates(intent: ScanIntent): string[] {
-    const terms = intentTerms(intent);
-    if (terms.includes('onboarding')) return specDocCandidates;
-    return specDocCandidates;
-  }
-
-  async #existingFiles(paths: string[], kind: RelatedFile['kind'], meta: string): Promise<RelatedFile[]> {
-    const files: RelatedFile[] = [];
-    for (const path of paths) {
-      const exists = await access(join(this.#rootDir, path)).then(() => true).catch(() => false);
-      if (exists) files.push({ path, kind, meta });
-    }
-    return files;
-  }
-
-  async #findTests(intent: ScanIntent): Promise<RelatedFile[]> {
-    const terms = intentTerms(intent);
-    const output = await execFileAsync('rg', ['--files', ...testGlobArgs], { cwd: this.#rootDir })
+  async #fileInventory(): Promise<string[]> {
+    const output = await execFileAsync('rg', ['--files'], { cwd: this.#rootDir })
       .then(result => result.stdout)
       .catch(() => '');
 
@@ -109,13 +81,17 @@ export class RepositoryScanner {
       .split('\n')
       .map(line => line.trim())
       .filter(Boolean)
-      .filter(path => terms.includes('onboarding') ? /onboarding|workbench|generate/i.test(path) : true)
-      .slice(0, 8)
-      .map(path => ({
-        path: relative(this.#rootDir, join(this.#rootDir, path)),
-        kind: 'test' as const,
-        meta: 'Discovered existing test candidate.',
-      }));
+      .filter(path => !path.includes('/node_modules/'))
+      .filter(path => !path.includes('/dist/'))
+      .filter(path => !path.includes('/.artifacts/'));
+  }
+
+  #rankFiles(files: RelatedFile[], intent: ScanIntent, limit: number): RelatedFile[] {
+    return files
+      .map(file => ({ ...file, score: scoreFile(file.path, intent) }))
+      .sort((left, right) => right.score - left.score || left.path.localeCompare(right.path))
+      .slice(0, limit)
+      .map(({ score: _score, ...file }) => file);
   }
 
   async #snippets(files: RelatedFile[]): Promise<SourceSnippet[]> {
@@ -123,13 +99,13 @@ export class RepositoryScanner {
     for (const file of files) {
       const text = await readFile(join(this.#rootDir, file.path), 'utf8');
       const lines = text.split('\n');
-      const snippetLines = lines.slice(0, maxSnippetLines);
+      const snippetText = buildSnippetText(lines, this.#maxSnippetChars);
       snippets.push({
         path: file.path,
         startLine: 1,
-        endLine: Math.min(lines.length, maxSnippetLines),
+        endLine: snippetText.length === 0 ? 0 : snippetText.split('\n').length,
         summary: file.meta ?? 'Repository source snippet.',
-        text: snippetLines.join('\n').slice(0, maxSnippetChars),
+        text: snippetText,
       });
     }
     return snippets;
@@ -147,8 +123,89 @@ export class RepositoryScanner {
   }
 }
 
-function intentTerms(intent: ScanIntent): string {
-  return `${intent.prompt} ${intent.feature ?? ''} ${intent.testTypes.join(' ')}`.toLowerCase();
+function classifySourceFile(path: string): RelatedFile[] {
+  if (classifyTestFile(path).length > 0) return [];
+  if (classifySpecFile(path).length > 0) return [];
+  if (!/\.(css|js|jsx|ts|tsx)$/.test(path)) return [];
+  if (/\.d\.ts$/.test(path)) return [];
+  return [{ path, kind: 'source', meta: 'Discovered from selected repository scan.' }];
+}
+
+function classifyTestFile(path: string): RelatedFile[] {
+  if (!/(^|\/)(__tests__|tests?|specs?)\//i.test(path) && !/\.(test|spec)\.(js|jsx|ts|tsx)$/.test(path)) return [];
+  if (!/\.(js|jsx|ts|tsx)$/.test(path)) return [];
+  return [{ path, kind: 'test', meta: 'Discovered existing test candidate.' }];
+}
+
+function classifySpecFile(path: string): RelatedFile[] {
+  if (!/\.md$/.test(path)) return [];
+  if (!/^(docs|guardrail-skills)\//.test(path)) return [];
+  return [{ path, kind: 'spec', meta: 'Discovered product or architecture specification.' }];
+}
+
+function scoreFile(path: string, intent: ScanIntent): number {
+  const tokens = intentTokens(intent);
+  const searchablePath = searchable(path);
+  const fileName = searchable(basename(path));
+  let score = 0;
+
+  for (const token of tokens) {
+    if (fileName.includes(token.value)) score += 8 * token.weight;
+    if (searchablePath.includes(token.value)) score += 3 * token.weight;
+  }
+
+  if (/\/pages\//.test(path)) score += 3;
+  if (/\/data\//.test(path)) score += 2;
+  if (/workbench|generate-tests/.test(searchablePath) && tokens.some(token => ['ui', 'browser'].includes(token.value))) score += 1;
+  return score;
+}
+
+function intentTokens(intent: ScanIntent): WeightedToken[] {
+  const promptTokens = tokenize(`${intent.prompt} ${intent.feature ?? ''}`, 3);
+  const typeTokens = tokenize(intent.testTypes.join(' '), 1);
+  const byValue = new Map<string, WeightedToken>();
+
+  for (const token of [...promptTokens, ...typeTokens]) {
+    const existing = byValue.get(token.value);
+    if (!existing || existing.weight < token.weight) byValue.set(token.value, token);
+  }
+
+  return [...byValue.values()];
+}
+
+function tokenize(value: string, weight: number): WeightedToken[] {
+  return searchable(value)
+    .split(' ')
+    .filter(token => token.length >= 2)
+    .filter(token => !['for', 'the', 'and', 'with', 'add', 'improve', 'test', 'tests', 'ui', 'browser'].includes(token))
+    .map(token => ({ value: token, weight }));
+}
+
+function searchable(value: string): string {
+  return value
+    .replace(/([a-z])([A-Z])/g, '$1 $2')
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, ' ')
+    .trim();
+}
+
+function buildSnippetText(lines: string[], maxChars: number): string {
+  const boundedLines = lines.slice(0, maxSnippetLines);
+  const included: string[] = [];
+  let charCount = 0;
+
+  for (const line of boundedLines) {
+    const separatorLength = included.length === 0 ? 0 : 1;
+    const nextLength = charCount + separatorLength + line.length;
+    if (nextLength > maxChars) {
+      if (included.length === 0 && maxChars > 0) return line.slice(0, maxChars);
+      break;
+    }
+    included.push(line);
+    charCount = nextLength;
+  }
+
+  return included.join('\n');
 }
 
 function normalizeRootDir(rootDir: string): string {

@@ -24,3 +24,34 @@ test('scanner finds onboarding files from local guardrail repo', async () => {
   assert.equal(context.frontend.route, '/onboarding');
   assert.ok(context.qcCases.some(qcCase => qcCase.id === 'QC-ONB-001'));
 });
+
+test('scanner ranks source files from real repo files by non-onboarding intent terms', async () => {
+  const scanner = new RepositoryScanner({ rootDir: process.cwd() });
+
+  const context = await scanner.scan({
+    prompt: 'improve dashboard UI test',
+    feature: null,
+    testTypes: ['UI / Browser'],
+  });
+
+  assert.match(context.relatedFiles[0]?.path ?? '', /dashboard/i);
+  assert.match(context.sourceSnippets[0]?.path ?? '', /dashboard/i);
+  assert.notEqual(context.relatedFiles[0]?.path, 'frontend/src/pages/OnboardingPage.tsx');
+});
+
+test('scanner snippet endLine reflects lines included after char truncation', async () => {
+  const scanner = new RepositoryScanner({ rootDir: process.cwd(), maxSnippetChars: 200 });
+
+  const context = await scanner.scan({
+    prompt: 'improve onboarding UI test',
+    feature: null,
+    testTypes: ['UI / Browser'],
+  });
+
+  const snippet = context.sourceSnippets.find(
+    item => item.path === 'frontend/src/pages/OnboardingPage.tsx',
+  );
+
+  assert.ok(snippet);
+  assert.equal(snippet.endLine, snippet.text.split('\n').length);
+});

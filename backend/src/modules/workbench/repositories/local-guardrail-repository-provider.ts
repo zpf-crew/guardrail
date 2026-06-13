@@ -8,12 +8,17 @@ interface LocalGuardrailRepositoryProviderOptions {
 
 export class LocalGuardrailRepositoryProvider implements RepositoryContextProvider {
   readonly #scanner: RepositoryScanner;
+  readonly #supportedRepoIds = new Set(['guardrail', 'local', 'mock']);
 
   constructor(options: LocalGuardrailRepositoryProviderOptions) {
     this.#scanner = new RepositoryScanner({ rootDir: options.rootDir });
   }
 
-  async getContext(_repoId: string, intent?: IntentInput): Promise<RepositoryContext> {
+  async getContext(repoId: string, intent?: IntentInput): Promise<RepositoryContext> {
+    if (!this.#supportedRepoIds.has(repoId)) {
+      throw new Error(`Unsupported local Guardrail repository id "${repoId}". Supported ids: guardrail, local.`);
+    }
+
     return this.#scanner.scan(intent ?? {
       prompt: '',
       feature: null,
