@@ -1,5 +1,6 @@
 import { spawn } from 'node:child_process';
 import type { Evidence, RunOutcome } from '../../workbench.types.js';
+import type { UiBrowserRunPlan } from '../../validation/workbench-validators.js';
 import { screenshotEvidence } from './ui-browser-evidence.js';
 
 export interface UiBrowserRunnerExecuteResult {
@@ -22,19 +23,38 @@ export interface UiBrowserRunnerResult {
 
 export interface UiBrowserRunnerRunArgs {
   url: string;
+  route: string;
+  plan: UiBrowserRunPlan;
   signal: AbortSignal;
-  onCommand?: (args: string[], index: number, total: number) => void;
+  onCommand?: (args: string[], index: number, total: number, label?: string) => void;
 }
 
-const commandSequence = (url: string): string[][] => [
-  ['open', url],
-  ['wait', '--load', 'networkidle'],
-  ['snapshot', '-i'],
-  ['find', 'role', 'button', 'click', '--name', 'Continue'],
-  ['wait', '--load', 'networkidle'],
-  ['screenshot'],
-  ['close'],
-];
+interface RunnerCommand {
+  args: string[];
+  screenshotLabel?: string;
+}
+
+function commandSequence(baseUrl: string, route: string, plan: UiBrowserRunPlan): RunnerCommand[] {
+  void route;
+  return plan.actions.map(action => {
+    switch (action.kind) {
+      case 'open':
+        return { args: ['open', new URL(action.path, baseUrl).toString()] };
+      case 'waitForLoad':
+        return { args: ['wait', '--load', action.state] };
+      case 'snapshot':
+        return { args: ['snapshot', '-i'] };
+      case 'screenshot':
+        return { args: ['screenshot'], screenshotLabel: action.label };
+      case 'click':
+        return { args: ['find', 'role', action.role, 'click', '--name', action.name] };
+      case 'fill':
+        return { args: ['find', 'label', action.label, 'fill', action.value] };
+      case 'assertText':
+        return { args: ['find', 'text', action.text] };
+    }
+  });
+}
 
 function defaultExecute(args: string[], signal: AbortSignal): Promise<UiBrowserRunnerExecuteResult> {
   return new Promise((resolve, reject) => {
@@ -55,8 +75,8 @@ function defaultExecute(args: string[], signal: AbortSignal): Promise<UiBrowserR
   });
 }
 
-function evidenceFromScreenshot(stdout: string): Evidence {
-  return screenshotEvidence('Onboarding screenshot', screenshotPathFromStdout(stdout));
+function evidenceFromScreenshot(stdout: string, label: string): Evidence {
+  return screenshotEvidence(label, screenshotPathFromStdout(stdout));
 }
 
 function screenshotPathFromStdout(stdout: string): string | undefined {
@@ -102,14 +122,14 @@ export class UiBrowserRunner {
   async run(args: UiBrowserRunnerRunArgs): Promise<UiBrowserRunnerResult> {
     const startedAt = Date.now();
     const evidence: Evidence[] = [];
-    const commands = commandSequence(args.url);
+    const commands = commandSequence(args.url, args.route, args.plan);
 
-    for (const [index, commandArgs] of commands.entries()) {
+    for (const [index, command] of commands.entries()) {
       args.signal.throwIfAborted();
-      args.onCommand?.(commandArgs, index, commands.length);
+      args.onCommand?.(command.args, index, commands.length, command.screenshotLabel);
       let result: UiBrowserRunnerExecuteResult;
       try {
-        result = await this.#execute(commandArgs, args.signal);
+        result = await this.#execute(command.args, args.signal);
       } catch (error) {
         if (args.signal.aborted || isAbortLike(error)) {
           throw error;
@@ -118,12 +138,12 @@ export class UiBrowserRunner {
           outcome: 'Failed',
           durationMs: Date.now() - startedAt,
           evidence,
-          errorMessage: `agent-browser ${commandArgs.join(' ')} failed: ${errorMessage(error)}`,
+          errorMessage: `agent-browser ${command.args.join(' ')} failed: ${errorMessage(error)}`,
         };
       }
 
-      if (commandArgs[0] === 'screenshot' && result.exitCode === 0) {
-        evidence.push(evidenceFromScreenshot(result.stdout));
+      if (command.screenshotLabel && result.exitCode === 0) {
+        evidence.push(evidenceFromScreenshot(result.stdout, command.screenshotLabel));
       }
 
       if (result.exitCode !== 0) {
@@ -131,7 +151,7 @@ export class UiBrowserRunner {
           outcome: 'Failed',
           durationMs: Date.now() - startedAt,
           evidence,
-          errorMessage: failureMessage(commandArgs, result),
+          errorMessage: failureMessage(command.args, result),
         };
       }
     }

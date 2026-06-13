@@ -7,6 +7,7 @@ import type {
   TestPlan,
   TestRunResult,
 } from '../../workbench.types.js';
+import { scenarioTextFromGeneration, fallbackRunPlanFromScenario } from './ui-browser-scenario.js';
 import { UiBrowserRunner, type UiBrowserRunnerResult, type UiBrowserRunnerRunArgs } from './ui-browser-runner.js';
 
 interface UiBrowserRunnerLike {
@@ -212,10 +213,14 @@ export class UiBrowserAdapter implements TestTypeAdapter {
 
   async #runUi(input: AdapterInput & { generation: GenerationResult }): Promise<UiBrowserRunnerResult> {
     let commandProgress = Promise.resolve();
+    const scenarioText = scenarioTextFromGeneration(input.generation);
+    const runPlan = fallbackRunPlanFromScenario(scenarioText);
     try {
       await input.emit({ type: 'progress', message: 'Opening frontend in agent-browser.', percent: 78 });
       const result = await this.#runner.run({
         url: input.repository.frontend.url,
+        route: input.repository.frontend.route,
+        plan: runPlan,
         signal: input.signal,
         onCommand: (args, index, total) => {
           commandProgress = commandProgress.then(() => input.emit({
