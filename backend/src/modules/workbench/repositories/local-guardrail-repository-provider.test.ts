@@ -4,7 +4,7 @@ import { LocalGuardrailRepositoryProvider } from './local-guardrail-repository-p
 
 test('local provider returns Guardrail onboarding context with schema-shaped QC cases', async () => {
   const provider = new LocalGuardrailRepositoryProvider({ rootDir: process.cwd() });
-  const context = await provider.getContext('guardrail', {
+  const context = await provider.getContext('guardrail', 'user-1', {
     prompt: 'improve onboarding UI test',
     feature: null,
     testTypes: ['UI / Browser'],
@@ -13,7 +13,7 @@ test('local provider returns Guardrail onboarding context with schema-shaped QC 
 
   assert.equal(context.repo.name, 'guardrail');
   assert.match(context.repo.path, /guardrail$/);
-  assert.equal(context.frontend.url, 'http://127.0.0.1:5173/onboarding');
+  assert.equal(context.frontend.url, 'http://localhost:5173/onboarding');
   assert.ok(context.relatedFiles.some(file => file.path === 'frontend/src/pages/OnboardingPage.tsx'));
   assert.ok(context.sourceSnippets.some(snippet => snippet.path === 'frontend/src/pages/OnboardingPage.tsx'));
   assert.equal(context.qcCases[0]?.feature, 'Onboarding');
@@ -28,7 +28,7 @@ test('local provider returns fresh scanner results between calls', async () => {
     testTypes: ['UI / Browser' as const],
     sources: ['Codebase' as const],
   };
-  const firstContext = await provider.getContext('guardrail', intent);
+  const firstContext = await provider.getContext('guardrail', 'user-1', intent);
 
   assert.ok(firstContext.relatedFiles[0]);
   assert.ok(firstContext.qcCases[0]);
@@ -44,7 +44,7 @@ test('local provider returns fresh scanner results between calls', async () => {
     automationStatus: 'automated',
   });
 
-  const secondContext = await provider.getContext('guardrail', intent);
+  const secondContext = await provider.getContext('guardrail', 'user-1', intent);
 
   assert.ok(secondContext.relatedFiles.some(file => file.path === 'frontend/src/pages/OnboardingPage.tsx'));
   assert.equal(secondContext.qcCases.length, 1);
@@ -55,7 +55,7 @@ test('local provider rejects unsupported repository ids clearly', async () => {
   const provider = new LocalGuardrailRepositoryProvider({ rootDir: process.cwd() });
 
   await assert.rejects(
-    () => provider.getContext('mock'),
+    () => provider.getContext('mock', 'user-1'),
     /Unsupported local Guardrail repository id "mock"/,
   );
 });

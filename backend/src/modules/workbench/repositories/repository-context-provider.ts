@@ -44,5 +44,5 @@ export interface RepositoryContext {
 }
 
 export interface RepositoryContextProvider {
-  getContext(repoId: string, intent?: IntentInput): Promise<RepositoryContext>;
+  getContext(repoId: string, userId: string, intent?: IntentInput): Promise<RepositoryContext>;
 }
