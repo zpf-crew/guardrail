@@ -62,6 +62,15 @@ test('job store returns snapshots that do not mutate internal state', () => {
   assert.equal(store.getJob(session.id, job.id)?.status, 'queued');
 });
 
+test('job store persists session approval', () => {
+  const store = new WorkbenchJobStore();
+  const session = createTestSession(store);
+
+  store.setSessionApproval(session.id, { decision: 'approve', answers: { 'q1': 0 } });
+
+  assert.deepEqual(store.getSession(session.id)?.approval, { decision: 'approve', answers: { 'q1': 0 } });
+});
+
 test('job store does not retain caller-owned intent arrays', () => {
   const store = new WorkbenchJobStore();
   const testTypes: Array<'UI / Browser' | 'Unit'> = ['UI / Browser'];

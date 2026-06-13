@@ -3,8 +3,9 @@ import type { DashboardPayload } from '../../onboarding/onboarding.types.js';
 import { OnboardingRepository } from '../../onboarding/onboarding.repository.js';
 import { ReposRepository } from '../../repos/repos.repository.js';
 import type { RepoRecord } from '../../repos/repos.types.js';
-import type { IntentInput } from '../workbench.types.js';
-import type { OnboardingContextSlice, RepositoryContext, RepositoryContextProvider } from './repository-context-provider.js';
+import type { IntentInput, QCTestCase } from '../workbench.types.js';
+import type { OnboardingContextSlice, GetRepositoryContextOptions, RepositoryContext, RepositoryContextProvider } from './repository-context-provider.js';
+import { resolveFrontendContext } from './frontend-route-resolver.js';
 import { RepositoryScanner } from './repository-scanner.js';
 
 interface ClonedRepoRepositoryProviderDeps {
@@ -28,7 +29,12 @@ export class ClonedRepoRepositoryProvider implements RepositoryContextProvider {
     });
   }
 
-  async getContext(repoId: string, userId: string, intent?: IntentInput): Promise<RepositoryContext> {
+  async getContext(
+    repoId: string,
+    userId: string,
+    intent?: IntentInput,
+    options?: GetRepositoryContextOptions,
+  ): Promise<RepositoryContext> {
     const repo = await this.#deps.getRepo(repoId, userId);
     if (!repo?.clonePath || repo.status !== 'cloned') {
       throw new Error(`Repository not found or not cloned: ${repoId}`);
@@ -37,6 +43,9 @@ export class ClonedRepoRepositoryProvider implements RepositoryContextProvider {
     const dashboard = await this.#deps.getDashboard(repoId, userId);
     const scanner = new RepositoryScanner({ rootDir: repo.clonePath });
     const files = await scanner.scanFiles(intent ?? {
+      prompt: '', feature: null, testTypes: ['UI / Browser'],
+    }, { onProgress: options?.onProgress });
+    const frontend = await resolveFrontendContext(repo.clonePath, intent ?? {
       prompt: '', feature: null, testTypes: ['UI / Browser'],
     });
 
@@ -48,9 +57,9 @@ export class ClonedRepoRepositoryProvider implements RepositoryContextProvider {
         commit: repo.commitSha ?? undefined,
       },
       ...files,
+      ...(frontend ? { frontend } : {}),
       qcCases: mapQcCases(dashboard),
       onboarding: mapOnboardingSlice(dashboard),
-      frontend: {},
     };
   }
 }
@@ -72,6 +81,18 @@ function mapOnboardingSlice(dashboard: DashboardPayload | null): OnboardingConte
   };
 }
 
-function mapQcCases(_dashboard: DashboardPayload | null) {
-  return [];
+function mapQcCases(dashboard: DashboardPayload | null): QCTestCase[] {
+  if (!dashboard) return [];
+  return dashboard.testCases
+    .filter(testCase => testCase.status === 'missing' || testCase.status === 'suspicious')
+    .map(testCase => ({
+      id: testCase.id,
+      feature: testCase.feature,
+      scenario: testCase.title,
+      expectedResult: testCase.description || testCase.title,
+      priority: testCase.risk === 'Critical' ? 'Critical'
+        : testCase.risk === 'High' ? 'High'
+        : testCase.risk === 'Medium' ? 'Medium' : 'Low',
+      automationStatus: testCase.status === 'missing' ? 'missing' as const : 'unknown' as const,
+    }));
 }

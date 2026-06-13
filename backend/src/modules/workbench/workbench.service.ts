@@ -72,6 +72,9 @@ export class WorkbenchService {
     approval: PlanApproval = { decision: 'approve', answers: {} },
   ): WorkbenchJob {
     const session = this.requireSession(sessionId);
+    if (step === 'generate' && approval) {
+      this.store.setSessionApproval(sessionId, approval);
+    }
     const job = this.store.createJob(session.id, step);
 
     void this.queue.enqueue({
@@ -80,11 +83,26 @@ export class WorkbenchService {
       onError: message => this.onError(session.id, job.id, message),
       run: async signal => {
         const currentSession = this.requireSession(session.id);
+        const emitProgress = async (message: string, percent: number) => {
+          await this.emit(session.id, job.id, { type: 'progress', message, percent });
+        };
+
+        if (step === 'isolation') {
+          await emitProgress('Loading repository context…', 4);
+        }
+
         const repository = await this.repositoryProvider.getContext(
           currentSession.repoId,
           currentSession.userId,
           currentSession.intent,
+          step === 'isolation'
+            ? { onProgress: progress => emitProgress(progress.message, progress.percent) }
+            : undefined,
         );
+
+        if (step === 'isolation') {
+          await emitProgress('Repository scan complete. Starting behavior classification…', 82);
+        }
         const adapter = this.requireUiBrowserAdapter();
         const repoRoot = basename(process.cwd()) === 'backend' ? join(process.cwd(), '..') : process.cwd();
         const skills = (this.testHooks?.skills

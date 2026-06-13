@@ -1,33 +1,17 @@
 import { exec as execCallback } from 'node:child_process';
-import { readdir, readFile, stat } from 'node:fs/promises';
+import { readFile, stat } from 'node:fs/promises';
 import path from 'node:path';
 import { promisify } from 'node:util';
+import { walkRepositoryFiles } from '../../lib/repo-file-walker.js';
 import type { RepoScanFacts } from './onboarding.types.js';
 
 const exec = promisify(execCallback);
-const IGNORED_DIRS = new Set(['.git', 'node_modules', 'dist', 'build', 'coverage', '.next', '.turbo', '.cache']);
 const TEST_FILE_RE = /(^|\/)(__tests__|tests?|e2e|cypress|playwright)(\/|$)|\.(test|spec)\.[cm]?[jt]sx?$/i;
 const SOURCE_FILE_RE = /\.(ts|tsx|js|jsx|mjs|cjs|py|go|rs|java|kt|swift)$/i;
 const MAX_SNIPPET_BYTES = 8000;
 
 async function walk(root: string, dir = '', acc: string[] = [], limit = 6000): Promise<string[]> {
-  if (acc.length >= limit) return acc;
-  const abs = path.join(root, dir);
-  const entries = await readdir(abs, { withFileTypes: true }).catch(() => []);
-
-  for (const entry of entries) {
-    if (acc.length >= limit) break;
-    if (entry.isDirectory()) {
-      if (!IGNORED_DIRS.has(entry.name)) {
-        await walk(root, path.join(dir, entry.name), acc, limit);
-      }
-      continue;
-    }
-    if (entry.isFile()) {
-      acc.push(path.join(dir, entry.name).replaceAll(path.sep, '/'));
-    }
-  }
-  return acc;
+  return walkRepositoryFiles(root, dir, acc, limit);
 }
 
 function detectPackageManager(files: string[]): RepoScanFacts['packageManager'] {

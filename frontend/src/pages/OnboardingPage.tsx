@@ -8,10 +8,7 @@ import { FileRow } from '@/components/ui/file-row';
 import { ProgressBar } from '@/components/ui/progress-bar';
 import { SearchInput } from '@/components/ui/search-input';
 import { useToast } from '@/components/ui/toast';
-import {
-  repoInfo,
-  scanTasks,
-} from '@/data/onboardingMockData';
+import { onboardingScanTasks } from '@/data/onboarding-scan-ui';
 import {
   LightbulbIcon,
   UploadIcon,
@@ -326,8 +323,8 @@ export function OnboardingPage() {
   };
 
   const selectedRepo = repos.find(repo => repo.githubRepoId === selectedGithubRepoId);
-  const selectedRepoName = selectedRepo?.fullName ?? repoInfo.fullName;
-  const selectedBranch = connectedRepo?.repo.branch ?? selectedRepo?.currentBranch ?? selectedRepo?.defaultBranch ?? repoInfo.branch;
+  const selectedRepoName = selectedRepo?.fullName ?? '—';
+  const selectedBranch = connectedRepo?.repo.branch ?? selectedRepo?.currentBranch ?? selectedRepo?.defaultBranch ?? 'main';
   const selectedRepoIsCloned = Boolean(selectedRepo?.isCloned);
   const normalizedRepoSearch = repoSearch.trim().toLowerCase();
   const visibleRepos = normalizedRepoSearch
@@ -365,7 +362,7 @@ export function OnboardingPage() {
     setScanProgress(100);
     setScanStepLabel('Complete');
     setScanEta('done');
-    setScanTaskIndex(scanTasks.length);
+    setScanTaskIndex(onboardingScanTasks.length);
     setScanSummary(result.summary);
     if (result.logs.length) {
       setScanLogMessages(result.logs.map(log => ({ tag: log.level, message: log.message, at: log.at })));
@@ -375,7 +372,7 @@ export function OnboardingPage() {
   }, [toast]);
 
   const runScanStep = React.useCallback((index: number) => {
-    const total = scanTasks.length;
+    const total = onboardingScanTasks.length;
     if (index >= total) {
       setScanProgress(96);
       setScanStepLabel('Generating initial testing insights');
@@ -385,9 +382,9 @@ export function OnboardingPage() {
 
     setScanTaskIndex(index);
     setScanProgress(Math.round(((index + 0.5) / total) * 100));
-    setScanStepLabel(scanTasks[index].label);
+    setScanStepLabel(onboardingScanTasks[index].label);
     setScanEta(`~${Math.max(1, total - index)}s remaining`);
-    setScanLogMessages(prev => [...prev, { tag: scanTasks[index].warn ? 'warn' : 'info', message: scanTasks[index].label }]);
+    setScanLogMessages(prev => [...prev, { tag: onboardingScanTasks[index].warn ? 'warn' : 'info', message: onboardingScanTasks[index].label }]);
 
     scanTimerRef.current = setTimeout(() => runScanStep(index + 1), 620 + Math.random() * 260);
   }, []);
@@ -395,7 +392,7 @@ export function OnboardingPage() {
   const buildDraft = (): Partial<OnboardingDraft> => ({
     repository: {
       repo: {
-        name: connectedRepo?.repo.name ?? selectedRepo?.name ?? repoInfo.name,
+        name: connectedRepo?.repo.name ?? selectedRepo?.name ?? 'repository',
         path: connectedRepo?.repo.path ?? '',
         branch: selectedBranch,
         commit: connectedRepo?.repo.commit,
@@ -475,7 +472,7 @@ export function OnboardingPage() {
   const getTaskStatus = (index: number): 'pending' | 'running' | 'done' | 'warn' => {
     if (scanTaskIndex < 0) return 'pending';
     if (index === scanTaskIndex) return 'running';
-    if (index < scanTaskIndex) return scanTasks[index].warn ? 'warn' : 'done';
+    if (index < scanTaskIndex) return onboardingScanTasks[index].warn ? 'warn' : 'done';
     return 'pending';
   };
 
@@ -609,30 +606,30 @@ export function OnboardingPage() {
                                 <div className="mt-[4px] flex flex-wrap items-center gap-[8px] text-[11.5px] text-[#6b7488]">
                                   <span>{repo.owner}</span>
                                   <span>·</span>
-	                                  <span>{repo.defaultBranch}</span>
-	                                  {repo.isCloned && (
-	                                    <>
-	                                      <span>·</span>
-	                                      <span className="text-[#3ddc97]">Cloned locally</span>
-	                                    </>
-	                                  )}
-	                                  {selected && <span className="text-[#818cf8]">Selected</span>}
-	                                </div>
-	                              </div>
-	                              <div className="flex flex-col items-end gap-[6px] flex-none">
-	                                {repo.isCloned && (
-	                                  <span className="rounded-[999px] px-[8px] py-[3px] text-[10.5px] font-bold uppercase tracking-[0.4px] bg-[rgba(61,220,151,0.13)] text-[#3ddc97]">
-	                                    Local
-	                                  </span>
-	                                )}
-	                                <span className={`rounded-[999px] px-[8px] py-[3px] text-[10.5px] font-bold uppercase tracking-[0.4px] ${
-	                                  repo.private
-	                                    ? 'bg-[rgba(192,132,252,0.15)] text-[#c084fc]'
-	                                    : 'bg-[rgba(96,165,250,0.13)] text-[#60a5fa]'
-	                                }`}>
-	                                  {repo.private ? 'Private' : 'Public'}
-	                                </span>
-	                              </div>
+                                  <span>{repo.defaultBranch}</span>
+                                  {repo.isCloned && (
+                                    <>
+                                      <span>·</span>
+                                      <span className="text-[#3ddc97]">Cloned locally</span>
+                                    </>
+                                  )}
+                                  {selected && <span className="text-[#818cf8]">Selected</span>}
+                                </div>
+                              </div>
+                              <div className="flex flex-col items-end gap-[6px] flex-none">
+                                {repo.isCloned && (
+                                  <span className="rounded-[999px] px-[8px] py-[3px] text-[10.5px] font-bold uppercase tracking-[0.4px] bg-[rgba(61,220,151,0.13)] text-[#3ddc97]">
+                                    Local
+                                  </span>
+                                )}
+                                <span className={`rounded-[999px] px-[8px] py-[3px] text-[10.5px] font-bold uppercase tracking-[0.4px] ${
+                                  repo.private
+                                    ? 'bg-[rgba(192,132,252,0.15)] text-[#c084fc]'
+                                    : 'bg-[rgba(96,165,250,0.13)] text-[#60a5fa]'
+                                }`}>
+                                  {repo.private ? 'Private' : 'Public'}
+                                </span>
+                              </div>
                             </div>
                           </button>
                         );
@@ -644,7 +641,7 @@ export function OnboardingPage() {
                     <div className="bg-[#0d0f16] border border-[rgba(255,255,255,0.07)] rounded-[10px] p-[13px_15px]">
                       <div className="text-[11px] uppercase tracking-[0.6px] text-[#6b7488] font-semibold mb-[7px]">Organization</div>
                       <div className="font-mono text-[13.5px] text-[#e8ebf2]">
-                        {selectedRepo?.owner ?? repoInfo.fullName.split('/')[0]}
+                        {selectedRepo?.owner ?? '—'}
                       </div>
                     </div>
                     <div className="bg-[#0d0f16] border border-[rgba(255,255,255,0.07)] rounded-[10px] p-[13px_15px]">
@@ -849,7 +846,7 @@ export function OnboardingPage() {
                 />
                 <div className="p-[22px]">
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-[22px] gap-y-[8px] mb-[20px]">
-                    {scanTasks.map((task, i) => {
+                    {onboardingScanTasks.map((task, i) => {
                       const status = getTaskStatus(i);
                       return (
                         <div key={task.label} className="flex items-center gap-[11px] py-[8px] text-[13px]">

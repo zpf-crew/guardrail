@@ -44,6 +44,18 @@ const qcCaseSchema = z.object({
   automationStatus: z.enum(['automated', 'missing', 'unknown']),
 });
 
+const classificationSchema = z.object({
+  behavior: z.string(),
+  status: z.enum(['Covered', 'Missing', 'Weak', 'Failed', 'Suspicious']),
+  suggestedTypes: z.array(testTypeSchema),
+  risk: riskSchema,
+  explanation: z.string(),
+});
+
+const isolationClassificationsSchema = z.object({
+  classifications: z.array(classificationSchema).min(1),
+});
+
 const isolationSchema = z.object({
   target: z.object({ feature: z.string(), repo: repoSchema }),
   sourceFiles: z.array(relatedFileSchema),
@@ -58,13 +70,7 @@ const isolationSchema = z.object({
     flaky: z.number().optional(),
   }),
   userJourneys: z.array(z.string()),
-  classifications: z.array(z.object({
-    behavior: z.string(),
-    status: z.enum(['Covered', 'Missing', 'Weak', 'Failed', 'Suspicious']),
-    suggestedTypes: z.array(testTypeSchema),
-    risk: riskSchema,
-    explanation: z.string(),
-  })),
+  classifications: z.array(classificationSchema),
 });
 
 const planSchema = z.object({
@@ -89,9 +95,33 @@ const planSchema = z.object({
   })),
 });
 
+const planQuestionSchema = z.object({
+  id: z.string(),
+  question: z.string(),
+  options: z.array(z.string()),
+  answerIndex: z.number().optional(),
+});
+
+const testPlanQuestionsSchema = z.object({
+  questions: z.array(planQuestionSchema),
+});
+
 const diffLineSchema = z.object({
   kind: z.enum(['add', 'del', 'context', 'meta']),
   text: z.string(),
+});
+
+const generatedChangeSchema = z.object({
+  id: z.string(),
+  action: z.enum(['Add', 'Update', 'Delete']),
+  testType: testTypeSchema,
+  title: z.string(),
+  file: z.string(),
+  feature: z.string(),
+  risk: riskSchema,
+  reason: z.string(),
+  diff: z.array(diffLineSchema),
+  status: z.enum(['staged', 'applied', 'reverted']),
 });
 
 const generationSchema = z.object({
@@ -99,22 +129,15 @@ const generationSchema = z.object({
     label: z.string(),
     status: z.enum(['pending', 'running', 'done']),
   })),
-  changes: z.array(z.object({
-    id: z.string(),
-    action: z.enum(['Add', 'Update', 'Delete']),
-    testType: testTypeSchema,
-    title: z.string(),
-    file: z.string(),
-    feature: z.string(),
-    risk: riskSchema,
-    reason: z.string(),
-    diff: z.array(diffLineSchema),
-    status: z.enum(['staged', 'applied', 'reverted']),
-  })),
+  changes: z.array(generatedChangeSchema),
   beforeAfter: z.object({
     before: z.array(z.string()),
     after: z.array(z.string()),
   }),
+});
+
+const generationChangesSchema = z.object({
+  changes: z.array(generatedChangeSchema),
 });
 
 const outcomeSchema = z.enum(['Passed', 'Failed', 'Flaky', 'Skipped', 'Needs approval']);
@@ -176,6 +199,10 @@ const runSchema = z.object({
   }).optional(),
 });
 
+const reviewRecommendationSchema = z.object({
+  recommendation: z.string().min(1),
+});
+
 const reviewSchema = z.object({
   testsAdded: z.number(),
   testsUpdated: z.number(),
@@ -214,18 +241,28 @@ const uiBrowserRunPlanSchema = z.object({
 
 const schemas = {
   IsolationResult: isolationSchema,
+  IsolationClassifications: isolationClassificationsSchema,
   TestPlan: planSchema,
+  TestPlanQuestions: testPlanQuestionsSchema,
   GenerationResult: generationSchema,
+  GenerationChanges: generationChangesSchema,
   TestRunResult: runSchema,
   ReviewSummary: reviewSchema,
+  ReviewRecommendation: reviewRecommendationSchema,
+  UiBrowserRunPlan: uiBrowserRunPlanSchema,
 } as const;
 
 interface WorkbenchStepResultByName {
   IsolationResult: IsolationResult;
+  IsolationClassifications: { classifications: IsolationResult['classifications'] };
   TestPlan: TestPlan;
+  TestPlanQuestions: { questions: TestPlan['questions'] };
   GenerationResult: GenerationResult;
+  GenerationChanges: { changes: GenerationResult['changes'] };
   TestRunResult: TestRunResult;
   ReviewSummary: ReviewSummary;
+  ReviewRecommendation: { recommendation: string };
+  UiBrowserRunPlan: UiBrowserRunPlan;
 }
 
 export type WorkbenchSchemaName = keyof typeof schemas;

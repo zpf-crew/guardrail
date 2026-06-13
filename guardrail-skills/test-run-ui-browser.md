@@ -8,9 +8,11 @@ Convert generated UI Browser scenarios into a bounded browser run plan.
 
 The backend provides JSON with:
 
-- `intent`
-- `generation`
-- `repository`
+- `change` (single staged UI change)
+- `scenarioText` (Gherkin diff for this change only)
+- `targetUrl` (managed dev server base URL)
+- `repository.frontend`, `repository.sourceSnippets`
+- `guardrailUiTestDesign`
 - `availableActions`
 - `schemaName`: `UiBrowserRunPlan`, a backend runtime validation contract introduced by the workbench pipeline, not a `WorkbenchStepResult`.
 

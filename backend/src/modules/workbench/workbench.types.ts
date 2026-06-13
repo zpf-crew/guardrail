@@ -66,6 +66,7 @@ export interface WorkbenchSession {
   intent: IntentInput;
   isolation?: IsolationResult;
   plan?: TestPlan;
+  approval?: PlanApproval;
   generation?: GenerationResult;
   run?: TestRunResult;
   review?: ReviewSummary;

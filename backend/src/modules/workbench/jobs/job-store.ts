@@ -1,6 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import type {
   IntentInput,
+  PlanApproval,
   RepoRef,
   WorkbenchJob,
   WorkbenchJobEvent,
@@ -110,6 +111,13 @@ export class WorkbenchJobStore {
     job.updatedAt = new Date().toISOString();
     if (error) job.error = error;
     else delete job.error;
+  }
+
+  setSessionApproval(sessionId: string, approval: PlanApproval): void {
+    const session = this.sessions.get(sessionId);
+    if (!session) throw new Error(`Workbench session not found: ${sessionId}`);
+
+    session.approval = clone(approval);
   }
 
   setStepStatus(sessionId: string, step: WorkflowStepId, status: WorkbenchSession['steps'][WorkflowStepId]): void {

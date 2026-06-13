@@ -5,14 +5,18 @@ import { ArrowLeftIcon, ChevronRightIcon } from '@/components/icons';
 import { StepHeader, BlockHeader, FileIcon } from '../shared';
 import { RISK_BADGE, CLASS_STATUS_BADGE, CLASS_BORDER_COLOR } from '../workbench-presentation';
 
+import { WorkbenchProgressPanel } from '../workbench-progress-panel';
+import type { WorkbenchProgressEvent } from '../use-workbench';
+
 interface IsolationStepProps {
   isolation: IsolationResult;
   generating: boolean;
+  planProgress: WorkbenchProgressEvent[];
   onBack: () => void;
   onGeneratePlan: () => void;
 }
 
-export function IsolationStep({ isolation, generating, onBack, onGeneratePlan }: IsolationStepProps) {
+export function IsolationStep({ isolation, generating, planProgress, onBack, onGeneratePlan }: IsolationStepProps) {
   const codeFiles = [...isolation.sourceFiles, ...isolation.existingTestFiles];
   const docFiles = [...isolation.specDocs.map(f => f.path), ...isolation.qcCases.map(q => `${q.id} · ${q.scenario}`)];
   const { failed, suspicious, missing } = isolation.currentStatus;
@@ -87,6 +91,13 @@ export function IsolationStep({ isolation, generating, onBack, onGeneratePlan }:
           ))}
         </div>
       </div>
+
+      <WorkbenchProgressPanel
+        active={generating}
+        title="Generating plan"
+        fallbackMessage="Building test plan from isolation evidence…"
+        events={planProgress}
+      />
 
       <div className="flex items-center gap-[10px] flex-wrap p-[16px] bg-[#161a24] border border-[rgba(255,255,255,0.07)] rounded-[12px]">
         <Button variant="ghost" onClick={onBack}><ArrowLeftIcon className="w-[15px] h-[15px] mr-[6px]" />Back</Button>

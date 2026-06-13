@@ -7,12 +7,9 @@ import type {
   ScanSummary,
   UploadedFile,
 } from '@/types/testlens';
-import { mockDashboard } from './dashboardMockData';
 
-const API_BASE = import.meta.env.VITE_API_BASE_URL;
+const API_BASE = import.meta.env.VITE_API_BASE_URL?.trim();
 const LATEST_DASHBOARD_PREFIX = 'tl.latestDashboard.';
-
-const delay = (ms: number) => new Promise<void>(resolve => setTimeout(resolve, ms));
 
 export type KnowledgeDocWithSnippet = KnowledgeDoc & {
   file: UploadedFile & { snippet?: string };
@@ -30,6 +27,13 @@ export class OnboardingApiError extends Error {
     super(message);
     this.name = 'OnboardingApiError';
   }
+}
+
+function requireApiBase(): string {
+  if (!API_BASE) {
+    throw new OnboardingApiError('VITE_API_BASE_URL is not configured.');
+  }
+  return API_BASE;
 }
 
 export function saveLatestDashboard(repoId: string, dashboard: DashboardPayload) {
@@ -50,52 +54,8 @@ export function getLatestDashboard(repoId: string | null): DashboardPayload | nu
   }
 }
 
-function mockSummaryFromDraft(draft: Partial<OnboardingDraft>): ScanSummary {
-  const qcCasesImported = draft.qcPreview?.length ?? 0;
-  const productDocsIndexed = (draft.productDocs?.length ?? 0) + (draft.docSources?.length ?? 0);
-  return {
-    automatedTestsFound: mockDashboard.testCases.filter(test => test.status !== 'missing').length,
-    qcCasesImported,
-    productDocsIndexed,
-    missingRecommended: Math.max(3, draft.qcPreview?.filter(row => row.automationStatus !== 'automated').length ?? 0),
-    suspiciousTests: productDocsIndexed ? 2 : 0,
-    failedTests: mockDashboard.metrics.failed.value,
-    flakyTests: mockDashboard.metrics.flaky.value,
-    coverage: mockDashboard.metrics.coverage.value,
-  };
-}
-
-function mockDashboardFromDraft(draft: Partial<OnboardingDraft>): DashboardPayload {
-  return {
-    ...mockDashboard,
-    lastScanAt: new Date().toISOString(),
-    metrics: {
-      ...mockDashboard.metrics,
-      missing: { ...mockDashboard.metrics.missing, value: Math.max(3, draft.qcPreview?.filter(row => row.automationStatus !== 'automated').length ?? 0) },
-      suspicious: { ...mockDashboard.metrics.suspicious, value: (draft.productDocs?.length || draft.docSources?.length) ? 2 : 0 },
-    },
-    activity: [
-      { id: 'A-1', state: 'done', title: `Scanned repository ${mockDashboard.repo.name}`, at: new Date().toISOString(), detail: `${mockDashboard.filesIndexed.toLocaleString()} files indexed` },
-      { id: 'A-2', state: 'done', title: 'Imported product knowledge and QC cases', at: new Date().toISOString(), detail: `${draft.productDocs?.length ?? 0} docs · ${draft.qcPreview?.length ?? 0} QC cases` },
-      ...mockDashboard.activity.slice(2),
-    ],
-  };
-}
-
 export async function commitOnboardingScan(repoId: string, draft: Partial<OnboardingDraft>): Promise<OnboardingCommitResponse> {
-  if (!API_BASE) {
-    await delay(1800);
-    const dashboard = mockDashboardFromDraft(draft);
-    saveLatestDashboard(repoId, dashboard);
-    return {
-      jobId: 'mock-onboarding-scan',
-      summary: mockSummaryFromDraft(draft),
-      logs: [],
-      dashboard,
-    };
-  }
-
-  const res = await fetch(`${API_BASE}/api/repos/${encodeURIComponent(repoId)}/onboarding/commit`, {
+  const res = await fetch(`${requireApiBase()}/api/repos/${encodeURIComponent(repoId)}/onboarding/commit`, {
     method: 'POST',
     credentials: 'include',
     headers: { 'Content-Type': 'application/json' },

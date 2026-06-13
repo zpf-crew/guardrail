@@ -2,6 +2,32 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { validateWorkbenchStepResult, validateUiBrowserRunPlan } from './workbench-validators.js';
 
+test('validates isolation classifications shape', () => {
+  const result = validateWorkbenchStepResult('IsolationClassifications', {
+    classifications: [{
+      behavior: 'Complete onboarding',
+      status: 'Missing',
+      suggestedTypes: ['UI / Browser'],
+      risk: 'High',
+      explanation: 'No UI Browser test was found in repository context.',
+    }],
+  });
+
+  assert.equal(result.classifications[0]?.behavior, 'Complete onboarding');
+});
+
+test('validates test plan questions slice', () => {
+  const result = validateWorkbenchStepResult('TestPlanQuestions', {
+    questions: [{
+      id: 'coupon-api',
+      question: 'Should coupon tests mock the payment API?',
+      options: ['Yes — mock API', 'No — use staging'],
+    }],
+  });
+
+  assert.equal(result.questions[0]?.id, 'coupon-api');
+});
+
 test('validates isolation result shape', () => {
   const result = validateWorkbenchStepResult('IsolationResult', {
     target: { feature: 'Onboarding', repo: { name: 'guardrail', path: '/repo', branch: 'main' } },

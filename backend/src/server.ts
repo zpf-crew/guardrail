@@ -4,8 +4,11 @@ const app = buildApp();
 
 const start = async () => {
   try {
-    await app.listen({ port: 3000, host: '0.0.0.0' });
-    app.log.info(`Server listening at http://localhost:3000`);
+    await app.listen({
+      port: 3000,
+      host: '0.0.0.0',
+      listenTextResolver: address => `Guardrail API listening on ${address}`,
+    });
   } catch (err) {
     app.log.error(err);
     process.exit(1);

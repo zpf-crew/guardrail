@@ -43,6 +43,20 @@ export interface RepositoryContext {
   onboarding: OnboardingContextSlice;
 }
 
+export interface RepositoryScanProgress {
+  message: string;
+  percent: number;
+}
+
+export interface GetRepositoryContextOptions {
+  onProgress?: (progress: RepositoryScanProgress) => void | Promise<void>;
+}
+
 export interface RepositoryContextProvider {
-  getContext(repoId: string, userId: string, intent?: IntentInput): Promise<RepositoryContext>;
+  getContext(
+    repoId: string,
+    userId: string,
+    intent?: IntentInput,
+    options?: GetRepositoryContextOptions,
+  ): Promise<RepositoryContext>;
 }

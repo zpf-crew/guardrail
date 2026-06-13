@@ -1,11 +1,12 @@
 import * as React from 'react';
-import type { ReviewSummary, RiskRow, GeneratedChange, DiffLine, Evidence } from '@/types/testlens';
+import type { ReviewSummary, RiskRow, GeneratedChange, DiffLine, Evidence, TestType } from '@/types/testlens';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { CodeDiff } from '@/components/ui/code-diff';
 import { MicIcon, FileCodeIcon, CheckIcon } from '@/components/icons';
 import { StepHeader, BlockHeader } from '../shared';
 import { EvidencePanel } from '../evidence-panel';
+import { showsUnitRunSuite } from '../workbench-presentation';
 import type { RunProgressEvent } from '../use-workbench';
 
 const RISK_VALUE_STYLE: Record<string, { width: string; color: string; badge: 'pass' | 'flaky' | 'fail' }> = {
@@ -17,6 +18,7 @@ const RISK_VALUE_STYLE: Record<string, { width: string; color: string; badge: 'p
 interface ReviewStepProps {
   review: ReviewSummary;
   changes: GeneratedChange[];
+  activeTestType: TestType;
   applied: boolean;
   progress: RunProgressEvent[];
   evidence: Evidence[];
@@ -26,19 +28,33 @@ interface ReviewStepProps {
   onExport: () => void;
 }
 
-export function ReviewStep({ review, changes, applied, progress, evidence, onBack, onApply, onCreatePR, onExport }: ReviewStepProps) {
+export function ReviewStep({ review, changes, activeTestType, applied, progress, evidence, onBack, onApply, onCreatePR, onExport }: ReviewStepProps) {
   const [expanded, setExpanded] = React.useState<Set<string>>(new Set());
+
+  const scopedChanges = React.useMemo(
+    () => changes.filter(change => change.testType === activeTestType),
+    [activeTestType, changes],
+  );
+
+  const scopedFilesChanged = React.useMemo(
+    () => review.filesChanged.filter(file => scopedChanges.some(change => change.file === file.path)),
+    [review.filesChanged, scopedChanges],
+  );
 
   // Combine every generated change's diff by target file (a file may have several).
   const diffByFile = React.useMemo(() => {
     const map: Record<string, DiffLine[]> = {};
-    for (const c of changes) {
+    for (const c of scopedChanges) {
       if (!map[c.file]) map[c.file] = [];
       if (map[c.file].length) map[c.file].push({ kind: 'meta', text: '' });
       map[c.file].push(...c.diff);
     }
     return map;
-  }, [changes]);
+  }, [scopedChanges]);
+
+  const testsAdded = scopedChanges.filter(change => change.action === 'Add').length;
+  const testsUpdated = scopedChanges.filter(change => change.action === 'Update').length;
+  const testsDeleted = scopedChanges.filter(change => change.action === 'Delete').length;
 
   const toggle = (path: string) => setExpanded(prev => {
     const next = new Set(prev);
@@ -47,14 +63,18 @@ export function ReviewStep({ review, changes, applied, progress, evidence, onBac
   });
 
   const tiles: { label: string; value: string; color: string }[] = [
-    { label: 'Tests added', value: String(review.testsAdded), color: '#3ddc97' },
-    { label: 'Tests updated', value: String(review.testsUpdated), color: '#60a5fa' },
-    { label: 'Tests deleted', value: String(review.testsDeleted), color: '#fb7185' },
-    { label: 'Tests passing', value: review.testsPassing, color: '#3ddc97' },
-    { label: 'Line coverage', value: `+${review.coverage.lineDelta}%`, color: '#3ddc97' },
-    { label: 'Branch coverage', value: `+${review.coverage.branchDelta}%`, color: '#fbbf24' },
+    { label: `${activeTestType} tests added`, value: String(testsAdded), color: '#3ddc97' },
+    { label: `${activeTestType} tests updated`, value: String(testsUpdated), color: '#60a5fa' },
+    { label: `${activeTestType} tests deleted`, value: String(testsDeleted), color: '#fb7185' },
+    { label: `${activeTestType} tests passing`, value: review.testsPassing, color: '#3ddc97' },
+    ...(showsUnitRunSuite(activeTestType)
+      ? [
+        { label: 'Line coverage', value: `+${review.coverage.lineDelta}%`, color: '#3ddc97' },
+        { label: 'Branch coverage', value: `+${review.coverage.branchDelta}%`, color: '#fbbf24' },
+      ]
+      : []),
     { label: 'Flaky tracked', value: String(review.flakyTracked), color: '#fb7185' },
-    { label: 'Files changed', value: String(review.filesChanged.length), color: '#818cf8' },
+    { label: 'Files changed', value: String(scopedFilesChanged.length), color: '#818cf8' },
   ];
 
   const riskStyle = (r: RiskRow) => RISK_VALUE_STYLE[r.value] ?? RISK_VALUE_STYLE.low;
@@ -85,9 +105,9 @@ export function ReviewStep({ review, changes, applied, progress, evidence, onBac
       </div>
 
       <div className="mb-[18px]">
-        <BlockHeader label="Files changed" count={review.filesChanged.length} />
+        <BlockHeader label={`${activeTestType} files changed`} count={scopedFilesChanged.length} />
         <div className="flex flex-col gap-[6px]">
-          {review.filesChanged.map(f => {
+          {scopedFilesChanged.map(f => {
             const diff = diffByFile[f.path];
             const open = expanded.has(f.path);
             return (

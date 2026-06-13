@@ -19,18 +19,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = React.useState<AuthUser | null>(null);
 
   const refresh = React.useCallback(async () => {
-    if (!import.meta.env.VITE_API_BASE_URL) {
-      setUser({
-        id: 'mock-user',
-        githubId: 0,
-        login: 'mock-user',
-        name: 'Mock User',
-        avatarUrl: null,
-      });
-      setStatus('authenticated');
-      return;
-    }
-
     try {
       const me = await getMe();
       setUser(me.user);

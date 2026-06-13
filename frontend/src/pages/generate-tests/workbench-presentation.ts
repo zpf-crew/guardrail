@@ -1,4 +1,4 @@
-import type { RiskLevel, BehaviorClassification, GeneratedChange, RunOutcome } from '@/types/testlens';
+import type { RiskLevel, BehaviorClassification, GeneratedChange, RunOutcome, TestType } from '@/types/testlens';
 import type { BadgeProps } from '@/components/ui/badge';
 
 type BadgeVariant = NonNullable<BadgeProps['variant']>;
@@ -52,3 +52,22 @@ export const RUN_OUTCOME_STYLE: Record<RunOutcome, { bg: string; color: string }
   Skipped: { bg: 'rgba(139,148,167,0.16)', color: '#8b94a7' },
   'Needs approval': { bg: 'rgba(129,140,248,0.14)', color: '#818cf8' },
 };
+
+const DEFAULT_TEST_TYPE: TestType = 'UI / Browser';
+
+/** Workbench runs one adapter at a time — use the first selected test type. */
+export function primaryTestType(testTypes: TestType[] | undefined): TestType {
+  return testTypes?.[0] ?? DEFAULT_TEST_TYPE;
+}
+
+export function showsUnitRunSuite(testType: TestType): boolean {
+  return testType === 'Unit' || testType === 'Integration';
+}
+
+export function showsUiRunSuite(testType: TestType): boolean {
+  return testType === 'UI / Browser' || testType === 'Visual Screenshot';
+}
+
+export function showsMobileRunSuite(testType: TestType): boolean {
+  return testType === 'Mobile';
+}

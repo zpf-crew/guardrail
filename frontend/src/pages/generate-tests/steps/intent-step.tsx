@@ -1,26 +1,45 @@
+import * as React from 'react';
 import type { IntentInput, QuickAction, TestType, FeatureModule } from '@/types/testlens';
 import { Button } from '@/components/ui/button';
 import { SearchIcon, CheckIcon, ZapIcon } from '@/components/icons';
 import { StepHeader, BlockHeader } from '../shared';
+import { primaryTestType } from '../workbench-presentation';
+import { WorkbenchProgressPanel } from '../workbench-progress-panel';
+import type { AnalyzeProgressEvent } from '../use-workbench';
 
 const TEST_TYPE_OPTIONS: TestType[] = ['Unit', 'Integration', 'UI / Browser', 'Mobile'];
-const FEATURE_OPTIONS: FeatureModule[] = ['Coupon', 'Payment', 'Checkout'];
 
 interface IntentStepProps {
   intent: IntentInput;
   quickActions: QuickAction[];
+  featureOptions: FeatureModule[];
   analyzing: boolean;
+  analyzeProgress: AnalyzeProgressEvent[];
   onUpdateIntent: (patch: Partial<IntentInput>) => void;
   onAnalyze: () => void;
   onApplyQuickAction: (qa: QuickAction) => void;
 }
 
-export function IntentStep({ intent, quickActions, analyzing, onUpdateIntent, onAnalyze, onApplyQuickAction }: IntentStepProps) {
-  const toggleType = (type: TestType) => {
-    const next = intent.testTypes.includes(type)
-      ? intent.testTypes.filter(t => t !== type)
-      : [...intent.testTypes, type];
-    onUpdateIntent({ testTypes: next });
+export function IntentStep({
+  intent,
+  quickActions,
+  featureOptions,
+  analyzing,
+  analyzeProgress,
+  onUpdateIntent,
+  onAnalyze,
+  onApplyQuickAction,
+}: IntentStepProps) {
+  const selectedType = primaryTestType(intent.testTypes);
+
+  React.useEffect(() => {
+    if (intent.testTypes.length === 1) return;
+    onUpdateIntent({ testTypes: [primaryTestType(intent.testTypes)] });
+  }, [intent.testTypes, onUpdateIntent]);
+
+  const selectType = (type: TestType) => {
+    if (selectedType === type) return;
+    onUpdateIntent({ testTypes: [type] });
   };
 
   return (
@@ -34,7 +53,7 @@ export function IntentStep({ intent, quickActions, analyzing, onUpdateIntent, on
       <div className="bg-[#11141c] border border-[rgba(255,255,255,0.12)] rounded-[14px] p-[18px] shadow-[0_1px_0_rgba(255,255,255,0.04)_inset,0_8px_30px_rgba(0,0,0,0.45)] mb-[22px] transition-all focus-within:border-[rgba(129,140,248,0.35)] focus-within:shadow-[0_0_0_3px_rgba(129,140,248,0.14),0_1px_0_rgba(255,255,255,0.04)_inset,0_8px_30px_rgba(0,0,0,0.45)]">
         <textarea
           className="w-full bg-transparent border-none outline-none resize-none text-[#e8ebf2] text-[15.5px] leading-[1.55] min-h-[54px]"
-          placeholder="e.g., Add missing edge-case tests for coupon validation..."
+          placeholder="e.g., Add missing UI tests for the onboarding flow..."
           value={intent.prompt}
           onChange={e => onUpdateIntent({ prompt: e.target.value })}
         />
@@ -44,7 +63,8 @@ export function IntentStep({ intent, quickActions, analyzing, onUpdateIntent, on
             value={intent.feature ?? ''}
             onChange={e => onUpdateIntent({ feature: e.target.value })}
           >
-            {FEATURE_OPTIONS.map(f => <option key={f} value={f}>{f}</option>)}
+            <option value="">All features</option>
+            {featureOptions.map(f => <option key={f} value={f}>{f}</option>)}
           </select>
           <div className="flex-1" />
           <Button variant="primary" size="lg" onClick={onAnalyze} disabled={analyzing}>
@@ -54,15 +74,22 @@ export function IntentStep({ intent, quickActions, analyzing, onUpdateIntent, on
         </div>
       </div>
 
+      <WorkbenchProgressPanel
+        active={analyzing}
+        title="Analyzing"
+        fallbackMessage="Starting repository scan…"
+        events={analyzeProgress}
+      />
+
       <div className="mb-[16px]">
-        <div className="text-[11.5px] font-semibold text-[#6b7488] uppercase tracking-[0.5px] mb-[10px]">Test types to consider</div>
+        <div className="text-[11.5px] font-semibold text-[#6b7488] uppercase tracking-[0.5px] mb-[10px]">Test type</div>
         <div className="flex flex-wrap gap-[8px]">
           {TEST_TYPE_OPTIONS.map(type => {
-            const active = intent.testTypes.includes(type);
+            const active = selectedType === type;
             return (
               <button
                 key={type}
-                onClick={() => toggleType(type)}
+                onClick={() => selectType(type)}
                 className={`inline-flex items-center gap-[7px] text-[12.5px] font-medium px-[13px] py-[7px] rounded-[8px] cursor-pointer transition-all border ${
                   active ? 'bg-[rgba(129,140,248,0.14)] border-[rgba(129,140,248,0.4)] text-[#c7cdf5]' : 'bg-[#161a24] border-[rgba(255,255,255,0.07)] text-[#98a1b3] hover:text-[#e8ebf2]'
                 }`}
@@ -77,6 +104,11 @@ export function IntentStep({ intent, quickActions, analyzing, onUpdateIntent, on
 
       <div className="mb-[26px] mt-[26px]">
         <BlockHeader label="Quick actions from dashboard insights" />
+        {quickActions.length === 0 ? (
+          <p className="text-[13px] text-[#6b7488] leading-[1.5]">
+            No dashboard insights yet. Complete onboarding and run a repository scan first.
+          </p>
+        ) : (
         <div className="grid grid-cols-[repeat(auto-fill,minmax(248px,1fr))] gap-[12px]">
           {quickActions.map(action => (
             <div
@@ -89,11 +121,12 @@ export function IntentStep({ intent, quickActions, analyzing, onUpdateIntent, on
               </div>
               <div>
                 <div className="text-[13px] font-semibold text-[#e8ebf2] leading-[1.35] mb-[4px]">{action.label}</div>
-                <div className="text-[11.5px] text-[#6b7488]">{action.feature} · {action.severity} · {action.testTypes.join(', ')}</div>
+                <div className="text-[11.5px] text-[#6b7488]">{action.feature} · {action.severity} · {primaryTestType(action.testTypes)}</div>
               </div>
             </div>
           ))}
         </div>
+        )}
       </div>
     </div>
   );

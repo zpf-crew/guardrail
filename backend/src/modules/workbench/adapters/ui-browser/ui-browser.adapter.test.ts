@@ -46,6 +46,23 @@ async function buildInput(overrides: Partial<AdapterInput> = {}): Promise<Adapte
     createdAt: '2026-06-12T00:00:00.000Z',
     steps: { intent: 'done', isolation: 'active', plan: 'locked', generate: 'locked', run: 'locked', review: 'locked' },
     intent: { prompt: 'Test onboarding', feature: 'Checkout', testTypes: ['UI / Browser'], sources: ['Codebase'] },
+    isolation: {
+      target: { feature: 'Checkout', repo: repo.repo },
+      sourceFiles: [],
+      existingTestFiles: [],
+      specDocs: [],
+      qcCases: [],
+      currentCoverage: { line: 0, branch: 0 },
+      currentStatus: { failed: 0, suspicious: 0, missing: 1 },
+      userJourneys: ['Open CheckoutPage page'],
+      classifications: [{
+        behavior: 'Complete checkout',
+        status: 'Missing',
+        suggestedTypes: ['UI / Browser'],
+        risk: 'High',
+        explanation: 'Test isolation context.',
+      }],
+    },
   };
 
   const skills = { load: async (name: string) => ({ name, content: `# ${name}` }) } as AdapterInput['skills'];
@@ -86,10 +103,55 @@ function stubGeneration(): GenerationResult {
   };
 }
 
+function stubGenerationWithTwoChanges(): GenerationResult {
+  return {
+    timeline: [{ label: 'Generate onboarding scenarios', status: 'done' }],
+    changes: [
+      {
+        id: 'ui-browser-onboarding',
+        action: 'Add',
+        testType: 'UI / Browser',
+        title: 'Complete onboarding with selected repository',
+        file: 'guardrail-tests/ui/onboarding.feature',
+        feature: 'Onboarding',
+        risk: 'High',
+        reason: 'Covers browser-visible onboarding behavior.',
+        diff: [{ kind: 'add', text: 'Scenario: Complete onboarding with selected repository' }],
+        status: 'staged',
+      },
+      {
+        id: 'ui-browser-checkout',
+        action: 'Add',
+        testType: 'UI / Browser',
+        title: 'Complete checkout flow',
+        file: 'guardrail-tests/ui/checkout.feature',
+        feature: 'Checkout',
+        risk: 'High',
+        reason: 'Covers browser-visible checkout behavior.',
+        diff: [{ kind: 'add', text: 'Scenario: Complete checkout flow' }],
+        status: 'staged',
+      },
+    ],
+    beforeAfter: { before: ['No UI Browser evidence.'], after: ['Two scenarios staged.'] },
+  };
+}
+
 function generationStructuredModel() {
   return {
     runStep: async ({ schemaName }: { schemaName: string }) => {
-      if (schemaName === 'GenerationResult') return structuredClone(stubGeneration());
+      if (schemaName === 'GenerationChanges') {
+        return { changes: structuredClone(stubGeneration()).changes };
+      }
+      if (schemaName === 'UiBrowserRunPlan') {
+        return {
+          scenarioTitle: 'Generated scenario',
+          actions: [
+            { kind: 'open', path: '/checkout' },
+            { kind: 'waitForLoad', state: 'networkidle' },
+            { kind: 'screenshot', label: 'Loaded' },
+          ],
+        };
+      }
       throw new Error(`unexpected schema ${schemaName}`);
     },
   } as never;
@@ -110,15 +172,7 @@ const plan: TestPlan = {
 
 test('ui browser adapter uses structured model outputs for analyze plan generate review', async () => {
   const outputs = {
-    IsolationResult: {
-      target: { feature: 'Onboarding', repo: { name: 'guardrail', path: process.cwd(), branch: 'test' } },
-      sourceFiles: [{ path: 'frontend/src/pages/OnboardingPage.tsx', kind: 'source' }],
-      existingTestFiles: [],
-      specDocs: [],
-      qcCases: [],
-      currentCoverage: { line: 0, branch: 0 },
-      currentStatus: { failed: 0, suspicious: 0, missing: 1, flaky: 0 },
-      userJourneys: ['Complete onboarding with selected repository'],
+    IsolationClassifications: {
       classifications: [{
         behavior: 'Complete onboarding with selected repository',
         status: 'Missing',
@@ -127,14 +181,14 @@ test('ui browser adapter uses structured model outputs for analyze plan generate
         explanation: 'Model identified no UI Browser evidence in repo context.',
       }],
     },
-    TestPlan: {
-      proposedActions: [{ action: 'add', label: 'Add UI Browser onboarding scenario', count: 1 }],
-      risk: { productionCodeChanges: 'none', testDataChanges: false, browserAutomationRequired: true, mobileSimulatorRequired: 'no', externalApiMocking: 'no' },
-      filesToChange: ['guardrail-tests/ui/onboarding.feature'],
-      questions: [],
+    TestPlanQuestions: {
+      questions: [{
+        id: 'coupon-apply-conflict',
+        question: 'Spec says coupon auto-applies but QC expects manual apply — which behavior should the test assert?',
+        options: ['Auto-apply on cart load', 'Manual apply via button'],
+      }],
     },
-    GenerationResult: {
-      timeline: [{ label: 'Generate onboarding scenario', status: 'done' }],
+    GenerationChanges: {
       changes: [{
         id: 'ui-browser-onboarding',
         action: 'Add',
@@ -147,19 +201,17 @@ test('ui browser adapter uses structured model outputs for analyze plan generate
         diff: [{ kind: 'add', text: 'Scenario: Complete onboarding with selected repository' }],
         status: 'staged',
       }],
-      beforeAfter: { before: ['No UI Browser evidence.'], after: ['One scenario staged.'] },
     },
-    ReviewSummary: {
-      testsAdded: 1,
-      testsUpdated: 0,
-      testsDeleted: 0,
-      testsPassing: '1/1',
-      coverage: { lineDelta: 0, branchDelta: 0 },
-      flakyTracked: 0,
-      filesChanged: [{ path: 'guardrail-tests/ui/onboarding.feature', diffStat: '+1', changeKind: 'add' }],
-      remainingRisk: [{ label: 'Persistence', value: 'Generated file is staged only.', sentiment: 'neutral' }],
-      openQuestions: 0,
+    ReviewRecommendation: {
       recommendation: 'Review screenshot evidence before applying.',
+    },
+    UiBrowserRunPlan: {
+      scenarioTitle: 'Complete onboarding with selected repository',
+      actions: [
+        { kind: 'open', path: '/onboarding' },
+        { kind: 'waitForLoad', state: 'networkidle' },
+        { kind: 'screenshot', label: 'Onboarding page loaded' },
+      ],
     },
   };
   const seenSchemas: string[] = [];
@@ -168,7 +220,7 @@ test('ui browser adapter uses structured model outputs for analyze plan generate
     structuredModel: {
       runStep: async ({ schemaName, context }: { schemaName: keyof typeof outputs; context: unknown }) => {
         seenSchemas.push(schemaName);
-        seenContexts[schemaName === 'IsolationResult' ? 'analyze' : schemaName.toLowerCase()] = context;
+        seenContexts[schemaName === 'IsolationClassifications' ? 'analyze' : schemaName === 'TestPlanQuestions' ? 'planQuestions' : schemaName.toLowerCase()] = context;
         return structuredClone(outputs[schemaName]);
       },
     } as never,
@@ -179,18 +231,36 @@ test('ui browser adapter uses structured model outputs for analyze plan generate
   });
 
   const isolation = await adapter.analyze(input);
+  input.session.isolation = isolation;
   const testPlan = await adapter.plan({ ...input, isolation });
+  input.session.plan = testPlan;
   const generation = await adapter.generate({ ...input, plan: testPlan, approval: { decision: 'approve', answers: {} } });
+  input.session.approval = { decision: 'approve', answers: {} };
   const run = await adapter.run({ ...input, generation });
   const review = await adapter.review({ ...input, generation, run });
 
-  assert.deepEqual(seenSchemas, ['IsolationResult', 'TestPlan', 'GenerationResult', 'ReviewSummary']);
+  assert.deepEqual(seenSchemas, [
+    'IsolationClassifications',
+    'TestPlanQuestions',
+    'GenerationChanges',
+    'UiBrowserRunPlan',
+    'ReviewRecommendation',
+  ]);
   assert.ok(JSON.stringify(seenContexts.analyze).includes('onboarding'));
-  assert.equal(isolation.sourceFiles[0]?.path, 'frontend/src/pages/OnboardingPage.tsx');
-  assert.equal(testPlan.filesToChange[0], 'guardrail-tests/ui/onboarding.feature');
+  assert.ok(JSON.stringify(seenContexts.planQuestions ?? '').includes('guardrailUiTestDesign'));
+  assert.ok(JSON.stringify(seenContexts.generationchanges ?? '').includes('generationScope'));
+  assert.ok(JSON.stringify(seenContexts.reviewrecommendation ?? '').includes('unresolvedPlanQuestions'));
+  assert.equal(isolation.target.feature, 'Checkout');
+  assert.ok(isolation.sourceFiles[0]?.path.includes('CheckoutPage'));
+  assert.ok(testPlan.proposedActions.length > 0);
+  assert.equal(testPlan.questions.length, 1);
+  assert.equal(testPlan.questions[0]?.id, 'coupon-apply-conflict');
+  assert.ok(testPlan.filesToChange.some(file => file.includes('checkout') || file.includes('guardrail-tests/ui/')));
   assert.equal(generation.changes[0]?.title, 'Complete onboarding with selected repository');
   assert.equal(run.ui.outcome, 'Passed');
-  assert.equal(review.recommendation, 'Review screenshot evidence before applying.');
+  assert.equal(review.testsAdded, 1);
+  assert.equal(review.openQuestions, 1);
+  assert.match(review.recommendation, /screenshot/i);
 });
 
 test('ui browser adapter uses normalized screenshot evidence returned from emit', async () => {
@@ -342,23 +412,13 @@ test('ui browser adapter does not call runner after no-op generation', async () 
   });
 
   const run = await adapter.run({ ...input, generation });
+  input.session.plan = plan;
   const review = await adapter.review({
     ...input,
     generation,
     run,
     structuredModel: {
-      runStep: async () => ({
-        testsAdded: 0,
-        testsUpdated: 0,
-        testsDeleted: 0,
-        testsPassing: '0/0',
-        coverage: { lineDelta: 0, branchDelta: 0 },
-        flakyTracked: 0,
-        filesChanged: [],
-        remainingRisk: [],
-        openQuestions: 0,
-        recommendation: 'No UI Browser changes were generated.',
-      }),
+      runStep: async () => ({ recommendation: 'No UI Browser changes were generated.' }),
     } as never,
   });
 
@@ -366,7 +426,7 @@ test('ui browser adapter does not call runner after no-op generation', async () 
   assert.equal(run.ui.outcome, 'Skipped');
   assert.equal(run.matrix[0]?.status, 'Skipped');
   assert.equal(review.testsAdded, 0);
-  assert.equal(review.testsPassing, '0/0');
+  assert.equal(review.testsPassing, '0/1');
 });
 
 test('run starts and stops dev server before agent-browser', async () => {
@@ -396,4 +456,40 @@ test('run starts and stops dev server before agent-browser', async () => {
   await adapter.run({ ...input, generation });
 
   assert.deepEqual(events, ['stopped']);
+});
+
+test('run executes one agent-browser session per generated UI change', async () => {
+  const runCalls: string[] = [];
+  const adapter = new UiBrowserAdapter({
+    devServer: stubDevServer(),
+    runner: {
+      run: async ({ url }) => {
+        runCalls.push(url);
+        return { outcome: 'Passed', durationMs: 100, evidence: [] };
+      },
+    },
+  });
+  const input = await buildInput({
+    structuredModel: {
+      runStep: async ({ schemaName }: { schemaName: string }) => {
+        if (schemaName === 'UiBrowserRunPlan') {
+          return {
+            scenarioTitle: 'Test',
+            actions: [{ kind: 'open', path: '/checkout' }, { kind: 'screenshot', label: 'ok' }],
+          };
+        }
+        throw new Error(`unexpected ${schemaName}`);
+      },
+    } as never,
+  });
+  const generation = stubGenerationWithTwoChanges();
+
+  const run = await adapter.run({ ...input, generation });
+
+  assert.equal(runCalls.length, 2);
+  assert.equal(run.matrix.length, 2);
+  assert.equal(run.matrix[0]?.status, 'Passed');
+  assert.equal(run.matrix[1]?.status, 'Passed');
+  assert.equal(run.ui.outcome, 'Passed');
+  assert.equal(run.ui.durationMs, 200);
 });

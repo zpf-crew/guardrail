@@ -1,10 +1,17 @@
+import { useEffect, useState } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
-import type { Evidence, IntentInput, QuickAction, TestRunResult } from '@/types/testlens';
+import type { Evidence, FeatureModule, IntentInput, QuickAction, TestRunResult } from '@/types/testlens';
 import { TopBar } from '@/components/layout/TopBar';
 import { Button } from '@/components/ui/button';
 import { useToast } from '@/components/ui/toast';
 import { ArrowLeftIcon, WarningTriangleIcon, LoaderIcon } from '@/components/icons';
-import { mockQuickActions } from '@/data/generateTestsMockData';
+import { getDashboard } from '@/data/dashboard-api';
+import {
+  fallbackFeatureOptions,
+  featureOptionsFromDashboard,
+  quickActionsFromDashboard,
+} from '@/data/workbench-intent-data';
+import { primaryTestType } from '@/pages/generate-tests/workbench-presentation';
 import { useWorkbench } from '@/pages/generate-tests/use-workbench';
 import { WorkflowSidebar } from '@/pages/generate-tests/workflow-sidebar';
 import { exportTestPlan } from '@/pages/generate-tests/export-test-plan';
@@ -22,12 +29,15 @@ interface HandoffState {
   action?: string;
 }
 
-function buildInitialIntent(state: HandoffState | null): Partial<IntentInput> | undefined {
+function buildInitialIntent(
+  state: HandoffState | null,
+  quickActions: QuickAction[],
+): Partial<IntentInput> | undefined {
   if (!state) return undefined;
-  const qa = state.insightId ? mockQuickActions.find(q => q.sourceInsightId === state.insightId) : undefined;
+  const qa = state.insightId ? quickActions.find(q => q.sourceInsightId === state.insightId) : undefined;
   return {
     prompt: qa?.label ?? state.action ?? '',
-    ...(qa ? { feature: qa.feature, testTypes: qa.testTypes } : {}),
+    ...(qa ? { feature: qa.feature, testTypes: [primaryTestType(qa.testTypes)] } : {}),
   };
 }
 
@@ -49,12 +59,65 @@ function evidenceWithScreenshotFallback(streamedEvidence: Evidence[], run?: Test
 }
 
 export function GenerateTestsPage() {
-  const navigate = useNavigate();
   const location = useLocation();
+  const handoffState = location.state as HandoffState | null;
+
+  const [quickActions, setQuickActions] = useState<QuickAction[]>([]);
+  const [featureOptions, setFeatureOptions] = useState<FeatureModule[]>(fallbackFeatureOptions());
+  const [intentDataReady, setIntentDataReady] = useState(false);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    void getDashboard()
+      .then(dashboard => {
+        if (cancelled) return;
+        setQuickActions(quickActionsFromDashboard(dashboard));
+        setFeatureOptions(featureOptionsFromDashboard(dashboard));
+      })
+      .catch(() => {
+        if (cancelled) return;
+        setQuickActions([]);
+        setFeatureOptions(fallbackFeatureOptions());
+      })
+      .finally(() => {
+        if (!cancelled) setIntentDataReady(true);
+      });
+
+    return () => { cancelled = true; };
+  }, []);
+
+  if (!intentDataReady) {
+    return (
+      <div className="min-h-screen grid place-items-center text-[#98a1b3]" style={shellStyle}>
+        <div className="flex items-center gap-[10px]">
+          <LoaderIcon className="w-[18px] h-[18px] animate-spin" />
+          Loading testing insights…
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <GenerateTestsWorkbench
+      initialIntent={buildInitialIntent(handoffState, quickActions)}
+      quickActions={quickActions}
+      featureOptions={featureOptions}
+    />
+  );
+}
+
+interface GenerateTestsWorkbenchProps {
+  initialIntent?: Partial<IntentInput>;
+  quickActions: QuickAction[];
+  featureOptions: FeatureModule[];
+}
+
+function GenerateTestsWorkbench({ initialIntent, quickActions, featureOptions }: GenerateTestsWorkbenchProps) {
+  const navigate = useNavigate();
   const { toast } = useToast();
   const { user, logout } = useAuth();
 
-  const initialIntent = buildInitialIntent(location.state as HandoffState | null);
   const wb = useWorkbench(initialIntent);
   const { status, error, session, currentStep, pending } = wb;
   const runEvidence = evidenceWithScreenshotFallback(wb.runEvidence, session?.run);
@@ -69,8 +132,10 @@ export function GenerateTestsPage() {
     );
   }
 
+  const activeTestType = primaryTestType(session.intent.testTypes);
+
   const applyQuickAction = (qa: QuickAction) => {
-    wb.updateIntent({ prompt: qa.label, feature: qa.feature, testTypes: qa.testTypes });
+    wb.updateIntent({ prompt: qa.label, feature: qa.feature, testTypes: [primaryTestType(qa.testTypes)] });
     toast('Prompt filled from insight', 'success');
   };
 
@@ -93,11 +158,28 @@ export function GenerateTestsPage() {
         <WorkflowSidebar currentStep={currentStep} applied={wb.applied} onSelect={wb.setStep} />
 
         <div className="w-full max-w-[900px] p-[26px_28px_70px] min-w-0">
+          {error && (
+            <div
+              role="alert"
+              className="mb-[18px] flex items-start gap-[12px] p-[14px_16px] rounded-[12px] border border-[rgba(251,113,133,0.35)] bg-[rgba(251,113,133,0.08)] text-[#fecdd3]"
+            >
+              <WarningTriangleIcon className="w-[18px] h-[18px] flex-shrink-0 text-[#fb7185] mt-[1px]" />
+              <div className="flex-1 min-w-0">
+                <div className="text-[13.5px] font-semibold text-[#fb7185] mb-[4px]">Workbench step failed</div>
+                <div className="text-[13px] leading-[1.5] text-[#fecdd3] break-words">{error}</div>
+              </div>
+              <Button variant="ghost" className="text-[12px] shrink-0" onClick={wb.clearError}>
+                Dismiss
+              </Button>
+            </div>
+          )}
           {currentStep === 0 && (
             <IntentStep
               intent={session.intent}
-              quickActions={mockQuickActions}
+              quickActions={quickActions}
+              featureOptions={featureOptions}
               analyzing={pending === 'analyze'}
+              analyzeProgress={wb.analyzeProgress}
               onUpdateIntent={wb.updateIntent}
               onAnalyze={wb.analyze}
               onApplyQuickAction={applyQuickAction}
@@ -107,13 +189,16 @@ export function GenerateTestsPage() {
             <IsolationStep
               isolation={session.isolation}
               generating={pending === 'plan'}
+              planProgress={wb.planProgress}
               onBack={() => wb.setStep(0)}
               onGeneratePlan={wb.generatePlan}
             />
           )}
-          {currentStep === 2 && session.plan && (
+          {(currentStep === 2 && session.plan) && (
             <PlanStep
               plan={session.plan}
+              generating={pending === 'generate'}
+              generateProgress={wb.generateProgress}
               onBack={() => wb.setStep(1)}
               onApprove={wb.approvePlan}
               onEditSubmit={() => toast('Plan edit requested', 'success')}
@@ -131,6 +216,7 @@ export function GenerateTestsPage() {
           {currentStep === 4 && (
             <RunStep
               run={session.run ?? null}
+              activeTestType={activeTestType}
               ranTests={wb.ranTests}
               running={wb.running}
               progress={wb.runProgress}
@@ -144,6 +230,7 @@ export function GenerateTestsPage() {
             <ReviewStep
               review={session.review}
               changes={session.generation?.changes ?? []}
+              activeTestType={activeTestType}
               applied={wb.applied}
               progress={wb.runProgress}
               evidence={runEvidence}

@@ -1,5 +1,5 @@
 import type { IntentInput } from '../workbench.types.js';
-import type { RepositoryContext, RepositoryContextProvider } from './repository-context-provider.js';
+import type { GetRepositoryContextOptions, RepositoryContext, RepositoryContextProvider } from './repository-context-provider.js';
 import { RepositoryScanner } from './repository-scanner.js';
 
 interface LocalGuardrailRepositoryProviderOptions {
@@ -14,7 +14,12 @@ export class LocalGuardrailRepositoryProvider implements RepositoryContextProvid
     this.#scanner = new RepositoryScanner({ rootDir: options.rootDir });
   }
 
-  async getContext(_repoId: string, _userId: string, intent?: IntentInput): Promise<RepositoryContext> {
+  async getContext(
+    _repoId: string,
+    _userId: string,
+    intent?: IntentInput,
+    options?: GetRepositoryContextOptions,
+  ): Promise<RepositoryContext> {
     if (!this.#supportedRepoIds.has(_repoId)) {
       throw new Error(`Unsupported local Guardrail repository id "${_repoId}". Supported ids: guardrail, local.`);
     }
@@ -23,6 +28,6 @@ export class LocalGuardrailRepositoryProvider implements RepositoryContextProvid
       prompt: '',
       feature: null,
       testTypes: ['UI / Browser'],
-    });
+    }, options);
   }
 }

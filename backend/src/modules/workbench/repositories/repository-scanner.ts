@@ -2,6 +2,8 @@ import { execFile } from 'node:child_process';
 import { readFile } from 'node:fs/promises';
 import { basename, dirname, join } from 'node:path';
 import { promisify } from 'node:util';
+import { walkRepositoryFiles } from '../../../lib/repo-file-walker.js';
+import { resolveFrontendContext } from './frontend-route-resolver.js';
 import type { IntentInput, QCTestCase, RelatedFile, RepoRef } from '../workbench.types.js';
 import type { RepositoryContext, SourceSnippet } from './repository-context-provider.js';
 
@@ -11,8 +13,13 @@ const maxSnippetLines = 160;
 const maxRelatedFiles = 8;
 const maxSpecDocs = 5;
 
+import type { RepositoryScanProgress } from './repository-context-provider.js';
+
 type ScanIntent = Pick<IntentInput, 'prompt' | 'feature' | 'testTypes'>;
 export type RepositoryScanFiles = Pick<RepositoryContext, 'relatedFiles' | 'specDocs' | 'sourceSnippets'>;
+interface ScanFilesOptions {
+  onProgress?: (progress: RepositoryScanProgress) => void | Promise<void>;
+}
 interface WeightedToken {
   value: string;
   weight: number;
@@ -27,42 +34,61 @@ export class RepositoryScanner {
     this.#maxSnippetChars = options.maxSnippetChars ?? defaultMaxSnippetChars;
   }
 
-  async scan(intent: ScanIntent): Promise<RepositoryContext> {
+  async scan(
+    intent: ScanIntent,
+    options?: import('./repository-context-provider.js').GetRepositoryContextOptions,
+  ): Promise<RepositoryContext> {
     const repo = await this.#repoRef();
-    const scanFiles = await this.scanFiles(intent);
+    const scanFiles = await this.scanFiles(intent, { onProgress: options?.onProgress });
+    const frontend = await resolveFrontendContext(this.#rootDir, intent ?? {
+      prompt: '', feature: null, testTypes: ['UI / Browser'],
+    });
 
     return {
       repo,
-      frontend: {
-        startCommand: 'pnpm --dir frontend dev --host localhost',
-        healthUrl: 'http://localhost:5173',
-        url: 'http://localhost:5173/onboarding',
-        route: '/onboarding',
-      },
+      ...(frontend ? { frontend } : {}),
       ...scanFiles,
       qcCases: this.#seededQcCases(),
       onboarding: { lastScanAt: null, health: null, coverage: null, testCases: [], insights: [] },
     };
   }
 
-  async scanFiles(intent: ScanIntent): Promise<RepositoryScanFiles> {
+  async scanFiles(intent: ScanIntent, options: ScanFilesOptions = {}): Promise<RepositoryScanFiles> {
+    const report = async (message: string, percent: number) => {
+      await options.onProgress?.({ message, percent });
+    };
+
+    await report('Walking repository file tree…', 8);
     const inventory = await this.#fileInventory();
+    await report(`Indexed ${inventory.length} files`, 22);
+
+    await report('Ranking related source files…', 32);
     const sourceFiles = this.#rankFiles(
       inventory.flatMap(path => classifySourceFile(path)),
       intent,
       maxRelatedFiles,
     );
+
+    await report('Ranking existing test files…', 44);
     const existingTestFiles = this.#rankFiles(
       inventory.flatMap(path => classifyTestFile(path)),
       intent,
       maxRelatedFiles,
     );
+
+    await report('Ranking specs and product docs…', 56);
     const specDocs = this.#rankFiles(
       inventory.flatMap(path => classifySpecFile(path)),
       intent,
       maxSpecDocs,
     );
+
+    await report('Reading source snippets for model context…', 68);
     const sourceSnippets = await this.#snippets(sourceFiles.slice(0, 5));
+    await report(
+      `Scan complete — ${sourceFiles.length} source, ${existingTestFiles.length} test, ${specDocs.length} spec files`,
+      80,
+    );
 
     return {
       relatedFiles: [...sourceFiles, ...existingTestFiles],
@@ -83,24 +109,7 @@ export class RepositoryScanner {
   }
 
   async #fileInventory(): Promise<string[]> {
-    let output: string;
-    try {
-      const result = await execFileAsync('rg', ['--files'], { cwd: this.#rootDir });
-      output = result.stdout;
-    } catch (error) {
-      throw new Error(
-        'Repository scan failed: ripgrep (rg) is required to inventory repository files. Install ripgrep and ensure it is on PATH.',
-        { cause: error },
-      );
-    }
-
-    return output
-      .split('\n')
-      .map(line => line.trim())
-      .filter(Boolean)
-      .filter(path => !path.includes('/node_modules/'))
-      .filter(path => !path.includes('/dist/'))
-      .filter(path => !path.includes('/.artifacts/'));
+    return walkRepositoryFiles(this.#rootDir);
   }
 
   #rankFiles(files: RelatedFile[], intent: ScanIntent, limit: number): RelatedFile[] {
@@ -160,9 +169,15 @@ function classifyTestFile(path: string): RelatedFile[] {
 }
 
 function classifySpecFile(path: string): RelatedFile[] {
-  if (!/\.md$/.test(path)) return [];
-  if (!/^(docs|guardrail-skills)\//.test(path)) return [];
-  return [{ path, kind: 'spec', meta: 'Discovered product or architecture specification.' }];
+  const lower = path.toLowerCase();
+  if (!/\.(md|pdf|txt)$/.test(lower)) return [];
+  if (/^(docs|guardrail-skills)\//.test(path)) {
+    return [{ path, kind: 'spec', meta: 'Discovered product or architecture specification.' }];
+  }
+  if (/^spec\.md$/i.test(path) || /^readme\.md$/i.test(path)) {
+    return [{ path, kind: 'spec', meta: 'Discovered repository product specification.' }];
+  }
+  return [];
 }
 
 function scoreFile(path: string, intent: ScanIntent): number {

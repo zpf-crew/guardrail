@@ -1,7 +1,6 @@
 import type { ConnectedRepo, GitHubRepoSummary, RepoFileContent, RepoFileNode } from '@/types/testlens';
-import { githubRepos } from './onboardingMockData';
 
-const API_BASE = import.meta.env.VITE_API_BASE_URL;
+const API_BASE = import.meta.env.VITE_API_BASE_URL?.trim();
 const ACTIVE_REPO_KEY = 'tl.activeRepoId';
 
 export class ReposApiError extends Error {
@@ -11,26 +10,14 @@ export class ReposApiError extends Error {
   }
 }
 
-const delay = (ms: number) => new Promise<void>(resolve => setTimeout(resolve, ms));
-
-function mockRepos(): GitHubRepoSummary[] {
-  return githubRepos.map(repo => ({
-    githubRepoId: Number(repo.id),
-    fullName: repo.fullName,
-    name: repo.name,
-    owner: repo.org,
-    private: repo.private,
-    defaultBranch: repo.branch,
-    htmlUrl: `https://github.com/${repo.fullName}`,
-    isCloned: false,
-  }));
-}
-
-async function request<T>(path: string, init?: RequestInit): Promise<T> {
+function requireApiBase(): string {
   if (!API_BASE) {
     throw new ReposApiError('VITE_API_BASE_URL is not configured.');
   }
+  return API_BASE;
+}
 
+async function request<T>(path: string, init?: RequestInit): Promise<T> {
   const headers: Record<string, string> = {};
   if (init?.headers) {
     Object.assign(headers, init.headers);
@@ -39,7 +26,7 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
     headers['Content-Type'] = 'application/json';
   }
 
-  const res = await fetch(`${API_BASE}${path}`, {
+  const res = await fetch(`${requireApiBase()}${path}`, {
     ...init,
     credentials: 'include',
     headers,
@@ -61,30 +48,10 @@ export function saveActiveRepoId(repoId: string) {
 }
 
 export async function listGitHubRepos(): Promise<GitHubRepoSummary[]> {
-  if (!API_BASE) {
-    await delay(250);
-    return mockRepos();
-  }
   return request<GitHubRepoSummary[]>('/api/repos');
 }
 
 export async function connectRepo(githubRepoId: number): Promise<ConnectedRepo> {
-  if (!API_BASE) {
-    await delay(700);
-    const repo = mockRepos().find(item => item.githubRepoId === githubRepoId) ?? mockRepos()[0];
-    const connected = {
-      repoId: String(repo.githubRepoId),
-      repo: {
-        name: repo.name,
-        path: `/mock/workspaces/${repo.fullName}`,
-        branch: repo.defaultBranch,
-        commit: 'mock',
-      },
-    };
-    saveActiveRepoId(connected.repoId);
-    return connected;
-  }
-
   const connected = await request<ConnectedRepo>(`/api/repos/${githubRepoId}/connect`, { method: 'POST' });
   saveActiveRepoId(connected.repoId);
   return connected;

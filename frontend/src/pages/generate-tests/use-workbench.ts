@@ -1,5 +1,6 @@
 import * as React from 'react';
-import type { WorkbenchSession, IntentInput, Evidence } from '@/types/testlens';
+import type { WorkbenchSession, IntentInput, Evidence, PlanApproval } from '@/types/testlens';
+import { primaryTestType } from './workbench-presentation';
 import {
   createWorkbenchSession,
   updateWorkbenchIntent,
@@ -13,7 +14,9 @@ import type { JobEvent } from '@/data/workbench-api';
 
 export type WorkbenchStatus = 'loading' | 'error' | 'ready';
 export type PendingTransition = null | 'analyze' | 'plan' | 'generate' | 'run' | 'review';
-export type RunProgressEvent = Extract<JobEvent, { type: 'progress' | 'thinking' | 'error' | 'status' }>;
+export type WorkbenchProgressEvent = Extract<JobEvent, { type: 'progress' | 'thinking' | 'error' | 'status' }>;
+export type AnalyzeProgressEvent = WorkbenchProgressEvent;
+export type RunProgressEvent = WorkbenchProgressEvent;
 
 export interface UseWorkbenchResult {
   status: WorkbenchStatus;
@@ -31,6 +34,14 @@ export interface UseWorkbenchResult {
   genComplete: boolean;
   /** True once the user has applied the change set (terminal). */
   applied: boolean;
+  /** Raw events emitted by the latest analyze job. */
+  analyzeEvents: JobEvent[];
+  /** Analyze events suitable for progress display. */
+  analyzeProgress: AnalyzeProgressEvent[];
+  /** Plan events suitable for progress display. */
+  planProgress: WorkbenchProgressEvent[];
+  /** Generate events suitable for progress display. */
+  generateProgress: WorkbenchProgressEvent[];
   /** Raw events emitted by the latest run job. */
   runEvents: JobEvent[];
   /** Run events suitable for progress display. */
@@ -38,11 +49,12 @@ export interface UseWorkbenchResult {
   /** Evidence artifacts emitted by the latest run job. */
   runEvidence: Evidence[];
   apply: () => void;
+  clearError: () => void;
   setStep: (i: number) => void;
   updateIntent: (patch: Partial<IntentInput>) => void;
   analyze: () => Promise<void>;
   generatePlan: () => Promise<void>;
-  approvePlan: () => void;
+  approvePlan: (approval: PlanApproval) => void;
   runTests: () => void;
 }
 
@@ -62,6 +74,9 @@ export function useWorkbench(initialIntent?: Partial<IntentInput>): UseWorkbench
   const [genStep, setGenStep] = React.useState(0);
   const [applied, setApplied] = React.useState(false);
   const [runEvents, setRunEvents] = React.useState<JobEvent[]>([]);
+  const [analyzeEvents, setAnalyzeEvents] = React.useState<JobEvent[]>([]);
+  const [planEvents, setPlanEvents] = React.useState<JobEvent[]>([]);
+  const [generateEvents, setGenerateEvents] = React.useState<JobEvent[]>([]);
   const intervalRef = React.useRef<ReturnType<typeof setInterval> | null>(null);
   const genIntervalRef = React.useRef<ReturnType<typeof setInterval> | null>(null);
   const runIdRef = React.useRef(0);
@@ -92,13 +107,19 @@ export function useWorkbench(initialIntent?: Partial<IntentInput>): UseWorkbench
     setSession(s => (s ? { ...s, intent: { ...s.intent, ...patch } } : s));
   }, []);
 
+  const clearError = React.useCallback(() => setError(null), []);
+
   const analyze = React.useCallback(async () => {
     if (!session) return;
+    setError(null);
     setPending('analyze');
+    setAnalyzeEvents([]);
     try {
       const updated = await updateWorkbenchIntent(session.id, session.intent);
       setSession(updated);
-      const isolation = await analyzeSession(updated.id);
+      const isolation = await analyzeSession(updated.id, event => {
+        setAnalyzeEvents(events => [...events, event]);
+      });
       setSession(s => (s ? { ...s, isolation } : s));
       setCurrentStep(1);
     } catch (e) {
@@ -110,9 +131,13 @@ export function useWorkbench(initialIntent?: Partial<IntentInput>): UseWorkbench
 
   const generatePlan = React.useCallback(async () => {
     if (!session) return;
+    setError(null);
     setPending('plan');
+    setPlanEvents([]);
     try {
-      const plan = await planSession(session.id);
+      const plan = await planSession(session.id, event => {
+        setPlanEvents(events => [...events, event]);
+      });
       setSession(s => (s ? { ...s, plan } : s));
       setCurrentStep(2);
     } catch (e) {
@@ -138,13 +163,17 @@ export function useWorkbench(initialIntent?: Partial<IntentInput>): UseWorkbench
     genIntervalRef.current = id;
   }, []);
 
-  const approvePlan = React.useCallback(() => {
+  const approvePlan = React.useCallback((approval: PlanApproval) => {
     if (!session) return;
-    setCurrentStep(3);
+    setError(null);
     setPending('generate');
-    generateSession(session.id)
+    setGenerateEvents([]);
+    generateSession(session.id, approval, event => {
+      setGenerateEvents(events => [...events, event]);
+    })
       .then(generation => {
         setSession(s => (s ? { ...s, generation } : s));
+        setCurrentStep(3);
         startGenerationAnimation(generation.timeline.length);
       })
       .catch(e => setError(e instanceof Error ? e.message : 'Generation failed.'))
@@ -181,6 +210,7 @@ export function useWorkbench(initialIntent?: Partial<IntentInput>): UseWorkbench
     // Clear any in-flight run so a re-trigger never leaves an orphaned interval.
     if (intervalRef.current) clearInterval(intervalRef.current);
     setCurrentStep(4); // show the Run step immediately
+    setError(null);
     setPending('run');
     setRanTests(0);
     setRunEvents([]);
@@ -194,9 +224,17 @@ export function useWorkbench(initialIntent?: Partial<IntentInput>): UseWorkbench
         if (!isCurrentRun()) return;
 
         setSession(s => (s ? { ...s, run } : s));
-        const animation = startRunAnimation(run.matrix.length);
+        const activeType = primaryTestType(session.intent.testTypes);
+        const matrixCount = run.matrix.filter(row => row.type === activeType).length;
+        const animation = startRunAnimation(matrixCount);
         setPending('review');
-        const [review] = await Promise.all([reviewSession(session.id), animation]);
+        const [review] = await Promise.all([
+          reviewSession(session.id, event => {
+            if (!isCurrentRun()) return;
+            setRunEvents(events => [...events, event]);
+          }),
+          animation,
+        ]);
         if (!isCurrentRun()) return;
 
         setSession(s => (s ? { ...s, review } : s));
@@ -215,6 +253,24 @@ export function useWorkbench(initialIntent?: Partial<IntentInput>): UseWorkbench
 
   const genComplete = session?.generation ? genStep >= session.generation.timeline.length : false;
   const apply = React.useCallback(() => setApplied(true), []);
+  const analyzeProgress = React.useMemo(
+    () => analyzeEvents.filter((event): event is AnalyzeProgressEvent =>
+      event.type === 'progress' || event.type === 'thinking' || event.type === 'error' || event.type === 'status',
+    ),
+    [analyzeEvents],
+  );
+  const planProgress = React.useMemo(
+    () => planEvents.filter((event): event is WorkbenchProgressEvent =>
+      event.type === 'progress' || event.type === 'thinking' || event.type === 'error' || event.type === 'status',
+    ),
+    [planEvents],
+  );
+  const generateProgress = React.useMemo(
+    () => generateEvents.filter((event): event is WorkbenchProgressEvent =>
+      event.type === 'progress' || event.type === 'thinking' || event.type === 'error' || event.type === 'status',
+    ),
+    [generateEvents],
+  );
   const runProgress = React.useMemo(
     () => runEvents.filter((event): event is RunProgressEvent =>
       event.type === 'progress' || event.type === 'thinking' || event.type === 'error' || event.type === 'status',
@@ -238,7 +294,7 @@ export function useWorkbench(initialIntent?: Partial<IntentInput>): UseWorkbench
 
   return {
     status, error, session, currentStep, pending, ranTests, running: pending === 'run' || pending === 'review', genStep, genComplete,
-    applied, runEvents, runProgress, runEvidence, apply,
+    applied, analyzeEvents, analyzeProgress, planProgress, generateProgress, runEvents, runProgress, runEvidence, apply, clearError,
     setStep: setCurrentStep, updateIntent, analyze, generatePlan, approvePlan, runTests,
   };
 }

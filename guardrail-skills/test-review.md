@@ -9,10 +9,16 @@ Summarize generated test artifacts, real run evidence, and remaining risk for re
 The backend provides JSON with:
 
 - `intent`
+- `isolation`
+- `plan`
+- `approval`
+- `resolvedPlanAnswers` — plan questions answered during approval
+- `unresolvedPlanQuestions` — count of plan questions still without an answer
 - `generation`
 - `run`
-- `repository`
-- `schemaName`: `ReviewSummary`
+- `repository.onboarding`
+- `guardrailUiTestDesign`
+- `schemaName`: `ReviewRecommendation`
 
 ## Rules
 
@@ -20,8 +26,16 @@ The backend provides JSON with:
 - Mention screenshot evidence when present.
 - Do not claim coverage improvements unless coverage data exists.
 - Preserve unresolved run failures as remaining risk.
+- Call out unresolved plan questions when `unresolvedPlanQuestions` is greater than zero.
+- Return **recommendation text only**. The backend fills counts, files, risk tiles, and `openQuestions` from run evidence and plan approval state.
 - Return JSON only.
 
 ## Required Output
 
-Return an object matching `ReviewSummary`.
+Return an object matching:
+
+```json
+{
+  "recommendation": "string"
+}
+```

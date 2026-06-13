@@ -1,11 +1,11 @@
 import * as React from 'react';
 import type { ReactNode } from 'react';
-import type { Evidence, TestRunResult, RunOutcome } from '@/types/testlens';
+import type { Evidence, TestRunResult, RunOutcome, TestType } from '@/types/testlens';
 import { Button } from '@/components/ui/button';
 import { ProgressBar } from '@/components/ui/progress-bar';
 import { RunResultIcon, MicIcon, MonitorIcon, SmartphoneIcon, AlertCircleIcon, EyeIcon, LoaderIcon, CheckIcon } from '@/components/icons';
 import { StepHeader, BlockHeader } from '../shared';
-import { RUN_OUTCOME_STYLE } from '../workbench-presentation';
+import { RUN_OUTCOME_STYLE, showsMobileRunSuite, showsUiRunSuite, showsUnitRunSuite } from '../workbench-presentation';
 import { EvidencePanel } from '../evidence-panel';
 import type { RunProgressEvent } from '../use-workbench';
 
@@ -19,6 +19,7 @@ type Resolution = null | 'fixing' | 'accepted' | 'reverted';
 
 interface RunStepProps {
   run: TestRunResult | null;
+  activeTestType: TestType;
   ranTests: number;
   running: boolean;
   progress: RunProgressEvent[];
@@ -28,7 +29,7 @@ interface RunStepProps {
   onAttentionAction: (action: 'fix' | 'accept' | 'revert') => void;
 }
 
-export function RunStep({ run, ranTests, running, progress, evidence, onBack, onReview, onAttentionAction }: RunStepProps) {
+export function RunStep({ run, activeTestType, ranTests, running, progress, evidence, onBack, onReview, onAttentionAction }: RunStepProps) {
   const [resolution, setResolution] = React.useState<Resolution>(null);
 
   // Real API: results not back yet — show an honest running placeholder.
@@ -48,10 +49,11 @@ export function RunStep({ run, ranTests, running, progress, evidence, onBack, on
     );
   }
 
-  const total = run.matrix.length;
+  const total = run.matrix.filter(row => row.type === activeTestType).length;
   const complete = !running;
   const progressPercent = total ? Math.round((ranTests / total) * 100) : 100;
-  const revealed = complete ? run.matrix : run.matrix.slice(0, ranTests);
+  const matrixRows = run.matrix.filter(row => row.type === activeTestType);
+  const revealed = complete ? matrixRows : matrixRows.slice(0, ranTests);
 
   const act = (action: 'fix' | 'accept' | 'revert', state: Resolution) => {
     setResolution(state);
@@ -71,20 +73,26 @@ export function RunStep({ run, ranTests, running, progress, evidence, onBack, on
 
       {complete && (
         <div className="flex flex-col gap-[18px] mb-[18px]">
-          <SuiteHeader icon={<MicIcon className="w-[16px] h-[16px]" />} title="Unit Tests" command={run.unit.command} pass={`${run.unit.passed}/${run.unit.passed + (run.unit.failed ?? 0)} pass`} duration={fmt(run.unit.durationMs)} ok={run.unit.outcome === 'Passed'} />
-          <div>
-            <SuiteHeader icon={<MonitorIcon className="w-[16px] h-[16px]" />} title="UI/Browser Tests" command={run.ui.command} pass={`${run.ui.passed} pass`} duration={fmt(run.ui.durationMs)} ok={run.ui.outcome === 'Passed'} />
-            {run.ui.visual && (
-              <div className="border border-[rgba(255,255,255,0.07)] border-t-0 rounded-[0_0_12px_12px] p-[12px_16px] text-[10.5px] text-[#6b7488] flex items-center gap-[6px]">
-                <span className="text-[#3ddc97]">✓</span> Visual check {run.ui.visual.matchPercent}% match vs baseline
-              </div>
-            )}
-          </div>
-          <SuiteHeader icon={<SmartphoneIcon className="w-[16px] h-[16px]" />} title="Mobile Tests" command={run.mobile.command} pass={`${run.mobile.passed}/${run.mobile.devices.length} pass`} duration={fmt(run.mobile.durationMs)} ok={run.mobile.outcome === 'Passed'} />
+          {showsUnitRunSuite(activeTestType) && (
+            <SuiteHeader icon={<MicIcon className="w-[16px] h-[16px]" />} title="Unit Tests" command={run.unit.command} pass={`${run.unit.passed}/${run.unit.passed + (run.unit.failed ?? 0)} pass`} duration={fmt(run.unit.durationMs)} ok={run.unit.outcome === 'Passed'} />
+          )}
+          {showsUiRunSuite(activeTestType) && (
+            <div>
+              <SuiteHeader icon={<MonitorIcon className="w-[16px] h-[16px]" />} title="UI/Browser Tests" command={run.ui.command} pass={`${run.ui.passed} pass`} duration={fmt(run.ui.durationMs)} ok={run.ui.outcome === 'Passed'} />
+              {run.ui.visual && (
+                <div className="border border-[rgba(255,255,255,0.07)] border-t-0 rounded-[0_0_12px_12px] p-[12px_16px] text-[10.5px] text-[#6b7488] flex items-center gap-[6px]">
+                  <span className="text-[#3ddc97]">✓</span> Visual check {run.ui.visual.matchPercent}% match vs baseline
+                </div>
+              )}
+            </div>
+          )}
+          {showsMobileRunSuite(activeTestType) && (
+            <SuiteHeader icon={<SmartphoneIcon className="w-[16px] h-[16px]" />} title="Mobile Tests" command={run.mobile.command} pass={`${run.mobile.passed}/${run.mobile.devices.length} pass`} duration={fmt(run.mobile.durationMs)} ok={run.mobile.outcome === 'Passed'} />
+          )}
         </div>
       )}
 
-      {complete && (
+      {complete && showsUnitRunSuite(activeTestType) && run.coverage.length > 0 && (
         <div className="mb-[18px]">
           <BlockHeader label="Coverage comparison" />
           <div className="grid grid-cols-4 gap-[12px]">

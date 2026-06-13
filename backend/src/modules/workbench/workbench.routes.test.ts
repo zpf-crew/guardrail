@@ -51,15 +51,7 @@ type Snapshot = {
 };
 
 const modelOutputs = {
-  IsolationResult: {
-    target: { feature: 'Onboarding', repo: { name: 'guardrail', path: process.cwd(), branch: 'test' } },
-    sourceFiles: [{ path: 'frontend/src/pages/OnboardingPage.tsx', kind: 'source' }],
-    existingTestFiles: [],
-    specDocs: [],
-    qcCases: [],
-    currentCoverage: { line: 0, branch: 0 },
-    currentStatus: { failed: 0, suspicious: 0, missing: 1 },
-    userJourneys: ['Complete onboarding with selected repository'],
+  IsolationClassifications: {
     classifications: [{
       behavior: 'Complete onboarding with selected repository',
       status: 'Missing',
@@ -68,14 +60,8 @@ const modelOutputs = {
       explanation: 'No browser evidence found in scanned repo context.',
     }],
   },
-  TestPlan: {
-    proposedActions: [{ action: 'add', label: 'Add UI Browser onboarding scenario', count: 1 }],
-    risk: { productionCodeChanges: 'none', testDataChanges: false, browserAutomationRequired: true, mobileSimulatorRequired: 'no', externalApiMocking: 'no' },
-    filesToChange: ['guardrail-tests/ui/onboarding.feature'],
-    questions: [],
-  },
-  GenerationResult: {
-    timeline: [{ label: 'Generate scenario', status: 'done' }],
+  TestPlanQuestions: { questions: [] },
+  GenerationChanges: {
     changes: [{
       id: 'ui-browser-onboarding',
       action: 'Add',
@@ -94,18 +80,8 @@ const modelOutputs = {
       ],
       status: 'staged',
     }],
-    beforeAfter: { before: ['No UI Browser evidence.'], after: ['One scenario staged.'] },
   },
-  ReviewSummary: {
-    testsAdded: 1,
-    testsUpdated: 0,
-    testsDeleted: 0,
-    testsPassing: '1/1',
-    coverage: { lineDelta: 0, branchDelta: 0 },
-    flakyTracked: 0,
-    filesChanged: [{ path: 'guardrail-tests/ui/onboarding.feature', diffStat: '+5', changeKind: 'add' }],
-    remainingRisk: [],
-    openQuestions: 0,
+  ReviewRecommendation: {
     recommendation: 'Apply after reviewer accepts evidence.',
   },
 } as const;
@@ -268,8 +244,8 @@ test('workbench run job emits screenshot event with served artifact URL', async 
     ...authInjectOptions(),
   })).json();
   const analyzeSnapshot = await waitForJob(app, session.id, analyzeJob.jobId, ['succeeded']);
-  assert.equal(analyzeSnapshot.session.isolation?.target.feature, 'Onboarding');
-  assert.equal(analyzeSnapshot.session.isolation?.sourceFiles[0]?.path, 'frontend/src/pages/OnboardingPage.tsx');
+  assert.equal(analyzeSnapshot.session.isolation?.target.feature, 'Checkout');
+  assert.ok(analyzeSnapshot.session.isolation?.sourceFiles[0]?.path.includes('CheckoutPage'));
 
   const planJob = (await app.inject({
     method: 'POST',
@@ -393,7 +369,8 @@ test('workbench routes allow browser clients from the frontend origin', async ()
     500,
   );
   assert.equal(eventsRes.statusCode, 200);
-  assert.equal(eventsRes.headers['access-control-allow-origin'], '*');
+  assert.notEqual(eventsRes.headers['access-control-allow-origin'], '*');
+  assert.equal(eventsRes.headers['access-control-allow-credentials'], 'true');
   assert.equal(eventsRes.headers['content-type'], 'text/event-stream');
 });
 
@@ -469,7 +446,7 @@ test('successful analyze job records ordered status progress result and succeede
   const eventTypes = snapshot.events.map(event => event.type);
 
   assert.deepEqual(eventTypes.slice(0, 2), ['status', 'status']);
-  assert.ok(snapshot.events.some(event => event.type === 'progress'));
+  assert.ok(snapshot.events.some(event => event.type === 'progress' && /Walking repository file tree/i.test(event.message)));
   assert.ok(snapshot.events.some(event => event.type === 'result'));
   const finalEvent = snapshot.events.at(-1);
   assert.equal(finalEvent?.type, 'status');

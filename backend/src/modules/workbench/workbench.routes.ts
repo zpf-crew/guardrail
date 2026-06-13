@@ -1,5 +1,6 @@
 import { createReadStream } from 'node:fs';
 import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
+import { env } from '../../config/env.js';
 import { requireAuth } from '../auth/session.service.js';
 import { ReposRepository } from '../repos/repos.repository.js';
 import { formatSse } from './jobs/job-events.js';
@@ -132,14 +133,7 @@ export function buildWorkbenchRoutes(service: WorkbenchService) {
         }
 
         reply.hijack();
-        reply.raw.writeHead(200, {
-          'Content-Type': 'text/event-stream',
-          'Cache-Control': 'no-cache',
-          Connection: 'keep-alive',
-          'Access-Control-Allow-Origin': '*',
-          'Access-Control-Allow-Methods': 'GET,POST,PATCH,OPTIONS',
-          'Access-Control-Allow-Headers': 'Content-Type',
-        });
+        reply.raw.writeHead(200, sseResponseHeaders(request));
 
         const replayCounts = new Map<string, number>();
         for (const event of snapshotResult.events) {
@@ -215,4 +209,20 @@ function decrement(counts: Map<string, number>, event: WorkbenchJobEvent): boole
 
 function eventKey(event: WorkbenchJobEvent): string {
   return JSON.stringify(event);
+}
+
+function sseResponseHeaders(request: FastifyRequest): Record<string, string> {
+  const allowedOrigin = env.FRONTEND_URL ?? 'http://localhost:5173';
+  const requestOrigin = typeof request.headers.origin === 'string' ? request.headers.origin : undefined;
+  const allowOrigin = requestOrigin === allowedOrigin ? requestOrigin : allowedOrigin;
+
+  return {
+    'Content-Type': 'text/event-stream',
+    'Cache-Control': 'no-cache',
+    Connection: 'keep-alive',
+    'Access-Control-Allow-Origin': allowOrigin,
+    'Access-Control-Allow-Credentials': 'true',
+    'Access-Control-Allow-Methods': 'GET,POST,PATCH,OPTIONS',
+    'Access-Control-Allow-Headers': 'Content-Type',
+  };
 }

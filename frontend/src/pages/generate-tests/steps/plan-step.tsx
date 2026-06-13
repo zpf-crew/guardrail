@@ -1,5 +1,5 @@
 import * as React from 'react';
-import type { TestPlan, PlanAction, PlanRiskAssessment } from '@/types/testlens';
+import type { TestPlan, PlanAction, PlanRiskAssessment, PlanApproval } from '@/types/testlens';
 import { Button } from '@/components/ui/button';
 import { ArrowLeftIcon, CheckIcon, PlanActionIcon } from '@/components/icons';
 import { StepHeader, BlockHeader, FileIcon } from '../shared';
@@ -30,15 +30,20 @@ const LEVEL_CLASS: Record<RiskLevel, string> = {
   high: 'text-[#fb7185] bg-[rgba(251,113,133,0.14)]',
 };
 
+import { WorkbenchProgressPanel } from '../workbench-progress-panel';
+import type { WorkbenchProgressEvent } from '../use-workbench';
+
 interface PlanStepProps {
   plan: TestPlan;
+  generating: boolean;
+  generateProgress: WorkbenchProgressEvent[];
   onBack: () => void;
-  onApprove: () => void;
+  onApprove: (approval: PlanApproval) => void;
   onEditSubmit: (text: string) => void;
 }
 
-export function PlanStep({ plan, onBack, onApprove, onEditSubmit }: PlanStepProps) {
-  const [answers, setAnswers] = React.useState<Record<string, string>>({});
+export function PlanStep({ plan, generating, generateProgress, onBack, onApprove, onEditSubmit }: PlanStepProps) {
+  const [answers, setAnswers] = React.useState<Record<string, number>>({});
   const [editing, setEditing] = React.useState(false);
   const [editText, setEditText] = React.useState('');
 
@@ -54,6 +59,13 @@ export function PlanStep({ plan, onBack, onApprove, onEditSubmit }: PlanStepProp
         eyebrow="Step 3 — Confirmation & Plan"
         title="Review the plan before I touch any files"
         description="Nothing is written yet. Approve or edit the plan — and answer a few questions so the generated tests match your product spec."
+      />
+
+      <WorkbenchProgressPanel
+        active={generating}
+        title="Generating tests"
+        fallbackMessage="Preparing staged test artifacts from approved plan…"
+        events={generateProgress}
       />
 
       <div className="grid grid-cols-2 gap-[14px] mb-[14px] items-start">
@@ -108,9 +120,9 @@ export function PlanStep({ plan, onBack, onApprove, onEditSubmit }: PlanStepProp
               {q.options.map(opt => (
                 <button
                   key={opt}
-                  onClick={() => setAnswers(prev => ({ ...prev, [q.id]: opt }))}
+                  onClick={() => setAnswers(prev => ({ ...prev, [q.id]: q.options.indexOf(opt) }))}
                   className={`text-[12.5px] px-[14px] py-[8px] rounded-[8px] cursor-pointer transition-all border ${
-                    answers[q.id] === opt ? 'bg-[rgba(192,132,252,0.15)] border-[rgba(192,132,252,0.5)] text-[#e8d8fa] font-semibold' : 'bg-[#161a24] border-[rgba(255,255,255,0.07)] text-[#98a1b3] hover:text-[#e8ebf2]'
+                    answers[q.id] === q.options.indexOf(opt) ? 'bg-[rgba(192,132,252,0.15)] border-[rgba(192,132,252,0.5)] text-[#e8d8fa] font-semibold' : 'bg-[#161a24] border-[rgba(255,255,255,0.07)] text-[#98a1b3] hover:text-[#e8ebf2]'
                   }`}
                 >
                   {opt}
@@ -142,7 +154,7 @@ export function PlanStep({ plan, onBack, onApprove, onEditSubmit }: PlanStepProp
         <Button variant="ghost" onClick={onBack}><ArrowLeftIcon className="w-[15px] h-[15px] mr-[6px]" />Back</Button>
         <Button variant="outline" onClick={() => setEditing(v => !v)}>Edit Plan</Button>
         <div className="flex-1" />
-        <Button variant="primary" size="lg" onClick={onApprove}><CheckIcon className="w-[15px] h-[15px] mr-[6px]" />Approve Plan</Button>
+        <Button variant="primary" size="lg" onClick={() => onApprove({ decision: 'approve', answers })} disabled={generating}><CheckIcon className="w-[15px] h-[15px] mr-[6px]" />{generating ? 'Generating...' : 'Approve Plan'}</Button>
       </div>
     </div>
   );

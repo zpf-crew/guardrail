@@ -114,3 +114,30 @@ test('proceeds with empty onboarding when dashboard missing', async () => {
   assert.deepEqual(context.onboarding.testCases, []);
   assert.equal(context.onboarding.lastScanAt, null);
 });
+
+test('maps dashboard missing test cases into qcCases for workbench context', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'guardrail-qc-'));
+  await writeFile(join(root, 'package.json'), '{}');
+
+  const provider = new ClonedRepoRepositoryProvider({
+    getRepo: async () => ({
+      id: 'repo-qc', githubRepoId: 1, fullName: 'acme/app', name: 'app', private: false,
+      defaultBranch: 'main', cloneUrl: 'https://github.com/acme/app.git', htmlUrl: 'https://github.com/acme/app',
+      clonePath: root, currentBranch: 'main', commitSha: 'abc', status: 'cloned',
+    }),
+    getDashboard: async () => dashboardFixture(root, {
+      testCases: [{
+        id: 'QC-42', title: 'Apply expired coupon', status: 'missing', type: 'UI / Browser',
+        feature: 'Coupon', risk: 'High', lastRunAt: null, recentRuns: [], description: 'Expect coupon expired message',
+      }],
+    }),
+  });
+
+  const context = await provider.getContext('repo-qc', 'user-1', {
+    prompt: 'coupon', feature: 'Coupon', testTypes: ['UI / Browser'], sources: ['QC test cases'],
+  });
+
+  assert.equal(context.qcCases.length, 1);
+  assert.equal(context.qcCases[0]?.id, 'QC-42');
+  assert.equal(context.qcCases[0]?.scenario, 'Apply expired coupon');
+});
