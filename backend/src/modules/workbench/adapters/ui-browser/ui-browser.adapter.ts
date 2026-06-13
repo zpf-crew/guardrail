@@ -106,7 +106,7 @@ export class UiBrowserAdapter implements TestTypeAdapter {
       profile: 'thinker',
       skill,
       schemaName: 'IsolationResult',
-      context: { intent: input.session.intent, repository: input.repository },
+      context: { intent: input.session.intent, repository: input.repository, onboarding: input.repository.onboarding },
       signal: input.signal,
     });
   }
@@ -119,7 +119,12 @@ export class UiBrowserAdapter implements TestTypeAdapter {
       profile: 'thinker',
       skill,
       schemaName: 'TestPlan',
-      context: { intent: input.session.intent, isolation: input.isolation, repository: input.repository },
+      context: {
+        intent: input.session.intent,
+        isolation: input.isolation,
+        repository: input.repository,
+        onboarding: input.repository.onboarding,
+      },
       signal: input.signal,
     });
   }
@@ -147,6 +152,7 @@ export class UiBrowserAdapter implements TestTypeAdapter {
         intent: input.session.intent,
         plan: input.plan,
         repository: input.repository,
+        onboarding: input.repository.onboarding,
         approval: input.approval,
       },
       signal: input.signal,
@@ -206,6 +212,7 @@ export class UiBrowserAdapter implements TestTypeAdapter {
         generation: input.generation,
         run: input.run,
         repository: input.repository,
+        onboarding: input.repository.onboarding,
       },
       signal: input.signal,
     });

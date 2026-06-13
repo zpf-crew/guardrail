@@ -136,10 +136,12 @@ test('ui browser adapter uses structured model outputs for analyze plan generate
     },
   };
   const seenSchemas: string[] = [];
+  const seenContexts: Record<string, unknown> = {};
   const input = await buildInput({
     structuredModel: {
-      runStep: async ({ schemaName }: { schemaName: keyof typeof outputs }) => {
+      runStep: async ({ schemaName, context }: { schemaName: keyof typeof outputs; context: unknown }) => {
         seenSchemas.push(schemaName);
+        seenContexts[schemaName === 'IsolationResult' ? 'analyze' : schemaName.toLowerCase()] = context;
         return structuredClone(outputs[schemaName]);
       },
     } as never,
@@ -153,6 +155,7 @@ test('ui browser adapter uses structured model outputs for analyze plan generate
   const review = await adapter.review({ ...input, generation, run });
 
   assert.deepEqual(seenSchemas, ['IsolationResult', 'TestPlan', 'GenerationResult', 'ReviewSummary']);
+  assert.ok(JSON.stringify(seenContexts.analyze).includes('onboarding'));
   assert.equal(isolation.sourceFiles[0]?.path, 'frontend/src/pages/OnboardingPage.tsx');
   assert.equal(testPlan.filesToChange[0], 'guardrail-tests/ui/onboarding.feature');
   assert.equal(generation.changes[0]?.title, 'Complete onboarding with selected repository');
