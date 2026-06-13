@@ -6,6 +6,7 @@ import type {
   GenerationResult,
   TestRunResult,
   ReviewSummary,
+  Evidence,
 } from '@/types/testlens';
 import { getActiveRepoId } from './dashboard-api';
 import { mockWorkbench } from './generateTestsMockData';
@@ -25,6 +26,7 @@ const API_BASE = import.meta.env.VITE_API_BASE_URL;
 const delay = (ms: number) => new Promise<void>(resolve => setTimeout(resolve, ms));
 
 export type JobStep = 'isolation' | 'plan' | 'generate' | 'run' | 'review';
+export type JobStatus = 'queued' | 'running' | 'succeeded' | 'failed' | 'timeout';
 
 export interface JobStartResponse {
   jobId: string;
@@ -38,14 +40,19 @@ export type JobResult =
   | TestRunResult
   | ReviewSummary;
 
-export interface JobEvent {
-  type: 'status' | 'progress' | 'thinking' | 'artifact' | 'screenshot' | 'result' | 'error';
+interface BaseJobEvent {
   jobId: string;
   step: JobStep;
-  payload?: JobResult;
-  message?: string;
-  status?: string;
 }
+
+export type JobEvent =
+  | (BaseJobEvent & { type: 'status'; status: JobStatus })
+  | (BaseJobEvent & { type: 'progress'; percent?: number; message: string })
+  | (BaseJobEvent & { type: 'thinking'; message: string })
+  | (BaseJobEvent & { type: 'artifact'; artifact: Evidence })
+  | (BaseJobEvent & { type: 'screenshot'; step: 'run'; artifact: Evidence })
+  | (BaseJobEvent & { type: 'result'; payload: JobResult })
+  | (BaseJobEvent & { type: 'error'; message: string; retryable: boolean });
 
 export class WorkbenchApiError extends Error {
   constructor(message: string) {
@@ -102,7 +109,7 @@ async function runJob<T extends JobResult>(
     const parseEvent = (event: Event) => JSON.parse((event as MessageEvent).data) as JobEvent;
 
     source.addEventListener('result', event => {
-      const parsed = parseEvent(event);
+      const parsed = parseEvent(event) as Extract<JobEvent, { type: 'result' }>;
       onEvent?.(parsed);
       settleResolve(parsed.payload as T);
     });
