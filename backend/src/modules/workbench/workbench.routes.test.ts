@@ -109,6 +109,29 @@ test('workbench run job emits screenshot event with served artifact URL', async 
   assert.match(String(artifactRes.headers['content-type']), /^image\/png/);
 });
 
+test('workbench status and error emit failures are contained in queue callbacks', async () => {
+  const app = await buildStatusErrorEmitFailureTestApp();
+  const unhandled: unknown[] = [];
+  const onUnhandled = (reason: unknown) => unhandled.push(reason);
+  process.on('unhandledRejection', onUnhandled);
+
+  try {
+    const session = await createSession(app);
+
+    const analyzeJob = (await app.inject({ method: 'POST', url: `/api/workbench/${session.id}/analyze/jobs` })).json();
+    await waitForJob(app, session.id, analyzeJob.jobId, ['succeeded']);
+
+    const failingSession = await createSession(app);
+    const planJob = (await app.inject({ method: 'POST', url: `/api/workbench/${failingSession.id}/plan/jobs` })).json();
+    await waitForJob(app, failingSession.id, planJob.jobId, ['failed']);
+
+    await new Promise(resolve => setImmediate(resolve));
+    assert.deepEqual(unhandled, []);
+  } finally {
+    process.off('unhandledRejection', onUnhandled);
+  }
+});
+
 test('workbench routes allow browser clients from the frontend origin', async () => {
   const app = buildApp();
 
@@ -270,6 +293,23 @@ async function buildArtifactRouteTestApp(screenshotPath: string, artifactRoot: s
   return app;
 }
 
+async function buildStatusErrorEmitFailureTestApp(): Promise<FastifyInstance> {
+  const app = Fastify();
+  const rootDir = path.basename(process.cwd()) === 'backend' ? path.dirname(process.cwd()) : process.cwd();
+
+  const service = new WorkbenchService(
+    new WorkbenchJobStore(),
+    new WorkbenchJobQueue({ concurrency: 1 }),
+    new ThrowingStatusErrorEventBus(),
+    new WorkbenchArtifactStore(),
+    new LocalGuardrailRepositoryProvider({ rootDir }),
+    [new UiBrowserAdapter()],
+  );
+
+  await app.register(buildWorkbenchRoutes(service), { prefix: '/api/workbench' });
+  return app;
+}
+
 async function createSession(app: FastifyInstance) {
   const sessionRes = await app.inject({
     method: 'POST',
@@ -310,5 +350,14 @@ async function withTimeout<T>(promise: Promise<T>, timeoutMs: number): Promise<T
     ]);
   } finally {
     if (timer) clearTimeout(timer);
+  }
+}
+
+class ThrowingStatusErrorEventBus extends WorkbenchJobEventBus {
+  override publish(key: string, event: WorkbenchJobEvent): void {
+    if (event.type === 'status' || event.type === 'error') {
+      throw new Error(`publish failed for ${event.type}`);
+    }
+    super.publish(key, event);
   }
 }

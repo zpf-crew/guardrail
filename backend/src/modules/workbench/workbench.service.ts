@@ -148,14 +148,14 @@ export class WorkbenchService {
     if (status === 'failed' || status === 'timeout') {
       this.store.setStepStatus(sessionId, job.step, 'warn');
     }
-    void this.emit(sessionId, jobId, { type: 'status', status });
+    this.emitSafely(sessionId, jobId, { type: 'status', status });
   }
 
   private onError(sessionId: string, jobId: string, message: string): void {
     const job = this.requireJob(sessionId, jobId);
     this.store.setJobStatus(sessionId, jobId, job.status, message);
     this.store.setStepStatus(sessionId, job.step, 'warn');
-    void this.emit(sessionId, jobId, { type: 'error', message, retryable: statusIsRetryable(message) });
+    this.emitSafely(sessionId, jobId, { type: 'error', message, retryable: statusIsRetryable(message) });
   }
 
   private setStepResult(
@@ -217,6 +217,13 @@ export class WorkbenchService {
     this.store.appendEvent(sessionId, jobId, normalized);
     this.eventBus.publish(eventKey(sessionId, jobId), normalized);
     return normalizedEvent;
+  }
+
+  private emitSafely(sessionId: string, jobId: string, event: AdapterEvent): void {
+    this.emit(sessionId, jobId, event).catch(() => {
+      // Queue callbacks must remain sync-safe; failed event publication should
+      // not surface as an unhandled rejection or compromise queue liveness.
+    });
   }
 
   private async normalizeArtifactEvent(sessionId: string, jobId: string, event: ArtifactAdapterEvent): Promise<AdapterEvent> {
