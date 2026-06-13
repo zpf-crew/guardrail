@@ -1,5 +1,5 @@
 import * as React from 'react';
-import type { WorkbenchSession, IntentInput } from '@/types/testlens';
+import type { WorkbenchSession, IntentInput, Evidence } from '@/types/testlens';
 import {
   createWorkbenchSession,
   updateWorkbenchIntent,
@@ -9,9 +9,11 @@ import {
   runSession,
   reviewSession,
 } from '@/data/workbench-api';
+import type { JobEvent } from '@/data/workbench-api';
 
 export type WorkbenchStatus = 'loading' | 'error' | 'ready';
 export type PendingTransition = null | 'analyze' | 'plan' | 'generate' | 'run' | 'review';
+export type RunProgressEvent = Extract<JobEvent, { type: 'progress' | 'thinking' | 'error' | 'status' }>;
 
 export interface UseWorkbenchResult {
   status: WorkbenchStatus;
@@ -29,6 +31,12 @@ export interface UseWorkbenchResult {
   genComplete: boolean;
   /** True once the user has applied the change set (terminal). */
   applied: boolean;
+  /** Raw events emitted by the latest run job. */
+  runEvents: JobEvent[];
+  /** Run events suitable for progress display. */
+  runProgress: RunProgressEvent[];
+  /** Evidence artifacts emitted by the latest run job. */
+  runEvidence: Evidence[];
   apply: () => void;
   setStep: (i: number) => void;
   updateIntent: (patch: Partial<IntentInput>) => void;
@@ -53,6 +61,7 @@ export function useWorkbench(initialIntent?: Partial<IntentInput>): UseWorkbench
   // Number of generation timeline items completed (drives the S4 animation).
   const [genStep, setGenStep] = React.useState(0);
   const [applied, setApplied] = React.useState(false);
+  const [runEvents, setRunEvents] = React.useState<JobEvent[]>([]);
   const intervalRef = React.useRef<ReturnType<typeof setInterval> | null>(null);
   const genIntervalRef = React.useRef<ReturnType<typeof setInterval> | null>(null);
 
@@ -169,8 +178,11 @@ export function useWorkbench(initialIntent?: Partial<IntentInput>): UseWorkbench
     setCurrentStep(4); // show the Run step immediately
     setPending('run');
     setRanTests(0);
+    setRunEvents([]);
 
-    runSession(session.id)
+    runSession(session.id, event => {
+      setRunEvents(events => [...events, event]);
+    })
       .then(run => {
         setSession(s => (s ? { ...s, run } : s));
         const animation = startRunAnimation(run.matrix.length);
@@ -193,10 +205,23 @@ export function useWorkbench(initialIntent?: Partial<IntentInput>): UseWorkbench
 
   const genComplete = session?.generation ? genStep >= session.generation.timeline.length : false;
   const apply = React.useCallback(() => setApplied(true), []);
+  const runProgress = React.useMemo(
+    () => runEvents.filter((event): event is RunProgressEvent =>
+      event.type === 'progress' || event.type === 'thinking' || event.type === 'error' || event.type === 'status',
+    ),
+    [runEvents],
+  );
+  const runEvidence = React.useMemo(
+    () => runEvents.flatMap(event => {
+      if (event.type === 'screenshot' || event.type === 'artifact') return [event.artifact];
+      return [];
+    }),
+    [runEvents],
+  );
 
   return {
     status, error, session, currentStep, pending, ranTests, running: pending === 'run' || pending === 'review', genStep, genComplete,
-    applied, apply,
+    applied, runEvents, runProgress, runEvidence, apply,
     setStep: setCurrentStep, updateIntent, analyze, generatePlan, approvePlan, runTests,
   };
 }
