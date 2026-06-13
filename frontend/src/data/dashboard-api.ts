@@ -1,5 +1,6 @@
 import type { DashboardPayload } from '@/types/testlens';
 import { mockDashboard } from './dashboardMockData';
+import { getLatestDashboard } from './onboarding-api';
 
 /**
  * The single seam between the UI and dashboard data.
@@ -38,14 +39,14 @@ export class DashboardApiError extends Error {
 export async function getDashboard(repoId: string | null = getActiveRepoId()): Promise<DashboardPayload> {
   if (!API_BASE) {
     await delay(400); // brief delay so the loading skeleton is exercised in dev
-    return mockDashboard;
+    return getLatestDashboard(repoId) ?? mockDashboard;
   }
 
   if (!repoId) {
     throw new DashboardApiError('No repository selected. Complete onboarding first.');
   }
 
-  const res = await fetch(`${API_BASE}/api/repos/${encodeURIComponent(repoId)}/dashboard`);
+  const res = await fetch(`${API_BASE}/api/repos/${encodeURIComponent(repoId)}/dashboard`, { credentials: 'include' });
   if (!res.ok) {
     throw new DashboardApiError(`Dashboard request failed (${res.status} ${res.statusText})`);
   }

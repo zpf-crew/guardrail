@@ -10,15 +10,7 @@ import { SearchInput } from '@/components/ui/search-input';
 import { useToast } from '@/components/ui/toast';
 import {
   repoInfo,
-  mockDocs,
-  extraDocs,
-  defaultDocSources,
-  mockQCs,
-  extraQCs,
-  qcRows,
   scanTasks,
-  scanLogs,
-  summaryStats,
 } from '@/data/onboardingMockData';
 import {
   LightbulbIcon,
@@ -36,8 +28,9 @@ import {
   InfoCircleIcon,
   ScanTaskStatusIcon,
 } from '@/components/icons';
-import type { ConnectedRepo, GitHubRepoSummary } from '@/types/testlens';
+import type { ConnectedRepo, GitHubRepoSummary, OnboardingDraft, QCTestCase, ScanSummary, UploadedFile } from '@/types/testlens';
 import { connectRepo, listGitHubRepos } from '@/data/repos-api';
+import { commitOnboardingScan, normalizeQCPriority, toUploadedFile, type KnowledgeDocWithSnippet } from '@/data/onboarding-api';
 import { useAuth } from '@/app/auth-context';
 
 const stepDefs = [
@@ -116,22 +109,24 @@ export function OnboardingPage() {
   const [connectingRepo, setConnectingRepo] = React.useState(false);
   const [connectedRepo, setConnectedRepo] = React.useState<ConnectedRepo | null>(null);
   const [repoSearch, setRepoSearch] = React.useState('');
-  const [docs, setDocs] = React.useState(mockDocs);
-  const [docQueue, setDocQueue] = React.useState(0);
-  const [qcs, setQCs] = React.useState(mockQCs);
-  const [qcQueue, setQcQueue] = React.useState(0);
-  const [docSources, setDocSources] = React.useState(defaultDocSources);
+  const [docs, setDocs] = React.useState<KnowledgeDocWithSnippet[]>([]);
+  const [qcs, setQCs] = React.useState<UploadedFile[]>([]);
+  const [qcPreview, setQcPreview] = React.useState<QCTestCase[]>([]);
+  const [docSources, setDocSources] = React.useState<string[]>([]);
   const [docSourceInput, setDocSourceInput] = React.useState('');
   const [scanning, setScanning] = React.useState(false);
   const [scanStarted, setScanStarted] = React.useState(false);
   const [scanComplete, setScanComplete] = React.useState(false);
   const [scanTaskIndex, setScanTaskIndex] = React.useState(-1);
-  const [scanLogIndex, setScanLogIndex] = React.useState(0);
+  const [scanLogMessages, setScanLogMessages] = React.useState<Array<{ tag: 'ok' | 'warn' | 'info'; message: string; at?: string }>>([]);
   const [scanProgress, setScanProgress] = React.useState(0);
   const [scanStepLabel, setScanStepLabel] = React.useState('Preparing…');
   const [scanEta, setScanEta] = React.useState('');
+  const [scanSummary, setScanSummary] = React.useState<ScanSummary | null>(null);
 
   const scanTimerRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
+  const docInputRef = React.useRef<HTMLInputElement | null>(null);
+  const qcInputRef = React.useRef<HTMLInputElement | null>(null);
 
   React.useEffect(() => {
     return () => {
@@ -176,8 +171,8 @@ export function OnboardingPage() {
     if (currentStep < stepDefs.length - 1) goToStep(currentStep + 1);
   };
 
-  const handleDeleteDoc = (name: string) => {
-    setDocs(prev => prev.filter(d => d.name !== name));
+  const handleDeleteDoc = (id: string) => {
+    setDocs(prev => prev.filter(d => d.id !== id));
     toast('File removed', 'success');
   };
 
@@ -186,26 +181,141 @@ export function OnboardingPage() {
     toast('File removed', 'success');
   };
 
-  const handleAddDoc = () => {
-    if (docQueue < extraDocs.length) {
-      const next = extraDocs[docQueue];
-      setDocs(prev => [...prev, next]);
-      setDocQueue(q => q + 1);
-      toast(`Uploaded ${next.name}`, 'success');
-    } else {
-      toast('All sample docs added', 'success');
-    }
+  const readSnippet = async (file: File) => {
+    const ext = file.name.split('.').pop()?.toLowerCase();
+    if (!['md', 'txt', 'csv', 'json'].includes(ext ?? '')) return undefined;
+    return (await file.text()).slice(0, 4000);
   };
 
-  const handleAddQC = () => {
-    if (qcQueue < extraQCs.length) {
-      const next = extraQCs[qcQueue];
-      setQCs(prev => [...prev, next]);
-      setQcQueue(q => q + 1);
-      toast(`Imported ${next.name}`, 'success');
-    } else {
-      toast('All sample QC files added', 'success');
+  const parseCsvRows = (text: string): QCTestCase[] => {
+    const [headerLine, ...lines] = text.split(/\r?\n/).filter(Boolean);
+    if (!headerLine) return [];
+    const headers = headerLine.split(',').map(cell => cell.trim().toLowerCase());
+    const get = (cells: string[], names: string[]) => {
+      const index = headers.findIndex(header => names.some(name => header.includes(name)));
+      return index >= 0 ? cells[index]?.trim() ?? '' : '';
+    };
+    const normalizeAutomation = (value: string): QCTestCase['automationStatus'] => {
+      const normalized = value.trim().toLowerCase();
+      return normalized === 'automated' || normalized === 'missing' || normalized === 'unknown' ? normalized : 'unknown';
+    };
+    return lines.slice(0, 30).map((line, index) => {
+      const cells = line.split(',').map(cell => cell.trim().replace(/^"|"$/g, ''));
+      return {
+        id: get(cells, ['id', 'case']) || `QC-${String(index + 1).padStart(3, '0')}`,
+        feature: get(cells, ['feature', 'module']) || 'Core',
+        scenario: get(cells, ['scenario', 'title', 'name']) || cells[0] || `Scenario ${index + 1}`,
+        expectedResult: get(cells, ['expected', 'result']) || 'Expected behavior is documented in the QC file.',
+        priority: normalizeQCPriority(get(cells, ['priority', 'severity'])),
+        automationStatus: normalizeAutomation(get(cells, ['automation', 'automated'])),
+      };
+    }).filter(row => row.scenario);
+  };
+
+  const parseJsonRows = (text: string): QCTestCase[] => {
+    const parsed = JSON.parse(text) as unknown;
+    const findRows = (value: unknown, depth = 0): unknown[] => {
+      if (depth > 3 || !value || typeof value !== 'object') return [];
+      if (Array.isArray(value)) return value;
+      const object = value as Record<string, unknown>;
+      const preferredKeys = ['cases', 'testCases', 'qcCases', 'tests', 'scenarios', 'items', 'requirements'];
+      for (const key of preferredKeys) {
+        const nested = object[key];
+        if (Array.isArray(nested)) return nested;
+      }
+      for (const nested of Object.values(object)) {
+        const rows = findRows(nested, depth + 1);
+        if (rows.length) return rows;
+      }
+      return [];
+    };
+    const rows = findRows(parsed);
+    return rows.slice(0, 30).map((row, index) => {
+      const item = row as Record<string, unknown>;
+      return {
+        id: String(item.id ?? item.caseId ?? `QC-${String(index + 1).padStart(3, '0')}`),
+        feature: String(item.feature ?? item.module ?? 'Core'),
+        scenario: String(item.scenario ?? item.title ?? item.name ?? `Scenario ${index + 1}`),
+        expectedResult: String(item.expectedResult ?? item.expected ?? item.result ?? 'Expected behavior is documented in the QC file.'),
+        priority: normalizeQCPriority(String(item.priority ?? item.severity ?? 'Medium')),
+        automationStatus: ['automated', 'missing', 'unknown'].includes(String(item.automationStatus ?? item.automated).toLowerCase())
+          ? String(item.automationStatus ?? item.automated).toLowerCase() as QCTestCase['automationStatus']
+          : 'unknown',
+      };
+    });
+  };
+
+  const parseTextRows = (text: string, fileName: string): QCTestCase[] => {
+    const feature = fileName.replace(/\.[^.]+$/, '').replace(/[-_]/g, ' ');
+    return text
+      .split(/\r?\n/)
+      .map(line => line.trim())
+      .filter(line => /^#{1,4}\s+/.test(line) || /^[-*]\s+/.test(line) || /^[-*]\s+\[[ xX]\]\s+/.test(line) || /^\d+\.\s+/.test(line))
+      .slice(0, 20)
+      .map((line, index) => {
+        const scenario = line
+          .replace(/^#{1,4}\s+/, '')
+          .replace(/^[-*]\s+\[[ xX]\]\s+/, '')
+          .replace(/^[-*]\s+/, '')
+          .replace(/^\d+\.\s+/, '')
+          .trim();
+        return {
+          id: `QC-${String(index + 1).padStart(3, '0')}`,
+          feature: feature || 'Imported QC',
+          scenario: scenario || `Review imported item ${index + 1}`,
+          expectedResult: 'Expected behavior is described in the imported QC document.',
+          priority: 'Medium' as const,
+          automationStatus: 'unknown' as const,
+        };
+      });
+  };
+
+  const fallbackPreviewRow = (file: File): QCTestCase => ({
+    id: `QC-${Date.now().toString().slice(-5)}`,
+    feature: file.name.replace(/\.[^.]+$/, '').replace(/[-_]/g, ' ') || 'Imported QC',
+    scenario: `Review imported QC context from ${file.name}`,
+    expectedResult: 'Guardrail will use this file as QC context during the initial scan.',
+    priority: 'Medium',
+    automationStatus: 'unknown',
+  });
+
+  const handleDocFiles = async (files: FileList | null) => {
+    if (!files?.length) return;
+    const nextDocs = await Promise.all([...files].map(async file => {
+      const snippet = await readSnippet(file);
+      return {
+        id: `${file.name}-${file.lastModified}`,
+        file: toUploadedFile(file, snippet),
+        status: 'indexed' as const,
+      };
+    }));
+    setDocs(prev => [...prev, ...nextDocs]);
+    toast(`Uploaded ${nextDocs.length} product doc${nextDocs.length > 1 ? 's' : ''}`, 'success');
+  };
+
+  const handleQCFiles = async (files: FileList | null) => {
+    if (!files?.length) return;
+    const uploaded: UploadedFile[] = [];
+    const parsedRows: QCTestCase[] = [];
+    for (const file of [...files]) {
+      const snippet = await readSnippet(file);
+      uploaded.push(toUploadedFile(file, snippet));
+      const beforeCount = parsedRows.length;
+      try {
+        const ext = file.name.split('.').pop()?.toLowerCase();
+        if (ext === 'csv' && snippet) parsedRows.push(...parseCsvRows(snippet));
+        if (ext === 'json' && snippet) parsedRows.push(...parseJsonRows(snippet));
+        if ((ext === 'md' || ext === 'txt') && snippet) parsedRows.push(...parseTextRows(snippet, file.name));
+      } catch {
+        toast(`Imported ${file.name}, but preview parsing failed`, 'success');
+      }
+      if (parsedRows.length === beforeCount) {
+        parsedRows.push(fallbackPreviewRow(file));
+      }
     }
+    setQCs(prev => [...prev, ...uploaded]);
+    if (parsedRows.length) setQcPreview(prev => [...prev, ...parsedRows]);
+    toast(`Imported ${uploaded.length} QC file${uploaded.length > 1 ? 's' : ''}`, 'success');
   };
 
   const handleAddDocSource = () => {
@@ -248,12 +358,17 @@ export function OnboardingPage() {
     }
   };
 
-  const finishScan = React.useCallback(() => {
+  const finishScan = React.useCallback((result: Awaited<ReturnType<typeof commitOnboardingScan>>) => {
     setScanning(false);
     setScanComplete(true);
     setScanProgress(100);
     setScanStepLabel('Complete');
     setScanEta('done');
+    setScanTaskIndex(scanTasks.length);
+    setScanSummary(result.summary);
+    if (result.logs.length) {
+      setScanLogMessages(result.logs.map(log => ({ tag: log.level, message: log.message, at: log.at })));
+    }
     setStepStates(prev => prev.map((state, idx) => (idx === 3 ? 'done' : state)));
     toast('Scan complete', 'success');
   }, [toast]);
@@ -261,7 +376,9 @@ export function OnboardingPage() {
   const runScanStep = React.useCallback((index: number) => {
     const total = scanTasks.length;
     if (index >= total) {
-      finishScan();
+      setScanProgress(96);
+      setScanStepLabel('Generating initial testing insights');
+      setScanEta('waiting for scan result');
       return;
     }
 
@@ -269,24 +386,76 @@ export function OnboardingPage() {
     setScanProgress(Math.round(((index + 0.5) / total) * 100));
     setScanStepLabel(scanTasks[index].label);
     setScanEta(`~${Math.max(1, total - index)}s remaining`);
-
-    if (scanLogs[index]) {
-      setScanLogIndex(index + 1);
-    }
+    setScanLogMessages(prev => [...prev, { tag: scanTasks[index].warn ? 'warn' : 'info', message: scanTasks[index].label }]);
 
     scanTimerRef.current = setTimeout(() => runScanStep(index + 1), 620 + Math.random() * 260);
-  }, [finishScan]);
+  }, []);
 
-  const startScan = () => {
+  const buildDraft = (): Partial<OnboardingDraft> => ({
+    repository: {
+      repo: {
+        name: connectedRepo?.repo.name ?? selectedRepo?.name ?? repoInfo.name,
+        path: connectedRepo?.repo.path ?? '',
+        branch: selectedBranch,
+        commit: connectedRepo?.repo.commit,
+      },
+      detectedStack: [],
+      uncommittedChanges: 0,
+    },
+    productDocs: docs,
+    docSources,
+    qcFiles: qcs,
+    qcPreview,
+    commands: {
+      packageManager: 'npm',
+      test: 'npm test',
+      relatedTest: 'npm test -- --runInBand',
+      coverage: 'npm run test:coverage',
+    },
+    scanOptions: {
+      runFullSuite: true,
+      runCoverage: true,
+      runTypecheck: false,
+      runLint: false,
+      detectFlakyByRerun: false,
+      allowTestGeneration: false,
+    },
+    steps: {
+      repository: 'done',
+      'product-knowledge': stepStates[1] === 'skipped' ? 'skipped' : 'done',
+      'qc-cases': stepStates[2] === 'skipped' ? 'skipped' : 'done',
+      commands: 'skipped',
+      scan: 'current',
+    },
+  });
+
+  const startScan = async () => {
     if (scanning) return;
+    const repoId = connectedRepo?.repoId ?? (selectedGithubRepoId ? String(selectedGithubRepoId) : null);
+    if (!repoId) {
+      toast('Connect a repository before scanning', 'success');
+      return;
+    }
     setScanStarted(true);
     setScanning(true);
     setScanComplete(false);
     setScanTaskIndex(-1);
-    setScanLogIndex(0);
+    setScanLogMessages([]);
     setScanProgress(0);
+    setScanSummary(null);
     toast('Scan started', 'loading');
     scanTimerRef.current = setTimeout(() => runScanStep(0), 300);
+    try {
+      const result = await commitOnboardingScan(repoId, buildDraft());
+      if (scanTimerRef.current) clearTimeout(scanTimerRef.current);
+      finishScan(result);
+    } catch (e) {
+      if (scanTimerRef.current) clearTimeout(scanTimerRef.current);
+      setScanning(false);
+      setScanEta('');
+      setScanStepLabel('Scan failed');
+      toast(e instanceof Error ? e.message : 'Initial scan failed', 'success');
+    }
   };
 
   const resetScan = () => {
@@ -295,8 +464,9 @@ export function OnboardingPage() {
     setScanning(false);
     setScanComplete(false);
     setScanTaskIndex(-1);
-    setScanLogIndex(0);
+    setScanLogMessages([]);
     setScanProgress(0);
+    setScanSummary(null);
     setScanStepLabel('Preparing…');
     setScanEta('');
   };
@@ -315,6 +485,18 @@ export function OnboardingPage() {
   };
 
   const logTagSymbol = (tag: string) => (tag === 'ok' ? '✓' : tag === 'warn' ? '!' : '›');
+  const scanSummaryStats = scanSummary
+    ? [
+        { label: 'Automated tests found', value: String(scanSummary.automatedTestsFound), color: '#818cf8' },
+        { label: 'QC test cases imported', value: String(scanSummary.qcCasesImported), color: '#22d3ee' },
+        { label: 'Product docs indexed', value: String(scanSummary.productDocsIndexed), color: '#60a5fa' },
+        { label: 'Missing recommended', value: String(scanSummary.missingRecommended), color: '#60a5fa' },
+        { label: 'Suspicious tests', value: String(scanSummary.suspiciousTests), color: '#c084fc' },
+        { label: 'Failed tests', value: String(scanSummary.failedTests), color: '#fb7185' },
+        { label: 'Flaky tests', value: String(scanSummary.flakyTests), color: '#fbbf24' },
+        { label: 'Line coverage', value: `${scanSummary.coverage}%`, color: '#3ddc97' },
+      ]
+    : [];
 
   return (
     <div className="min-h-screen" style={{ fontFamily: 'var(--sans)' }}>
@@ -486,12 +668,27 @@ export function OnboardingPage() {
                     title="Upload Wiki / Specs"
                     subtitle="Drag & drop, or click to browse. Markdown, PDF, Confluence exports, PRDs & API specs."
                     accept=".md · .pdf · .txt"
-                    onClick={handleAddDoc}
+                    onClick={() => docInputRef.current?.click()}
+                  />
+                  <input
+                    ref={docInputRef}
+                    type="file"
+                    multiple
+                    accept=".md,.pdf,.txt"
+                    className="hidden"
+                    onChange={e => { void handleDocFiles(e.target.files); e.currentTarget.value = ''; }}
                   />
                   {docs.length > 0 && (
                     <div className="flex flex-col gap-[9px] mb-[18px]">
                       {docs.map(doc => (
-                        <FileRow key={doc.name} name={doc.name} type={doc.type} size={doc.size} status="Indexed" onDelete={() => handleDeleteDoc(doc.name)} />
+                        <FileRow
+                          key={doc.id}
+                          name={doc.file.name}
+                          type={doc.file.type}
+                          size={doc.file.size}
+                          status={doc.status === 'indexed' ? 'Indexed' : doc.status}
+                          onDelete={() => handleDeleteDoc(doc.id)}
+                        />
                       ))}
                     </div>
                   )}
@@ -547,7 +744,15 @@ export function OnboardingPage() {
                     title="Upload QC Test Cases"
                     subtitle="Drag & drop, or click to browse. CSV, spreadsheets, Markdown checklists, JSON."
                     accept=".csv · .xlsx · .md · .json · .txt"
-                    onClick={handleAddQC}
+                    onClick={() => qcInputRef.current?.click()}
+                  />
+                  <input
+                    ref={qcInputRef}
+                    type="file"
+                    multiple
+                    accept=".csv,.xlsx,.md,.json,.txt"
+                    className="hidden"
+                    onChange={e => { void handleQCFiles(e.target.files); e.currentTarget.value = ''; }}
                   />
                   {qcs.length > 0 && (
                     <div className="flex flex-col gap-[9px] mb-[18px]">
@@ -557,7 +762,7 @@ export function OnboardingPage() {
                     </div>
                   )}
                   <div className="text-[12px] font-semibold text-[#98a1b3] mb-[9px] mt-[4px]">
-                    Preview — <span className="font-mono text-[#818cf8]">qc-checkout-suite.csv</span> · 42 rows
+                    Preview — <span className="font-mono text-[#818cf8]">{qcs[0]?.name ?? 'QC import'}</span> · {qcPreview.length} rows
                   </div>
                   <div className="border border-[rgba(255,255,255,0.07)] rounded-[11px] overflow-hidden mb-[18px]">
                     <table className="w-full border-collapse text-[12.5px]">
@@ -572,23 +777,30 @@ export function OnboardingPage() {
                         </tr>
                       </thead>
                       <tbody>
-                        {qcRows.map(row => (
+                        {qcPreview.map(row => (
                           <tr key={row.id} className="border-b border-[rgba(255,255,255,0.07)] hover:bg-[rgba(255,255,255,0.018)]">
                             <td className="py-[11px] px-[13px] font-mono text-[12px] text-[#e8ebf2]">{row.id}</td>
                             <td className="py-[11px] px-[13px] text-[#98a1b3]">{row.feature}</td>
                             <td className="py-[11px] px-[13px] text-[#e8ebf2]">{row.scenario}</td>
-                            <td className="py-[11px] px-[13px] text-[#98a1b3]">{row.expected}</td>
+                            <td className="py-[11px] px-[13px] text-[#98a1b3]">{row.expectedResult}</td>
                             <td className="py-[11px] px-[13px]">
-                              <span className={`text-[10.5px] font-bold uppercase tracking-[0.4px] px-[7px] py-[2px] rounded-[5px] ${prioClass[row.priority]}`}>{row.priority}</span>
+                              <span className={`text-[10.5px] font-bold uppercase tracking-[0.4px] px-[7px] py-[2px] rounded-[5px] ${prioClass[row.priority.toLowerCase()]}`}>{row.priority}</span>
                             </td>
                             <td className="py-[11px] px-[13px]">
-                              <span className="inline-flex items-center gap-[6px] text-[11.5px] font-medium" style={{ color: autoMeta[row.automated].color }}>
-                                <span className="w-[7px] h-[7px] rounded-full" style={{ background: autoMeta[row.automated].color }} />
-                                {autoMeta[row.automated].label}
+                              <span className="inline-flex items-center gap-[6px] text-[11.5px] font-medium" style={{ color: autoMeta[row.automationStatus].color }}>
+                                <span className="w-[7px] h-[7px] rounded-full" style={{ background: autoMeta[row.automationStatus].color }} />
+                                {autoMeta[row.automationStatus].label}
                               </span>
                             </td>
                           </tr>
                         ))}
+                        {qcPreview.length === 0 && (
+                          <tr>
+                            <td colSpan={6} className="py-[18px] px-[13px] text-center text-[#6b7488]">
+                              Upload a CSV or JSON file to preview imported QC cases.
+                            </td>
+                          </tr>
+                        )}
                       </tbody>
                     </table>
                   </div>
@@ -657,9 +869,9 @@ export function OnboardingPage() {
                         <ProgressBar value={scanProgress} />
                       </div>
                       <div className="bg-[#07090d] border border-[rgba(255,255,255,0.07)] rounded-[11px] p-[14px_16px] max-h-[230px] overflow-y-auto font-mono text-[12.5px] leading-[1.7]">
-                        {scanLogs.slice(0, scanLogIndex).map((log, i) => (
+                        {scanLogMessages.map((log, i) => (
                           <div key={i} className="flex gap-[10px]">
-                            <span className="text-[#6b7488] flex-none">{new Date().toTimeString().slice(0, 8)}</span>
+                            <span className="text-[#6b7488] flex-none">{log.at ? new Date(log.at).toTimeString().slice(0, 8) : new Date().toTimeString().slice(0, 8)}</span>
                             <span className="text-[#98a1b3]">
                               <span className={logTagClass(log.tag)}>{logTagSymbol(log.tag)}</span> {log.message}
                             </span>
@@ -676,7 +888,7 @@ export function OnboardingPage() {
                       Back
                     </Button>
                     <div className="flex-1" />
-                    <Button variant="primary" size="lg" onClick={startScan}>
+                    <Button variant="primary" size="lg" onClick={() => void startScan()}>
                       <PlayIcon className="w-[15px] h-[15px]" />
                       Start Initial Scan
                     </Button>
@@ -701,12 +913,12 @@ export function OnboardingPage() {
                   </div>
                   <h2 className="text-[23px] font-bold tracking-[-0.4px] text-white mb-[7px]">Testing intelligence is ready</h2>
                   <p className="text-[13.5px] text-[#98a1b3] m-0 mx-auto max-w-[460px] leading-[1.55]">
-                    Guardrail combined your codebase, 8 product docs, and 42 QC cases with a live test run. Here&apos;s what it found.
+                    Guardrail combined your codebase, {scanSummary?.productDocsIndexed ?? 0} product knowledge inputs, and {scanSummary?.qcCasesImported ?? 0} QC cases with scan evidence. Here&apos;s what it found.
                   </p>
                 </div>
                 <div className="p-[22px]">
                   <div className="grid grid-cols-2 sm:grid-cols-4 gap-[12px] mb-[24px]">
-                    {summaryStats.map(stat => (
+                    {scanSummaryStats.map(stat => (
                       <div key={stat.label} className="bg-[#0d0f16] border border-[rgba(255,255,255,0.07)] rounded-[11px] p-[14px_15px] relative overflow-hidden">
                         <div className="absolute left-0 top-0 bottom-0 w-[3px]" style={{ background: stat.color }} />
                         <div className="text-[26px] font-bold tracking-[-0.8px] leading-none" style={{ color: stat.color }}>{stat.value}</div>
@@ -719,8 +931,23 @@ export function OnboardingPage() {
                   </div>
                   <div className="flex items-start gap-[11px] p-[12px_14px] bg-[rgba(34,211,238,0.05)] border border-[rgba(34,211,238,0.18)] rounded-[11px] text-[12.5px] text-[#98a1b3] leading-[1.5]">
                     <InfoCircleIcon className="w-[16px] h-[16px] flex-shrink-0 text-[#22d3ee] mt-[1px]" />
-                    <span>9 missing & 3 suspicious tests are queued as AI insights. Guardrail has <b className="text-[#e8ebf2]">staged 7 test drafts</b> awaiting your approval on the dashboard.</span>
+                    <span>
+                      {scanSummary?.missingRecommended ?? 0} missing & {scanSummary?.suspiciousTests ?? 0} suspicious tests are queued as AI insights.
+                      Dashboard data was generated from repo scan evidence, product knowledge, QC inputs, and model reasoning when available.
+                    </span>
                   </div>
+                  {scanLogMessages.length > 0 && (
+                    <div className="mt-[14px] bg-[#07090d] border border-[rgba(255,255,255,0.07)] rounded-[11px] p-[12px_14px] max-h-[190px] overflow-y-auto font-mono text-[12px] leading-[1.65]">
+                      {scanLogMessages.map((log, i) => (
+                        <div key={`${log.message}-${i}`} className="flex gap-[10px]">
+                          <span className="text-[#6b7488] flex-none">{log.at ? new Date(log.at).toTimeString().slice(0, 8) : new Date().toTimeString().slice(0, 8)}</span>
+                          <span className="text-[#98a1b3]">
+                            <span className={logTagClass(log.tag)}>{logTagSymbol(log.tag)}</span> {log.message}
+                          </span>
+                        </div>
+                      ))}
+                    </div>
+                  )}
                 </div>
                 <StepFoot>
                   <Button variant="ghost" onClick={resetScan}>

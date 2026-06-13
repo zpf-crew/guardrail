@@ -5,6 +5,7 @@ import { env } from './config/env.js';
 import { healthRoutes } from './modules/health/health.routes.js';
 import { authRoutes } from './modules/auth/auth.routes.js';
 import { reposRoutes } from './modules/repos/repos.routes.js';
+import { onboardingRoutes } from './modules/onboarding/onboarding.routes.js';
 import { dbPlugin } from './plugins/db.js';
 
 export function buildApp() {
@@ -20,6 +21,7 @@ export function buildApp() {
   app.register(healthRoutes, { prefix: '/health' });
   app.register(authRoutes, { prefix: '/api/auth' });
   app.register(reposRoutes, { prefix: '/api/repos' });
+  app.register(onboardingRoutes, { prefix: '/api/repos' });
 
   return app;
 }

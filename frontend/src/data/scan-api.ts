@@ -34,7 +34,7 @@ export async function startScan(repoId: string | null = getActiveRepoId()): Prom
     throw new ScanApiError('No repository selected. Complete onboarding first.');
   }
 
-  const res = await fetch(`${API_BASE}/api/repos/${encodeURIComponent(repoId)}/scan`, { method: 'POST' });
+  const res = await fetch(`${API_BASE}/api/repos/${encodeURIComponent(repoId)}/scan`, { method: 'POST', credentials: 'include' });
   if (!res.ok) {
     throw new ScanApiError(`Scan request failed (${res.status} ${res.statusText})`);
   }
