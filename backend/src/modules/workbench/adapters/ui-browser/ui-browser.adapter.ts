@@ -35,14 +35,44 @@ interface UiBrowserAdapterOptions {
 
 const onboardingBehavior = 'Complete onboarding with selected repository';
 const generatedFile = 'guardrail-tests/ui/onboarding.feature';
-const uiCommand = 'agent-browser open http://localhost:5173/onboarding';
 
 function featureFrom(input: AdapterInput): FeatureModule {
   return input.session.intent.feature ?? 'Checkout';
 }
 
+function uiCommandFor(input: AdapterInput): string {
+  return `agent-browser open ${input.repository.frontend.url}`;
+}
+
 function durationLabel(durationMs: number): string {
   return `${(durationMs / 1000).toFixed(1)}s`;
+}
+
+function clone<T>(value: T): T {
+  return structuredClone(value);
+}
+
+function isAbortLike(error: unknown): boolean {
+  if (error instanceof DOMException && error.name === 'AbortError') {
+    return true;
+  }
+  if (!error || typeof error !== 'object') {
+    return false;
+  }
+
+  const data = error as { name?: unknown; code?: unknown; message?: unknown };
+  return data.name === 'AbortError'
+    || data.name === 'CanceledError'
+    || data.name === 'CancelledError'
+    || data.code === 'ABORT_ERR'
+    || data.code === 'ERR_CANCELED'
+    || (typeof data.message === 'string' && /\b(abort|aborted|cancelled|canceled)\b/i.test(data.message));
+}
+
+function rethrowIfAbort(error: unknown, signal: AbortSignal): void {
+  if (signal.aborted || isAbortLike(error)) {
+    throw error;
+  }
 }
 
 function fallbackFeatureText(prompt: string): string {
@@ -55,6 +85,17 @@ function fallbackFeatureText(prompt: string): string {
     '    When they select the local repository and continue',
     '    Then the initial scan starts and onboarding progress is visible',
   ].join('\n');
+}
+
+function noOpGeneration(reason: string, after: string): GenerationResult {
+  return {
+    timeline: [
+      { label: reason, status: 'done' },
+      { label: 'No UI Browser changes generated', status: 'done' },
+    ],
+    changes: [],
+    beforeAfter: { before: ['No UI Browser onboarding test exists.'], after: [after] },
+  };
 }
 
 export class UiBrowserAdapter implements TestTypeAdapter {
@@ -72,11 +113,11 @@ export class UiBrowserAdapter implements TestTypeAdapter {
     await this.#tryThinker(input, buildAnalyzePrompt(input.session.intent.prompt), 'UI Browser gap classification used deterministic fallback.');
 
     return {
-      target: { feature: featureFrom(input), repo: input.repository.repo },
-      sourceFiles: input.repository.relatedFiles.filter(file => file.kind === 'source'),
-      existingTestFiles: input.repository.relatedFiles.filter(file => file.kind === 'test'),
-      specDocs: input.repository.specDocs,
-      qcCases: input.repository.qcCases,
+      target: { feature: featureFrom(input), repo: clone(input.repository.repo) },
+      sourceFiles: clone(input.repository.relatedFiles.filter(file => file.kind === 'source')),
+      existingTestFiles: clone(input.repository.relatedFiles.filter(file => file.kind === 'test')),
+      specDocs: clone(input.repository.specDocs),
+      qcCases: clone(input.repository.qcCases),
       currentCoverage: { line: 0, branch: 0 },
       currentStatus: { failed: 0, suspicious: 0, missing: 1, flaky: 0 },
       userJourneys: [onboardingBehavior],
@@ -113,18 +154,18 @@ export class UiBrowserAdapter implements TestTypeAdapter {
   async generate(input: AdapterInput & { plan: TestPlan; approval: PlanApproval }): Promise<GenerationResult> {
     input.signal.throwIfAborted();
     input.emit({ type: 'progress', message: 'Generating deterministic UI Browser fallback payload.', percent: 55 });
-    await this.#tryCoder(input, buildGeneratePrompt(input.session.intent.prompt), 'UI Browser feature generation used deterministic fallback.');
 
     if (input.approval.decision === 'cancel') {
-      return {
-        timeline: [
-          { label: 'Plan approval canceled', status: 'done' },
-          { label: 'No UI Browser changes generated', status: 'done' },
-        ],
-        changes: [],
-        beforeAfter: { before: ['No UI Browser onboarding test exists.'], after: ['No changes generated because approval was canceled.'] },
-      };
+      return noOpGeneration('Plan approval canceled', 'No changes generated because approval was canceled.');
     }
+    if (input.approval.skipUiTests) {
+      return noOpGeneration('UI Browser tests skipped by approval', 'No changes generated because UI Browser tests were skipped.');
+    }
+    if (input.approval.unitTestsOnly) {
+      return noOpGeneration('Unit-tests-only approval selected', 'No UI Browser changes generated because approval requested unit tests only.');
+    }
+
+    await this.#tryCoder(input, buildGeneratePrompt(input.session.intent.prompt), 'UI Browser feature generation used deterministic fallback.');
 
     const featureText = fallbackFeatureText(input.session.intent.prompt);
 
@@ -160,6 +201,7 @@ export class UiBrowserAdapter implements TestTypeAdapter {
     input.emit({ type: 'progress', message: 'Running UI Browser adapter fallback runner.', percent: 75 });
 
     const runnerResult = await this.#runUi(input);
+    const command = uiCommandFor(input);
     const evidence = runnerResult.evidence.length > 0
       ? runnerResult.evidence
       : [
@@ -170,7 +212,7 @@ export class UiBrowserAdapter implements TestTypeAdapter {
     return {
       unit: { command: 'not run', outcome: 'Skipped', passed: 0, durationMs: 0, suite: 'Unit' },
       ui: {
-        command: uiCommand,
+        command,
         browser: 'Chromium',
         outcome: runnerResult.outcome,
         passed: runnerResult.outcome === 'Passed' ? 1 : 0,
@@ -192,16 +234,7 @@ export class UiBrowserAdapter implements TestTypeAdapter {
           file: generatedFile,
         },
       ],
-      attention: runnerResult.outcome === 'Failed'
-        ? {
-            testTitle: onboardingBehavior,
-            kind: 'failed',
-            reason: runnerResult.errorMessage ?? 'UI Browser runner reported failure.',
-            likelyCause: 'The local onboarding page was unavailable or did not reach the expected progress state.',
-            suggestedFix: 'Start the frontend and rerun the UI Browser onboarding scenario.',
-            actions: ['ask-agent-to-fix', 'accept-and-keep', 'revert-generated-test'],
-          }
-        : undefined,
+      attention: this.#attentionFor(runnerResult),
     };
   }
 
@@ -250,12 +283,13 @@ export class UiBrowserAdapter implements TestTypeAdapter {
 
     try {
       return await this.#runner.run({
-        command: uiCommand,
+        command: uiCommandFor(input),
         url: input.repository.frontend.url,
         featureFile: input.generation.changes[0]?.file ?? generatedFile,
         signal: input.signal,
       });
     } catch (error) {
+      rethrowIfAbort(error, input.signal);
       input.emit({
         type: 'progress',
         message: `Warning: UI Browser runner failed; using fallback result. ${error instanceof Error ? error.message : String(error)}`,
@@ -270,6 +304,25 @@ export class UiBrowserAdapter implements TestTypeAdapter {
     }
   }
 
+  #attentionFor(result: UiBrowserRunnerResult): TestRunResult['attention'] {
+    if (result.outcome !== 'Failed' && result.outcome !== 'Flaky') {
+      return undefined;
+    }
+
+    return {
+      testTitle: onboardingBehavior,
+      kind: result.outcome === 'Flaky' ? 'flaky' : 'failed',
+      reason: result.errorMessage ?? `UI Browser runner reported ${result.outcome.toLowerCase()} outcome.`,
+      likelyCause: result.outcome === 'Flaky'
+        ? 'The onboarding UI or browser automation has inconsistent timing or state.'
+        : 'The local onboarding page was unavailable or did not reach the expected progress state.',
+      suggestedFix: result.outcome === 'Flaky'
+        ? 'Review the captured trace and stabilize the onboarding wait conditions before applying.'
+        : 'Start the frontend and rerun the UI Browser onboarding scenario.',
+      actions: ['ask-agent-to-fix', 'accept-and-keep', 'revert-generated-test'],
+    };
+  }
+
   async #tryThinker(input: AdapterInput, prompt: string, warning: string): Promise<void> {
     if (!input.modelConnect) {
       return;
@@ -282,6 +335,7 @@ export class UiBrowserAdapter implements TestTypeAdapter {
         signal: input.signal,
       });
     } catch (error) {
+      rethrowIfAbort(error, input.signal);
       input.emit({
         type: 'progress',
         message: `Warning: ${warning} ${error instanceof Error ? error.message : String(error)}`,
@@ -302,6 +356,7 @@ export class UiBrowserAdapter implements TestTypeAdapter {
         signal: input.signal,
       });
     } catch (error) {
+      rethrowIfAbort(error, input.signal);
       input.emit({
         type: 'progress',
         message: `Warning: ${warning} ${error instanceof Error ? error.message : String(error)}`,
