@@ -22,6 +22,7 @@ function mockRepos(): GitHubRepoSummary[] {
     private: repo.private,
     defaultBranch: repo.branch,
     htmlUrl: `https://github.com/${repo.fullName}`,
+    isCloned: false,
   }));
 }
 

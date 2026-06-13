@@ -6,6 +6,13 @@ export interface GitHubRepoSummary {
   private: boolean;
   defaultBranch: string;
   htmlUrl: string;
+  repoId?: string;
+  status?: string;
+  isCloned?: boolean;
+  clonePath?: string;
+  currentBranch?: string;
+  commitSha?: string;
+  lastClonedAt?: string;
 }
 
 export interface RepoRecord {
@@ -21,6 +28,7 @@ export interface RepoRecord {
   currentBranch: string | null;
   commitSha: string | null;
   status: string;
+  lastClonedAt: string | null;
 }
 
 export interface RepoFileNode {

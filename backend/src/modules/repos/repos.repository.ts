@@ -26,6 +26,7 @@ function mapRepo(row: Record<string, unknown>): RepoRecord {
     currentBranch: row.current_branch ? String(row.current_branch) : null,
     commitSha: row.commit_sha ? String(row.commit_sha) : null,
     status: String(row.status),
+    lastClonedAt: row.last_cloned_at ? new Date(String(row.last_cloned_at)).toISOString() : null,
   };
 }
 
@@ -80,5 +81,10 @@ export class ReposRepository {
   async getForUser(repoId: string, userId: string): Promise<RepoRecord | null> {
     const result = await this.db.query('SELECT * FROM repos WHERE id = $1 AND user_id = $2', [repoId, userId]);
     return result.rows[0] ? mapRepo(result.rows[0]) : null;
+  }
+
+  async listForUser(userId: string): Promise<RepoRecord[]> {
+    const result = await this.db.query('SELECT * FROM repos WHERE user_id = $1 ORDER BY updated_at DESC', [userId]);
+    return result.rows.map(mapRepo);
   }
 }

@@ -327,7 +327,8 @@ export function OnboardingPage() {
 
   const selectedRepo = repos.find(repo => repo.githubRepoId === selectedGithubRepoId);
   const selectedRepoName = selectedRepo?.fullName ?? repoInfo.fullName;
-  const selectedBranch = connectedRepo?.repo.branch ?? selectedRepo?.defaultBranch ?? repoInfo.branch;
+  const selectedBranch = connectedRepo?.repo.branch ?? selectedRepo?.currentBranch ?? selectedRepo?.defaultBranch ?? repoInfo.branch;
+  const selectedRepoIsCloned = Boolean(selectedRepo?.isCloned);
   const normalizedRepoSearch = repoSearch.trim().toLowerCase();
   const visibleRepos = normalizedRepoSearch
     ? repos.filter(repo => {
@@ -349,7 +350,7 @@ export function OnboardingPage() {
     try {
       const connected = await connectRepo(selectedGithubRepoId);
       setConnectedRepo(connected);
-      toast(`Connected ${connected.repo.name}`, 'success');
+      toast(connected.reused ? `Using local clone for ${connected.repo.name}` : `Connected ${connected.repo.name}`, 'success');
       goToStep(1);
     } catch (e) {
       toast(e instanceof Error ? e.message : 'Failed to connect repository', 'success');
@@ -549,7 +550,11 @@ export function OnboardingPage() {
                       <div className="text-[10.5px] uppercase tracking-[0.7px] text-[#6b7488] font-bold mb-[3px]">Selected repository</div>
                       <div className="font-mono text-[13px] text-[#e8ebf2] truncate">{selectedRepoName}</div>
                       <div className="text-[12px] text-[#6b7488] mt-[2px]">
-                        {connectedRepo ? `Cloned to ${connectedRepo.repo.path}` : `${repos.length.toLocaleString()} repositories available from GitHub`}
+                        {connectedRepo
+                          ? `Cloned to ${connectedRepo.repo.path}`
+                          : selectedRepo?.isCloned
+                            ? `Local clone ready at ${selectedRepo.clonePath}`
+                            : `${repos.length.toLocaleString()} repositories available from GitHub`}
                       </div>
                     </div>
                     <Button variant="outline" onClick={() => void loadRepos()} disabled={repoLoading}>
@@ -604,17 +609,30 @@ export function OnboardingPage() {
                                 <div className="mt-[4px] flex flex-wrap items-center gap-[8px] text-[11.5px] text-[#6b7488]">
                                   <span>{repo.owner}</span>
                                   <span>·</span>
-                                  <span>{repo.defaultBranch}</span>
-                                  {selected && <span className="text-[#818cf8]">Selected</span>}
-                                </div>
-                              </div>
-                              <span className={`flex-none rounded-[999px] px-[8px] py-[3px] text-[10.5px] font-bold uppercase tracking-[0.4px] ${
-                                repo.private
-                                  ? 'bg-[rgba(192,132,252,0.15)] text-[#c084fc]'
-                                  : 'bg-[rgba(61,220,151,0.13)] text-[#3ddc97]'
-                              }`}>
-                                {repo.private ? 'Private' : 'Public'}
-                              </span>
+	                                  <span>{repo.defaultBranch}</span>
+	                                  {repo.isCloned && (
+	                                    <>
+	                                      <span>·</span>
+	                                      <span className="text-[#3ddc97]">Cloned locally</span>
+	                                    </>
+	                                  )}
+	                                  {selected && <span className="text-[#818cf8]">Selected</span>}
+	                                </div>
+	                              </div>
+	                              <div className="flex flex-col items-end gap-[6px] flex-none">
+	                                {repo.isCloned && (
+	                                  <span className="rounded-[999px] px-[8px] py-[3px] text-[10.5px] font-bold uppercase tracking-[0.4px] bg-[rgba(61,220,151,0.13)] text-[#3ddc97]">
+	                                    Local
+	                                  </span>
+	                                )}
+	                                <span className={`rounded-[999px] px-[8px] py-[3px] text-[10.5px] font-bold uppercase tracking-[0.4px] ${
+	                                  repo.private
+	                                    ? 'bg-[rgba(192,132,252,0.15)] text-[#c084fc]'
+	                                    : 'bg-[rgba(96,165,250,0.13)] text-[#60a5fa]'
+	                                }`}>
+	                                  {repo.private ? 'Private' : 'Public'}
+	                                </span>
+	                              </div>
                             </div>
                           </button>
                         );
@@ -646,7 +664,7 @@ export function OnboardingPage() {
                     onClick={handleConnectRepo}
                     disabled={!selectedGithubRepoId || repoLoading || connectingRepo}
                   >
-                    {connectingRepo ? 'Cloning…' : 'Connect Repository'}
+                    {connectingRepo ? (selectedRepoIsCloned ? 'Opening…' : 'Cloning…') : selectedRepoIsCloned ? 'Use Local Clone' : 'Connect Repository'}
                     <ChevronRightIcon className="w-[15px] h-[15px]" />
                   </Button>
                 </StepFoot>

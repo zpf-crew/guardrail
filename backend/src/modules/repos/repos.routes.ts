@@ -1,4 +1,5 @@
 import type { FastifyInstance } from 'fastify';
+import { stat } from 'node:fs/promises';
 import { AuthRepository } from '../auth/auth.repository.js';
 import { requireAuth } from '../auth/session.service.js';
 import { decryptToken } from '../auth/token-crypto.js';
@@ -21,6 +22,11 @@ function publicRepo(repo: GitHubRepoSummary): GitHubRepoSummary {
   return repo;
 }
 
+async function cloneExists(clonePath: string | null): Promise<boolean> {
+  if (!clonePath) return false;
+  return stat(clonePath).then(info => info.isDirectory()).catch(() => false);
+}
+
 async function getAccessToken(app: FastifyInstance, userId: string): Promise<string> {
   const encrypted = await new AuthRepository(app.db).getEncryptedToken(userId);
   if (!encrypted) {
@@ -35,8 +41,23 @@ export async function reposRoutes(app: FastifyInstance) {
   app.get('/', async (request) => {
     const user = request.user!;
     const token = await getAccessToken(app, user.id);
+    const repository = new ReposRepository(app.db);
+    const localRepos = await repository.listForUser(user.id);
+    const localByGithubId = new Map(localRepos.map(repo => [repo.githubRepoId, repo]));
     const repos = await listGithubRepos(token);
-    return repos.map(({ cloneUrl: _cloneUrl, ...repo }) => publicRepo(repo));
+    return repos.map(({ cloneUrl: _cloneUrl, ...repo }) => {
+      const local = localByGithubId.get(repo.githubRepoId);
+      return publicRepo({
+        ...repo,
+        repoId: local?.id,
+        status: local?.status,
+        isCloned: Boolean(local?.clonePath && local.status === 'cloned'),
+        clonePath: local?.clonePath ?? undefined,
+        currentBranch: local?.currentBranch ?? undefined,
+        commitSha: local?.commitSha ?? undefined,
+        lastClonedAt: local?.lastClonedAt ?? undefined,
+      });
+    });
   });
 
   app.post('/:githubRepoId/connect', async (request, reply) => {
@@ -55,6 +76,9 @@ export async function reposRoutes(app: FastifyInstance) {
 
     const repository = new ReposRepository(app.db);
     const repo = await repository.upsertPending({ userId: user.id, ...githubRepo });
+    if (repo.status === 'cloned' && await cloneExists(repo.clonePath)) {
+      return { repoId: repo.id, repo: toRepoRef(repo), reused: true };
+    }
 
     try {
       const cloned = await cloneRepository({

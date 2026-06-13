@@ -111,11 +111,19 @@ export interface GitHubRepoSummary {
   private: boolean;
   defaultBranch: string;
   htmlUrl: string;
+  repoId?: string;
+  status?: string;
+  isCloned?: boolean;
+  clonePath?: string;
+  currentBranch?: string;
+  commitSha?: string;
+  lastClonedAt?: string;
 }
 
 export interface ConnectedRepo {
   repoId: string;
   repo: RepoRef;
+  reused?: boolean;
 }
 
 export interface RepoFileNode {
