@@ -39,6 +39,9 @@ const qcCases: QCTestCase[] = [
   },
 ];
 
+const specDocs: RelatedFile[] = [];
+const sourceSnippets: RepositoryContext['sourceSnippets'] = [];
+
 export class LocalGuardrailRepositoryProvider implements RepositoryContextProvider {
   readonly #rootDir: string;
 
@@ -61,10 +64,10 @@ export class LocalGuardrailRepositoryProvider implements RepositoryContextProvid
         url: 'http://localhost:5173/onboarding',
         route: '/onboarding',
       },
-      relatedFiles,
-      specDocs: [],
-      qcCases,
-      sourceSnippets: [],
+      relatedFiles: structuredClone(relatedFiles),
+      specDocs: structuredClone(specDocs),
+      qcCases: structuredClone(qcCases),
+      sourceSnippets: structuredClone(sourceSnippets),
     };
   }
 }
