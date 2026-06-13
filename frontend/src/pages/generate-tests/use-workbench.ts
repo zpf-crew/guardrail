@@ -64,6 +64,7 @@ export function useWorkbench(initialIntent?: Partial<IntentInput>): UseWorkbench
   const [runEvents, setRunEvents] = React.useState<JobEvent[]>([]);
   const intervalRef = React.useRef<ReturnType<typeof setInterval> | null>(null);
   const genIntervalRef = React.useRef<ReturnType<typeof setInterval> | null>(null);
+  const runIdRef = React.useRef(0);
 
   React.useEffect(() => {
     let cancelled = false;
@@ -173,6 +174,10 @@ export function useWorkbench(initialIntent?: Partial<IntentInput>): UseWorkbench
 
   const runTests = React.useCallback(() => {
     if (!session) return;
+    const runId = runIdRef.current + 1;
+    runIdRef.current = runId;
+    const isCurrentRun = () => runIdRef.current === runId;
+
     // Clear any in-flight run so a re-trigger never leaves an orphaned interval.
     if (intervalRef.current) clearInterval(intervalRef.current);
     setCurrentStep(4); // show the Run step immediately
@@ -180,27 +185,32 @@ export function useWorkbench(initialIntent?: Partial<IntentInput>): UseWorkbench
     setRanTests(0);
     setRunEvents([]);
 
-    runSession(session.id, event => {
-      setRunEvents(events => [...events, event]);
-    })
-      .then(run => {
+    void (async () => {
+      try {
+        const run = await runSession(session.id, event => {
+          if (!isCurrentRun()) return;
+          setRunEvents(events => [...events, event]);
+        });
+        if (!isCurrentRun()) return;
+
         setSession(s => (s ? { ...s, run } : s));
         const animation = startRunAnimation(run.matrix.length);
         setPending('review');
-        return Promise.all([reviewSession(session.id), animation]);
-      })
-      .then(([review]) => {
+        const [review] = await Promise.all([reviewSession(session.id), animation]);
+        if (!isCurrentRun()) return;
+
         setSession(s => (s ? { ...s, review } : s));
         setPending(null);
-      })
-      .catch(e => {
+      } catch (e) {
+        if (!isCurrentRun()) return;
         if (intervalRef.current) {
           clearInterval(intervalRef.current);
           intervalRef.current = null;
         }
         setPending(null);
         setError(e instanceof Error ? e.message : 'Run failed.');
-      });
+      }
+    })();
   }, [session, startRunAnimation]);
 
   const genComplete = session?.generation ? genStep >= session.generation.timeline.length : false;
@@ -211,13 +221,20 @@ export function useWorkbench(initialIntent?: Partial<IntentInput>): UseWorkbench
     ),
     [runEvents],
   );
-  const runEvidence = React.useMemo(
+  const streamedRunEvidence = React.useMemo(
     () => runEvents.flatMap(event => {
       if (event.type === 'screenshot' || event.type === 'artifact') return [event.artifact];
       return [];
     }),
     [runEvents],
   );
+  const runEvidence = React.useMemo(() => {
+    if (streamedRunEvidence.length > 0) return streamedRunEvidence;
+    return [
+      ...(session?.run?.ui?.evidence ?? []),
+      ...(session?.run?.mobile?.evidence ?? []),
+    ];
+  }, [session?.run?.mobile?.evidence, session?.run?.ui?.evidence, streamedRunEvidence]);
 
   return {
     status, error, session, currentStep, pending, ranTests, running: pending === 'run' || pending === 'review', genStep, genComplete,
