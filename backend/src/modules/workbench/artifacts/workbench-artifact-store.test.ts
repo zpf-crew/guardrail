@@ -52,12 +52,14 @@ test('artifact store extracts a path from agent-browser screenshot stdout', asyn
 
 test('artifact store keeps metadata when local file cannot be copied', async () => {
   const root = await mkdtemp(path.join(os.tmpdir(), 'guardrail-artifacts-'));
-  const store = new WorkbenchArtifactStore({ rootDir: root });
+  const allowedRoot = await mkdtemp(path.join(os.tmpdir(), 'guardrail-allowed-source-'));
+  const missingSource = path.join(allowedRoot, 'missing.png');
+  const store = new WorkbenchArtifactStore({ rootDir: root, allowedSourceRoots: [allowedRoot] });
 
   const evidence = await store.registerEvidence({
     sessionId: 'session-3',
     jobId: 'job-3',
-    evidence: { kind: 'screenshot', label: 'Missing screenshot', href: '/missing/file.png' },
+    evidence: { kind: 'screenshot', label: 'Missing screenshot', href: missingSource },
   });
 
   assert.equal(evidence.kind, 'screenshot');
