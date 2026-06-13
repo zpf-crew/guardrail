@@ -48,6 +48,18 @@ test('workbench routes return 404 for missing session and job', async () => {
   assert.equal(missingJobRes.statusCode, 404);
 });
 
+test('workbench routes return 404 for missing artifact under existing session', async () => {
+  const app = buildApp();
+  const session = await createSession(app);
+
+  const missingRes = await app.inject({
+    method: 'GET',
+    url: `/api/workbench/${session.id}/artifacts/missing.png`,
+  });
+
+  assert.equal(missingRes.statusCode, 404);
+});
+
 test('workbench routes allow browser clients from the frontend origin', async () => {
   const app = buildApp();
 

@@ -1,5 +1,6 @@
 import { modelConnect } from '../model-connect/index.js';
 import type { TestTypeAdapter } from './adapters/test-type-adapter.js';
+import type { RegisteredArtifact, WorkbenchArtifactStore } from './artifacts/workbench-artifact-store.js';
 import type { WorkbenchJobEventBus } from './jobs/job-events.js';
 import type { WorkbenchJobQueue } from './jobs/job-queue.js';
 import { WORKBENCH_STEP_TIMEOUT_MS } from './jobs/job-timeouts.js';
@@ -32,6 +33,7 @@ export class WorkbenchService {
     private readonly store: WorkbenchJobStore,
     private readonly queue: WorkbenchJobQueue,
     private readonly eventBus: WorkbenchJobEventBus,
+    private readonly artifactStore: WorkbenchArtifactStore,
     private readonly repositoryProvider: RepositoryContextProvider,
     private readonly adapters: TestTypeAdapter[],
   ) {}
@@ -86,6 +88,11 @@ export class WorkbenchService {
     const job = this.requireJob(sessionId, jobId);
     const events = this.store.getEvents(sessionId, jobId);
     return { job, events, session };
+  }
+
+  getArtifact(sessionId: string, artifactId: string): RegisteredArtifact | undefined {
+    this.requireSession(sessionId);
+    return this.artifactStore.getArtifact(sessionId, artifactId);
   }
 
   subscribe(

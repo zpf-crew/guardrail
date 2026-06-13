@@ -1,3 +1,4 @@
+import { createReadStream } from 'node:fs';
 import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
 import { formatSse } from './jobs/job-events.js';
 import type { WorkbenchService } from './workbench.service.js';
@@ -9,6 +10,10 @@ interface SessionParams {
 
 interface JobParams extends SessionParams {
   jobId: string;
+}
+
+interface ArtifactParams extends SessionParams {
+  artifactId: string;
 }
 
 interface CreateSessionBody {
@@ -32,6 +37,19 @@ export function buildWorkbenchRoutes(service: WorkbenchService) {
     app.patch('/:sessionId', async (request: FastifyRequest<{ Params: SessionParams; Body: UpdateSessionBody }>, reply) => {
       try {
         return service.updateSessionIntent(request.params.sessionId, request.body?.intent ?? {});
+      } catch (error) {
+        return routeError(reply, error);
+      }
+    });
+
+    app.get('/:sessionId/artifacts/:artifactId', async (request: FastifyRequest<{ Params: ArtifactParams }>, reply) => {
+      try {
+        const artifact = service.getArtifact(request.params.sessionId, request.params.artifactId);
+        if (!artifact) return reply.code(404).send({ error: 'Workbench artifact not found' });
+
+        reply.header('Content-Type', artifact.contentType);
+        reply.header('Cache-Control', 'no-store');
+        return reply.send(createReadStream(artifact.filePath));
       } catch (error) {
         return routeError(reply, error);
       }
