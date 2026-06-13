@@ -123,13 +123,21 @@ export class WorkbenchService {
     jobId: string,
     status: WorkbenchJobStatus,
   ): void {
+    const job = this.requireJob(sessionId, jobId);
     this.store.setJobStatus(sessionId, jobId, status);
+    if (status === 'queued' || status === 'running') {
+      this.store.setStepStatus(sessionId, job.step, 'active');
+    }
+    if (status === 'failed' || status === 'timeout') {
+      this.store.setStepStatus(sessionId, job.step, 'warn');
+    }
     this.emit(sessionId, jobId, { type: 'status', status });
   }
 
   private onError(sessionId: string, jobId: string, message: string): void {
     const job = this.requireJob(sessionId, jobId);
     this.store.setJobStatus(sessionId, jobId, job.status, message);
+    this.store.setStepStatus(sessionId, job.step, 'warn');
     this.emit(sessionId, jobId, { type: 'error', message, retryable: statusIsRetryable(message) });
   }
 

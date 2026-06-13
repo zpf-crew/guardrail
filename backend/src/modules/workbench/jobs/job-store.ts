@@ -104,6 +104,13 @@ export class WorkbenchJobStore {
     else delete job.error;
   }
 
+  setStepStatus(sessionId: string, step: WorkflowStepId, status: WorkbenchSession['steps'][WorkflowStepId]): void {
+    const session = this.sessions.get(sessionId);
+    if (!session) throw new Error(`Workbench session not found: ${sessionId}`);
+
+    session.steps[step] = status;
+  }
+
   appendEvent(sessionId: string, jobId: string, event: WorkbenchJobEvent): void {
     const events = this.events.get(sessionId)?.get(jobId);
     if (!events) throw new Error(`Workbench job events not found: ${jobId}`);

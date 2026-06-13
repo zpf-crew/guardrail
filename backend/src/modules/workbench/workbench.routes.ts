@@ -1,7 +1,7 @@
 import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
 import { formatSse } from './jobs/job-events.js';
 import type { WorkbenchService } from './workbench.service.js';
-import type { IntentInput, PlanApproval, WorkbenchJob } from './workbench.types.js';
+import type { IntentInput, PlanApproval, WorkbenchJob, WorkbenchJobEvent } from './workbench.types.js';
 
 interface SessionParams {
   sessionId: string;
@@ -55,8 +55,25 @@ export function buildWorkbenchRoutes(service: WorkbenchService) {
     app.get(
       '/:sessionId/jobs/:jobId/events',
       async (request: FastifyRequest<{ Params: JobParams }>, reply) => {
-        const snapshotResult = snapshot(reply, () => service.getJobSnapshot(request.params.sessionId, request.params.jobId));
-        if ('statusCode' in snapshotResult) return snapshotResult;
+        const liveEvents: WorkbenchJobEvent[] = [];
+        let replaying = true;
+        let unsubscribe: (() => void) | undefined;
+        let snapshotResult: ReturnType<WorkbenchService['getJobSnapshot']>;
+
+        try {
+          unsubscribe = service.subscribe(request.params.sessionId, request.params.jobId, event => {
+            if (replaying) {
+              liveEvents.push(event);
+              return;
+            }
+
+            writeEvent(reply, event, cleanup);
+          });
+          snapshotResult = service.getJobSnapshot(request.params.sessionId, request.params.jobId);
+        } catch (error) {
+          unsubscribe?.();
+          return routeError(reply, error);
+        }
 
         reply.hijack();
         reply.raw.writeHead(200, {
@@ -65,15 +82,25 @@ export function buildWorkbenchRoutes(service: WorkbenchService) {
           Connection: 'keep-alive',
         });
 
+        const replayCounts = new Map<string, number>();
         for (const event of snapshotResult.events) {
-          reply.raw.write(formatSse(event));
+          increment(replayCounts, event);
+          writeEvent(reply, event, cleanup);
         }
 
-        const unsubscribe = service.subscribe(request.params.sessionId, request.params.jobId, event => {
-          reply.raw.write(formatSse(event));
-        });
+        replaying = false;
+        for (const event of liveEvents) {
+          if (decrement(replayCounts, event)) continue;
+          writeEvent(reply, event, cleanup);
+        }
 
-        request.raw.on('close', unsubscribe);
+        request.raw.on('close', cleanup);
+
+        function cleanup(): void {
+          unsubscribe?.();
+          unsubscribe = undefined;
+          if (!reply.raw.writableEnded) reply.raw.end();
+        }
       },
     );
   };
@@ -100,4 +127,33 @@ function routeError(reply: FastifyReply, error: unknown): FastifyReply {
   const message = error instanceof Error ? error.message : String(error);
   const statusCode = /not found/i.test(message) ? 404 : 400;
   return reply.code(statusCode).send({ error: message });
+}
+
+function writeEvent(reply: FastifyReply, event: WorkbenchJobEvent, close: () => void): void {
+  if (reply.raw.writableEnded) return;
+
+  reply.raw.write(formatSse(event));
+  if (isSseTerminalEvent(event)) close();
+}
+
+function isSseTerminalEvent(event: WorkbenchJobEvent): boolean {
+  return (event.type === 'status' && event.status === 'succeeded') || event.type === 'error';
+}
+
+function increment(counts: Map<string, number>, event: WorkbenchJobEvent): void {
+  const key = eventKey(event);
+  counts.set(key, (counts.get(key) ?? 0) + 1);
+}
+
+function decrement(counts: Map<string, number>, event: WorkbenchJobEvent): boolean {
+  const key = eventKey(event);
+  const count = counts.get(key) ?? 0;
+  if (count === 0) return false;
+  if (count === 1) counts.delete(key);
+  else counts.set(key, count - 1);
+  return true;
+}
+
+function eventKey(event: WorkbenchJobEvent): string {
+  return JSON.stringify(event);
 }
