@@ -1,6 +1,18 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import Fastify, { type FastifyInstance } from 'fastify';
+import { mkdtemp, writeFile } from 'node:fs/promises';
+import os from 'node:os';
+import path from 'node:path';
 import { buildApp } from '../../app.js';
+import { UiBrowserAdapter } from './adapters/ui-browser/ui-browser.adapter.js';
+import { WorkbenchArtifactStore } from './artifacts/workbench-artifact-store.js';
+import { WorkbenchJobEventBus } from './jobs/job-events.js';
+import { WorkbenchJobQueue } from './jobs/job-queue.js';
+import { WorkbenchJobStore } from './jobs/job-store.js';
+import { LocalGuardrailRepositoryProvider } from './repositories/local-guardrail-repository-provider.js';
+import { buildWorkbenchRoutes } from './workbench.routes.js';
+import { WorkbenchService } from './workbench.service.js';
 import type { WorkbenchJobEvent, WorkbenchJobStatus } from './workbench.types.js';
 
 type Snapshot = {
@@ -12,6 +24,11 @@ type Snapshot = {
       testTypes: string[];
     };
     steps: Record<string, string>;
+    run?: {
+      ui: {
+        evidence: Array<{ href?: string }>;
+      };
+    };
   };
 };
 
@@ -58,6 +75,38 @@ test('workbench routes return 404 for missing artifact under existing session', 
   });
 
   assert.equal(missingRes.statusCode, 404);
+});
+
+test('workbench run job emits screenshot event with served artifact URL', async () => {
+  const screenshotDir = await mkdtemp(path.join(os.tmpdir(), 'guardrail-screenshot-'));
+  const screenshotPath = path.join(screenshotDir, 'onboarding.png');
+  await writeFile(screenshotPath, Buffer.from('fake-png'));
+
+  const artifactRoot = await mkdtemp(path.join(os.tmpdir(), 'guardrail-artifacts-'));
+  const app = await buildArtifactRouteTestApp(screenshotPath, artifactRoot, screenshotDir);
+  const session = await createSession(app);
+
+  const analyzeJob = (await app.inject({ method: 'POST', url: `/api/workbench/${session.id}/analyze/jobs` })).json();
+  await waitForJob(app, session.id, analyzeJob.jobId, ['succeeded']);
+
+  const planJob = (await app.inject({ method: 'POST', url: `/api/workbench/${session.id}/plan/jobs` })).json();
+  await waitForJob(app, session.id, planJob.jobId, ['succeeded']);
+
+  const generateJob = (await app.inject({ method: 'POST', url: `/api/workbench/${session.id}/generate/jobs` })).json();
+  await waitForJob(app, session.id, generateJob.jobId, ['succeeded']);
+
+  const runJob = (await app.inject({ method: 'POST', url: `/api/workbench/${session.id}/run/jobs` })).json();
+  const snapshot = await waitForJob(app, session.id, runJob.jobId, ['succeeded']);
+  const screenshot = snapshot.events.find(event => event.type === 'screenshot');
+
+  assert.equal(screenshot?.type, 'screenshot');
+  const artifactUrl = screenshot.type === 'screenshot' ? screenshot.artifact.href ?? '' : '';
+  assert.match(artifactUrl, new RegExp(`^/api/workbench/${session.id}/artifacts/.+\\.png$`));
+  assert.equal(snapshot.session.run?.ui.evidence[0]?.href, artifactUrl);
+
+  const artifactRes = await app.inject({ method: 'GET', url: artifactUrl });
+  assert.equal(artifactRes.statusCode, 200);
+  assert.match(String(artifactRes.headers['content-type']), /^image\/png/);
 });
 
 test('workbench routes allow browser clients from the frontend origin', async () => {
@@ -192,7 +241,36 @@ test('workbench SSE replays existing events through terminal event and closes', 
   assert.match(eventsRes.payload, /"status":"succeeded"/);
 });
 
-async function createSession(app: ReturnType<typeof buildApp>) {
+async function buildArtifactRouteTestApp(screenshotPath: string, artifactRoot: string, screenshotRoot: string): Promise<FastifyInstance> {
+  const app = Fastify();
+  const rootDir = path.basename(process.cwd()) === 'backend' ? path.dirname(process.cwd()) : process.cwd();
+
+  const service = new WorkbenchService(
+    new WorkbenchJobStore(),
+    new WorkbenchJobQueue({ concurrency: 1 }),
+    new WorkbenchJobEventBus(),
+    new WorkbenchArtifactStore({ rootDir: artifactRoot, allowedSourceRoots: [screenshotRoot] }),
+    new LocalGuardrailRepositoryProvider({ rootDir }),
+    [
+      new UiBrowserAdapter({
+        runner: {
+          async run() {
+            return {
+              outcome: 'Passed',
+              durationMs: 25,
+              evidence: [{ kind: 'screenshot', label: 'Onboarding screenshot', href: screenshotPath }],
+            };
+          },
+        },
+      }),
+    ],
+  );
+
+  await app.register(buildWorkbenchRoutes(service), { prefix: '/api/workbench' });
+  return app;
+}
+
+async function createSession(app: FastifyInstance) {
   const sessionRes = await app.inject({
     method: 'POST',
     url: '/api/workbench/sessions',
@@ -203,7 +281,7 @@ async function createSession(app: ReturnType<typeof buildApp>) {
 }
 
 async function waitForJob(
-  app: ReturnType<typeof buildApp>,
+  app: FastifyInstance,
   sessionId: string,
   jobId: string,
   statuses: WorkbenchJobStatus[],

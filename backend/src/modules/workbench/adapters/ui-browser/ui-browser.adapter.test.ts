@@ -18,7 +18,7 @@ async function buildInput(overrides: Partial<AdapterInput> = {}): Promise<Adapte
   return {
     session,
     repository: repo,
-    emit: () => undefined,
+    emit: async event => event,
     modelConnect: null,
     signal: new AbortController().signal,
     ...overrides,
@@ -41,7 +41,12 @@ const plan: TestPlan = {
 test('ui browser adapter returns schema-shaped fallback analyze plan generate run review results', async () => {
   const adapter = new UiBrowserAdapter({ runner: { run: async () => ({ outcome: 'Passed', durationMs: 1000, evidence: [] }) } });
   const events: string[] = [];
-  const input = await buildInput({ emit: event => events.push(event.type) });
+  const input = await buildInput({
+    emit: async event => {
+      events.push(event.type);
+      return event;
+    },
+  });
   const isolation = await adapter.analyze(input);
   const testPlan = await adapter.plan({ ...input, isolation });
   const generation = await adapter.generate({ ...input, plan: testPlan, approval: { decision: 'approve', answers: {} } });
@@ -54,6 +59,31 @@ test('ui browser adapter returns schema-shaped fallback analyze plan generate ru
   assert.equal(run.ui.outcome, 'Passed');
   assert.equal(review.testsAdded, 1);
   assert.ok(events.includes('progress'));
+});
+
+test('ui browser adapter uses normalized screenshot evidence returned from emit', async () => {
+  const normalizedHref = '/api/workbench/wb-test/artifacts/onboarding.png';
+  const adapter = new UiBrowserAdapter({
+    runner: {
+      run: async () => ({
+        outcome: 'Passed',
+        durationMs: 1000,
+        evidence: [{ kind: 'screenshot', label: 'Onboarding screenshot', href: '/tmp/onboarding.png' }],
+      }),
+    },
+  });
+  const input = await buildInput({
+    emit: async event => {
+      if (event.type !== 'screenshot') return event;
+      return { ...event, artifact: { ...event.artifact, href: normalizedHref } };
+    },
+  });
+  const generation = await adapter.generate({ ...input, plan, approval: { decision: 'approve', answers: {} } });
+
+  const run = await adapter.run({ ...input, generation });
+
+  assert.equal(run.ui.evidence[0]?.href, normalizedHref);
+  assert.equal(run.matrix[0]?.evidence, 'screenshot');
 });
 
 test('ui browser adapter generate returns no-op changes when ui tests are skipped', async () => {

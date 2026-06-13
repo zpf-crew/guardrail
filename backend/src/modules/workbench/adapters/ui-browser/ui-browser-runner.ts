@@ -56,8 +56,14 @@ function defaultExecute(args: string[], signal: AbortSignal): Promise<UiBrowserR
 }
 
 function evidenceFromScreenshot(stdout: string): Evidence {
-  const href = stdout.trim();
-  return screenshotEvidence('Onboarding screenshot', href.length > 0 ? href : undefined);
+  return screenshotEvidence('Onboarding screenshot', screenshotPathFromStdout(stdout));
+}
+
+function screenshotPathFromStdout(stdout: string): string | undefined {
+  const trimmed = stdout.trim();
+  const savedMatch = trimmed.match(/Screenshot saved to\s+(.+)$/i);
+  const value = savedMatch?.[1]?.trim() ?? trimmed;
+  return value.length > 0 ? value : undefined;
 }
 
 function failureMessage(args: string[], result: UiBrowserRunnerExecuteResult): string {

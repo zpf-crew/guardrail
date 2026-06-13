@@ -27,6 +27,10 @@ type AdapterEvent = WorkbenchJobEvent extends infer Event
     ? Omit<Event, 'jobId' | 'step'>
     : never
   : never;
+type ArtifactAdapterEvent = AdapterEvent & {
+  type: 'artifact' | 'screenshot';
+  artifact: TestRunResult['ui']['evidence'][number];
+};
 
 export class WorkbenchService {
   constructor(
@@ -71,9 +75,10 @@ export class WorkbenchService {
           emit: (event: AdapterEvent) => this.emit(session.id, job.id, event),
         };
 
-        const result = await this.runAdapterStep(adapter, step, baseInput, currentSession, approval);
+        const rawResult = await this.runAdapterStep(adapter, step, baseInput, currentSession, approval);
+        const result = await this.normalizeStepResult(session.id, job.id, step, rawResult);
         this.setStepResult(session.id, step, result);
-        this.emit(session.id, job.id, { type: 'result', payload: result });
+        await this.emit(session.id, job.id, { type: 'result', payload: result });
       },
     });
 
@@ -143,14 +148,14 @@ export class WorkbenchService {
     if (status === 'failed' || status === 'timeout') {
       this.store.setStepStatus(sessionId, job.step, 'warn');
     }
-    this.emit(sessionId, jobId, { type: 'status', status });
+    void this.emit(sessionId, jobId, { type: 'status', status });
   }
 
   private onError(sessionId: string, jobId: string, message: string): void {
     const job = this.requireJob(sessionId, jobId);
     this.store.setJobStatus(sessionId, jobId, job.status, message);
     this.store.setStepStatus(sessionId, job.step, 'warn');
-    this.emit(sessionId, jobId, { type: 'error', message, retryable: statusIsRetryable(message) });
+    void this.emit(sessionId, jobId, { type: 'error', message, retryable: statusIsRetryable(message) });
   }
 
   private setStepResult(
@@ -177,11 +182,46 @@ export class WorkbenchService {
     }
   }
 
-  private emit(sessionId: string, jobId: string, event: AdapterEvent): void {
+  private async normalizeStepResult(
+    sessionId: string,
+    jobId: string,
+    step: WorkbenchJobStep,
+    result: IsolationResult | TestPlan | GenerationResult | TestRunResult | ReviewSummary,
+  ): Promise<IsolationResult | TestPlan | GenerationResult | TestRunResult | ReviewSummary> {
+    if (step !== 'run') return result;
+
+    const run = result as TestRunResult;
+    const evidence = await Promise.all(
+      run.ui.evidence.map(item => this.normalizeResultEvidence(sessionId, jobId, item)),
+    );
+    return { ...run, ui: { ...run.ui, evidence } };
+  }
+
+  private async normalizeResultEvidence(
+    sessionId: string,
+    jobId: string,
+    evidence: TestRunResult['ui']['evidence'][number],
+  ): Promise<TestRunResult['ui']['evidence'][number]> {
+    if (evidence.kind === 'screenshot' && evidence.href?.startsWith(`/api/workbench/${sessionId}/artifacts/`)) {
+      return evidence;
+    }
+    return this.artifactStore.registerEvidence({ sessionId, jobId, evidence });
+  }
+
+  private async emit(sessionId: string, jobId: string, event: AdapterEvent): Promise<AdapterEvent> {
     const job = this.requireJob(sessionId, jobId);
-    const normalized = { ...event, jobId, step: job.step } as WorkbenchJobEvent;
+    const normalizedEvent = shouldNormalizeArtifactEvent(event)
+      ? await this.normalizeArtifactEvent(sessionId, jobId, event)
+      : event;
+    const normalized = { ...normalizedEvent, jobId, step: job.step } as WorkbenchJobEvent;
     this.store.appendEvent(sessionId, jobId, normalized);
     this.eventBus.publish(eventKey(sessionId, jobId), normalized);
+    return normalizedEvent;
+  }
+
+  private async normalizeArtifactEvent(sessionId: string, jobId: string, event: ArtifactAdapterEvent): Promise<AdapterEvent> {
+    const artifact = await this.artifactStore.registerEvidence({ sessionId, jobId, evidence: event.artifact });
+    return { ...event, artifact } as AdapterEvent;
   }
 
   private requireSession(sessionId: string): WorkbenchSession {
@@ -209,4 +249,10 @@ function eventKey(sessionId: string, jobId: string): string {
 
 function statusIsRetryable(message: string): boolean {
   return /timeout|timed out|abort/i.test(message);
+}
+
+function shouldNormalizeArtifactEvent(
+  event: AdapterEvent,
+): event is ArtifactAdapterEvent {
+  return (event.type === 'screenshot' || event.type === 'artifact') && event.artifact.kind === 'screenshot';
 }

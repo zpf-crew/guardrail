@@ -7,7 +7,9 @@ test('runner executes onboarding commands and maps screenshots to evidence', asy
   const runner = new UiBrowserRunner({
     execute: async args => {
       commands.push(args);
-      if (args[0] === 'screenshot') return { exitCode: 0, stdout: '/tmp/onboarding.png', stderr: '' };
+      if (args[0] === 'screenshot') {
+        return { exitCode: 0, stdout: '✓ Screenshot saved to /tmp/onboarding.png\n', stderr: '' };
+      }
       return { exitCode: 0, stdout: 'ok', stderr: '' };
     },
   });
@@ -18,6 +20,7 @@ test('runner executes onboarding commands and maps screenshots to evidence', asy
   assert.ok(commands.some(args => args[0] === 'snapshot'));
   assert.equal(result.outcome, 'Passed');
   assert.equal(result.evidence[0]?.kind, 'screenshot');
+  assert.equal(result.evidence[0]?.href, '/tmp/onboarding.png');
 });
 
 test('runner returns failed result when executor throws a normal error', async () => {

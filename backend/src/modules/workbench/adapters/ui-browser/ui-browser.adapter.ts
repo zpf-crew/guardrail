@@ -127,7 +127,7 @@ export class UiBrowserAdapter implements TestTypeAdapter {
 
   async analyze(input: AdapterInput): Promise<IsolationResult> {
     input.signal.throwIfAborted();
-    input.emit({ type: 'progress', message: 'Classifying UI Browser onboarding gaps.', percent: 20 });
+    await input.emit({ type: 'progress', message: 'Classifying UI Browser onboarding gaps.', percent: 20 });
     await this.#tryThinker(input, buildAnalyzePrompt(input.session.intent.prompt), 'UI Browser gap classification used deterministic fallback.');
 
     return {
@@ -153,7 +153,7 @@ export class UiBrowserAdapter implements TestTypeAdapter {
 
   async plan(input: AdapterInput & { isolation: IsolationResult }): Promise<TestPlan> {
     input.signal.throwIfAborted();
-    input.emit({ type: 'progress', message: 'Preparing UI Browser test plan.', percent: 35 });
+    await input.emit({ type: 'progress', message: 'Preparing UI Browser test plan.', percent: 35 });
 
     return {
       proposedActions: [{ action: 'add', label: 'Add UI Browser onboarding test', count: 1 }],
@@ -171,7 +171,7 @@ export class UiBrowserAdapter implements TestTypeAdapter {
 
   async generate(input: AdapterInput & { plan: TestPlan; approval: PlanApproval }): Promise<GenerationResult> {
     input.signal.throwIfAborted();
-    input.emit({ type: 'progress', message: 'Generating deterministic UI Browser fallback payload.', percent: 55 });
+    await input.emit({ type: 'progress', message: 'Generating deterministic UI Browser fallback payload.', percent: 55 });
 
     if (input.approval.decision === 'cancel') {
       return noOpGeneration('Plan approval canceled', 'No changes generated because approval was canceled.');
@@ -216,7 +216,7 @@ export class UiBrowserAdapter implements TestTypeAdapter {
 
   async run(input: AdapterInput & { generation: GenerationResult }): Promise<TestRunResult> {
     input.signal.throwIfAborted();
-    input.emit({ type: 'progress', message: 'Running UI Browser adapter fallback runner.', percent: 75 });
+    await input.emit({ type: 'progress', message: 'Running UI Browser adapter fallback runner.', percent: 75 });
 
     if (input.generation.changes.length === 0) {
       return noOpRun();
@@ -262,7 +262,7 @@ export class UiBrowserAdapter implements TestTypeAdapter {
 
   async review(input: AdapterInput & { generation: GenerationResult; run: TestRunResult }): Promise<ReviewSummary> {
     input.signal.throwIfAborted();
-    input.emit({ type: 'progress', message: 'Summarizing UI Browser adapter results.', percent: 95 });
+    await input.emit({ type: 'progress', message: 'Summarizing UI Browser adapter results.', percent: 95 });
 
     const added = input.generation.changes.filter(change => change.action === 'Add').length;
     const updated = input.generation.changes.filter(change => change.action === 'Update').length;
@@ -296,28 +296,35 @@ export class UiBrowserAdapter implements TestTypeAdapter {
   }
 
   async #runUi(input: AdapterInput & { generation: GenerationResult }): Promise<UiBrowserRunnerResult> {
+    let commandProgress = Promise.resolve();
     try {
-      input.emit({ type: 'progress', message: 'Opening onboarding in agent-browser.', percent: 78 });
+      await input.emit({ type: 'progress', message: 'Opening onboarding in agent-browser.', percent: 78 });
       const result = await this.#runner.run({
         url: input.repository.frontend.url,
         signal: input.signal,
         onCommand: (args, index, total) => {
-          input.emit({
+          commandProgress = commandProgress.then(() => input.emit({
             type: 'progress',
             message: `Running agent-browser ${args[0]} (${index + 1}/${total}).`,
             percent: Math.min(90, 78 + Math.round(((index + 1) / total) * 10)),
-          });
+          })).then(() => undefined);
         },
       });
+      await commandProgress;
+      const evidence: UiBrowserRunnerResult['evidence'] = [];
       for (const item of result.evidence) {
         if (item.kind === 'screenshot') {
-          input.emit({ type: 'screenshot', artifact: item });
+          const emitted = await input.emit({ type: 'screenshot', artifact: item });
+          if (emitted.type === 'screenshot') evidence.push(emitted.artifact);
+        } else {
+          evidence.push(item);
         }
       }
-      return result;
+      return { ...result, evidence };
     } catch (error) {
+      await commandProgress;
       rethrowIfAbort(error, input.signal);
-      input.emit({
+      await input.emit({
         type: 'progress',
         message: `Warning: UI Browser runner failed. ${error instanceof Error ? error.message : String(error)}`,
         percent: 80,
@@ -363,7 +370,7 @@ export class UiBrowserAdapter implements TestTypeAdapter {
       });
     } catch (error) {
       rethrowIfAbort(error, input.signal);
-      input.emit({
+      await input.emit({
         type: 'progress',
         message: `Warning: ${warning} ${error instanceof Error ? error.message : String(error)}`,
         percent: 25,
@@ -384,7 +391,7 @@ export class UiBrowserAdapter implements TestTypeAdapter {
       });
     } catch (error) {
       rethrowIfAbort(error, input.signal);
-      input.emit({
+      await input.emit({
         type: 'progress',
         message: `Warning: ${warning} ${error instanceof Error ? error.message : String(error)}`,
         percent: 60,

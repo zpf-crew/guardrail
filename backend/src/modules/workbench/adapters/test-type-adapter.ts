@@ -21,7 +21,7 @@ type AdapterEvent = WorkbenchJobEvent extends infer Event
 export interface AdapterInput {
   session: WorkbenchSession;
   repository: RepositoryContext;
-  emit: (event: AdapterEvent) => void;
+  emit: (event: AdapterEvent) => Promise<AdapterEvent>;
   modelConnect: ModelConnect | null;
   signal: AbortSignal;
 }
