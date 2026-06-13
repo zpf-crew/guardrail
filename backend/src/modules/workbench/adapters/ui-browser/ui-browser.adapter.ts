@@ -319,11 +319,11 @@ export class UiBrowserAdapter implements TestTypeAdapter {
       rethrowIfAbort(error, input.signal);
       input.emit({
         type: 'progress',
-        message: `Warning: UI Browser runner failed; using fallback result. ${error instanceof Error ? error.message : String(error)}`,
+        message: `Warning: UI Browser runner failed. ${error instanceof Error ? error.message : String(error)}`,
         percent: 80,
       });
       return {
-        outcome: 'Skipped',
+        outcome: 'Failed',
         durationMs: 0,
         evidence: [],
         errorMessage: error instanceof Error ? error.message : String(error),

@@ -65,6 +65,27 @@ function failureMessage(args: string[], result: UiBrowserRunnerExecuteResult): s
   return `agent-browser ${args.join(' ')} failed: ${detail}`;
 }
 
+function errorMessage(error: unknown): string {
+  return error instanceof Error ? error.message : String(error);
+}
+
+function isAbortLike(error: unknown): boolean {
+  if (error instanceof DOMException && error.name === 'AbortError') {
+    return true;
+  }
+  if (!error || typeof error !== 'object') {
+    return false;
+  }
+
+  const data = error as { name?: unknown; code?: unknown; message?: unknown };
+  return data.name === 'AbortError'
+    || data.name === 'CanceledError'
+    || data.name === 'CancelledError'
+    || data.code === 'ABORT_ERR'
+    || data.code === 'ERR_CANCELED'
+    || (typeof data.message === 'string' && /\b(abort|aborted|cancelled|canceled)\b/i.test(data.message));
+}
+
 export class UiBrowserRunner {
   readonly #execute: UiBrowserRunnerExecutor;
 
@@ -80,7 +101,20 @@ export class UiBrowserRunner {
     for (const [index, commandArgs] of commands.entries()) {
       args.signal.throwIfAborted();
       args.onCommand?.(commandArgs, index, commands.length);
-      const result = await this.#execute(commandArgs, args.signal);
+      let result: UiBrowserRunnerExecuteResult;
+      try {
+        result = await this.#execute(commandArgs, args.signal);
+      } catch (error) {
+        if (args.signal.aborted || isAbortLike(error)) {
+          throw error;
+        }
+        return {
+          outcome: 'Failed',
+          durationMs: Date.now() - startedAt,
+          evidence,
+          errorMessage: `agent-browser ${commandArgs.join(' ')} failed: ${errorMessage(error)}`,
+        };
+      }
 
       if (commandArgs[0] === 'screenshot' && result.exitCode === 0) {
         evidence.push(evidenceFromScreenshot(result.stdout));

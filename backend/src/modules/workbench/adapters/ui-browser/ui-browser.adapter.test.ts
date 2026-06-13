@@ -144,15 +144,16 @@ test('ui browser adapter returns skipped fallback with explicit no-op runner', a
   assert.ok(run.ui.evidence.length > 0);
 });
 
-test('ui browser adapter returns skipped fallback for non-abort runner failure', async () => {
+test('ui browser adapter returns failed result for non-abort runner failure', async () => {
   const adapter = new UiBrowserAdapter({ runner: { run: async () => { throw new Error('browser unavailable'); } } });
   const input = await buildInput();
   const generation = await adapter.generate({ ...input, plan, approval: { decision: 'approve', answers: {} } });
 
   const run = await adapter.run({ ...input, generation });
 
-  assert.equal(run.ui.outcome, 'Skipped');
-  assert.equal(run.attention, undefined);
+  assert.equal(run.ui.outcome, 'Failed');
+  assert.equal(run.attention?.kind, 'failed');
+  assert.match(run.attention?.reason ?? '', /browser unavailable/);
 });
 
 test('ui browser adapter does not call runner after no-op generation', async () => {
