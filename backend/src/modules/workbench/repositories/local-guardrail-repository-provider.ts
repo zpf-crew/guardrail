@@ -8,7 +8,7 @@ interface LocalGuardrailRepositoryProviderOptions {
 
 export class LocalGuardrailRepositoryProvider implements RepositoryContextProvider {
   readonly #scanner: RepositoryScanner;
-  readonly #supportedRepoIds = new Set(['guardrail', 'local', 'mock']);
+  readonly #supportedRepoIds = new Set(['guardrail', 'local']);
 
   constructor(options: LocalGuardrailRepositoryProviderOptions) {
     this.#scanner = new RepositoryScanner({ rootDir: options.rootDir });

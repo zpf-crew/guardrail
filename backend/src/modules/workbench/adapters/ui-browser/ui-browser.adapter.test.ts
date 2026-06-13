@@ -6,7 +6,7 @@ import type { AdapterInput } from '../test-type-adapter.js';
 import type { WorkbenchSession, TestPlan } from '../../workbench.types.js';
 
 async function buildInput(overrides: Partial<AdapterInput> = {}): Promise<AdapterInput> {
-  const repo = await new LocalGuardrailRepositoryProvider({ rootDir: process.cwd() }).getContext('mock');
+  const repo = await new LocalGuardrailRepositoryProvider({ rootDir: process.cwd() }).getContext('guardrail');
   const session: WorkbenchSession = {
     id: 'wb-test',
     repo: repo.repo,

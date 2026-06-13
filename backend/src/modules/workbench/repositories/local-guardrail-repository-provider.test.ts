@@ -55,7 +55,7 @@ test('local provider rejects unsupported repository ids clearly', async () => {
   const provider = new LocalGuardrailRepositoryProvider({ rootDir: process.cwd() });
 
   await assert.rejects(
-    () => provider.getContext('external-repo'),
-    /Unsupported local Guardrail repository id "external-repo"/,
+    () => provider.getContext('mock'),
+    /Unsupported local Guardrail repository id "mock"/,
   );
 });
