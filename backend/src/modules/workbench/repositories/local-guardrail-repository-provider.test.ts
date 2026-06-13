@@ -46,7 +46,7 @@ test('local provider returns fresh scanner results between calls', async () => {
 
   const secondContext = await provider.getContext('guardrail', intent);
 
-  assert.equal(secondContext.relatedFiles[0]?.path, 'frontend/src/pages/OnboardingPage.tsx');
+  assert.ok(secondContext.relatedFiles.some(file => file.path === 'frontend/src/pages/OnboardingPage.tsx'));
   assert.equal(secondContext.qcCases.length, 1);
   assert.equal(secondContext.qcCases[0]?.automationStatus, 'missing');
 });

@@ -1,4 +1,7 @@
+import { basename, join } from 'node:path';
 import { modelConnect } from '../model-connect/index.js';
+import { StructuredModelRunner } from './model/structured-model-runner.js';
+import { SkillContractLoader } from './skills/skill-contract-loader.js';
 import type { TestTypeAdapter } from './adapters/test-type-adapter.js';
 import type { RegisteredArtifact, WorkbenchArtifactStore } from './artifacts/workbench-artifact-store.js';
 import type { WorkbenchJobEventBus } from './jobs/job-events.js';
@@ -67,10 +70,15 @@ export class WorkbenchService {
         const currentSession = this.requireSession(session.id);
         const repository = await this.repositoryProvider.getContext(currentSession.repo.name, currentSession.intent);
         const adapter = this.requireUiBrowserAdapter();
+        const repoRoot = basename(process.cwd()) === 'backend' ? join(process.cwd(), '..') : process.cwd();
+        const skills = new SkillContractLoader({ skillsDir: join(repoRoot, 'guardrail-skills') });
+        const structuredModel = new StructuredModelRunner({ modelConnect });
         const baseInput = {
           session: currentSession,
           repository,
           modelConnect,
+          skills,
+          structuredModel,
           signal,
           emit: (event: AdapterEvent) => this.emit(session.id, job.id, event),
         };

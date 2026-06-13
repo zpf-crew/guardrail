@@ -15,11 +15,20 @@ async function buildInput(overrides: Partial<AdapterInput> = {}): Promise<Adapte
     intent: { prompt: 'Test onboarding', feature: 'Checkout', testTypes: ['UI / Browser'], sources: ['Codebase'] },
   };
 
+  const skills = { load: async (name: string) => ({ name, content: `# ${name}` }) } as AdapterInput['skills'];
+  const structuredModel = {
+    runStep: async () => {
+      throw new Error('structuredModel.runStep must be overridden by this test');
+    },
+  } as unknown as AdapterInput['structuredModel'];
+
   return {
     session,
     repository: repo,
     emit: async event => event,
     modelConnect: null,
+    skills,
+    structuredModel,
     signal: new AbortController().signal,
     ...overrides,
   };

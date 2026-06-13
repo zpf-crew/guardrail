@@ -1,5 +1,7 @@
 import type { ModelConnect } from '../../model-connect/model-connect.service.js';
+import type { StructuredModelRunner } from '../model/structured-model-runner.js';
 import type { RepositoryContext } from '../repositories/repository-context-provider.js';
+import type { SkillContractLoader } from '../skills/skill-contract-loader.js';
 import type {
   GenerationResult,
   IsolationResult,
@@ -23,6 +25,8 @@ export interface AdapterInput {
   repository: RepositoryContext;
   emit: (event: AdapterEvent) => Promise<AdapterEvent>;
   modelConnect: ModelConnect | null;
+  skills: SkillContractLoader;
+  structuredModel: StructuredModelRunner;
   signal: AbortSignal;
 }
 

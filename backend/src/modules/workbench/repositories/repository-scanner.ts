@@ -73,9 +73,16 @@ export class RepositoryScanner {
   }
 
   async #fileInventory(): Promise<string[]> {
-    const output = await execFileAsync('rg', ['--files'], { cwd: this.#rootDir })
-      .then(result => result.stdout)
-      .catch(() => '');
+    let output: string;
+    try {
+      const result = await execFileAsync('rg', ['--files'], { cwd: this.#rootDir });
+      output = result.stdout;
+    } catch (error) {
+      throw new Error(
+        'Repository scan failed: ripgrep (rg) is required to inventory repository files. Install ripgrep and ensure it is on PATH.',
+        { cause: error },
+      );
+    }
 
     return output
       .split('\n')
@@ -97,7 +104,12 @@ export class RepositoryScanner {
   async #snippets(files: RelatedFile[]): Promise<SourceSnippet[]> {
     const snippets: SourceSnippet[] = [];
     for (const file of files) {
-      const text = await readFile(join(this.#rootDir, file.path), 'utf8');
+      let text: string;
+      try {
+        text = await readFile(join(this.#rootDir, file.path), 'utf8');
+      } catch {
+        continue;
+      }
       const lines = text.split('\n');
       const snippetText = buildSnippetText(lines, this.#maxSnippetChars);
       snippets.push({
@@ -161,8 +173,8 @@ function scoreFile(path: string, intent: ScanIntent): number {
 }
 
 function intentTokens(intent: ScanIntent): WeightedToken[] {
-  const promptTokens = tokenize(`${intent.prompt} ${intent.feature ?? ''}`, 3);
-  const typeTokens = tokenize(intent.testTypes.join(' '), 1);
+  const promptTokens = tokenizePrompt(`${intent.prompt} ${intent.feature ?? ''}`, 3);
+  const typeTokens = tokenizeTypes(intent.testTypes.join(' '), 1);
   const byValue = new Map<string, WeightedToken>();
 
   for (const token of [...promptTokens, ...typeTokens]) {
@@ -173,11 +185,22 @@ function intentTokens(intent: ScanIntent): WeightedToken[] {
   return [...byValue.values()];
 }
 
-function tokenize(value: string, weight: number): WeightedToken[] {
+const promptStopwords = ['for', 'the', 'and', 'with', 'add', 'improve', 'test', 'tests', 'ui', 'browser'];
+const typeStopwords = ['for', 'the', 'and', 'with', 'add', 'improve', 'test', 'tests'];
+
+function tokenizePrompt(value: string, weight: number): WeightedToken[] {
+  return tokenize(value, weight, promptStopwords);
+}
+
+function tokenizeTypes(value: string, weight: number): WeightedToken[] {
+  return tokenize(value, weight, typeStopwords);
+}
+
+function tokenize(value: string, weight: number, stopwords: string[]): WeightedToken[] {
   return searchable(value)
     .split(' ')
     .filter(token => token.length >= 2)
-    .filter(token => !['for', 'the', 'and', 'with', 'add', 'improve', 'test', 'tests', 'ui', 'browser'].includes(token))
+    .filter(token => !stopwords.includes(token))
     .map(token => ({ value: token, weight }));
 }
 
