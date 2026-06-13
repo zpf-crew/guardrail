@@ -130,8 +130,10 @@ test('ui browser adapter isolation does not alias repository context objects', a
   assert.equal(input.repository.qcCases[0]?.scenario, 'Complete onboarding with local repository and optional knowledge sources');
 });
 
-test('ui browser adapter returns skipped fallback when no runner is configured', async () => {
-  const adapter = new UiBrowserAdapter();
+test('ui browser adapter returns skipped fallback with explicit no-op runner', async () => {
+  const adapter = new UiBrowserAdapter({
+    runner: { run: async () => ({ outcome: 'Skipped', durationMs: 0, evidence: [] }) },
+  });
   const input = await buildInput();
   const generation = await adapter.generate({ ...input, plan, approval: { decision: 'approve', answers: {} } });
 

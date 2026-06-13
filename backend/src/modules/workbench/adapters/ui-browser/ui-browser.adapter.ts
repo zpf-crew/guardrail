@@ -12,25 +12,14 @@ import type {
 } from '../../workbench.types.js';
 import { buildAnalyzePrompt, buildGeneratePrompt } from './ui-browser.prompts.js';
 import { screenshotEvidence, traceEvidence } from './ui-browser-evidence.js';
+import { UiBrowserRunner, type UiBrowserRunnerResult, type UiBrowserRunnerRunArgs } from './ui-browser-runner.js';
 
-interface UiBrowserRunnerResult {
-  outcome: RunOutcome;
-  durationMs: number;
-  evidence: Evidence[];
-  errorMessage?: string;
-}
-
-interface UiBrowserRunner {
-  run(args: {
-    command: string;
-    url: string;
-    featureFile: string;
-    signal: AbortSignal;
-  }): Promise<UiBrowserRunnerResult>;
+interface UiBrowserRunnerLike {
+  run(args: UiBrowserRunnerRunArgs): Promise<UiBrowserRunnerResult>;
 }
 
 interface UiBrowserAdapterOptions {
-  runner?: UiBrowserRunner;
+  runner?: UiBrowserRunnerLike;
 }
 
 const onboardingBehavior = 'Complete onboarding with selected repository';
@@ -130,10 +119,10 @@ function noOpRun(): TestRunResult {
 export class UiBrowserAdapter implements TestTypeAdapter {
   readonly testType = 'UI / Browser' as const;
 
-  readonly #runner?: UiBrowserRunner;
+  readonly #runner: UiBrowserRunnerLike;
 
   constructor(options: UiBrowserAdapterOptions = {}) {
-    this.#runner = options.runner;
+    this.#runner = options.runner ?? new UiBrowserRunner();
   }
 
   async analyze(input: AdapterInput): Promise<IsolationResult> {
@@ -307,21 +296,25 @@ export class UiBrowserAdapter implements TestTypeAdapter {
   }
 
   async #runUi(input: AdapterInput & { generation: GenerationResult }): Promise<UiBrowserRunnerResult> {
-    if (!this.#runner) {
-      return {
-        outcome: 'Skipped',
-        durationMs: 0,
-        evidence: [],
-      };
-    }
-
     try {
-      return await this.#runner.run({
-        command: uiCommandFor(input),
+      input.emit({ type: 'progress', message: 'Opening onboarding in agent-browser.', percent: 78 });
+      const result = await this.#runner.run({
         url: input.repository.frontend.url,
-        featureFile: input.generation.changes[0]?.file ?? generatedFile,
         signal: input.signal,
+        onCommand: (args, index, total) => {
+          input.emit({
+            type: 'progress',
+            message: `Running agent-browser ${args[0]} (${index + 1}/${total}).`,
+            percent: Math.min(90, 78 + Math.round(((index + 1) / total) * 10)),
+          });
+        },
       });
+      for (const item of result.evidence) {
+        if (item.kind === 'screenshot') {
+          input.emit({ type: 'screenshot', artifact: item });
+        }
+      }
+      return result;
     } catch (error) {
       rethrowIfAbort(error, input.signal);
       input.emit({
