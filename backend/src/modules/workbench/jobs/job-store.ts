@@ -85,6 +85,14 @@ export class WorkbenchJobStore {
     return cloneIfDefined(this.sessions.get(sessionId));
   }
 
+  updateSessionIntent(sessionId: string, intent: Partial<IntentInput>): WorkbenchSession {
+    const session = this.sessions.get(sessionId);
+    if (!session) throw new Error(`Workbench session not found: ${sessionId}`);
+
+    session.intent = { ...session.intent, ...clone(intent) };
+    return clone(session);
+  }
+
   getJob(sessionId: string, jobId: string): WorkbenchJob | undefined {
     return cloneIfDefined(this.jobs.get(sessionId)?.get(jobId));
   }

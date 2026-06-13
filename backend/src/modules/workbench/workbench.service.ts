@@ -40,6 +40,11 @@ export class WorkbenchService {
     return this.store.createSession(intent);
   }
 
+  updateSessionIntent(sessionId: string, intent: Partial<IntentInput>): WorkbenchSession {
+    this.requireSession(sessionId);
+    return this.store.updateSessionIntent(sessionId, intent);
+  }
+
   startJob(
     sessionId: string,
     step: WorkbenchJobStep,

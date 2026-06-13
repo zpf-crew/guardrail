@@ -61,14 +61,26 @@ export class WorkbenchApiError extends Error {
   }
 }
 
-async function post<T>(path: string, body?: unknown): Promise<T> {
+async function request<T>(method: 'POST' | 'PATCH', path: string, body?: unknown): Promise<T> {
+  const init: RequestInit = { method };
+  if (body !== undefined) {
+    init.headers = { 'Content-Type': 'application/json' };
+    init.body = JSON.stringify(body);
+  }
+
   const res = await fetch(`${API_BASE}${path}`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: body ? JSON.stringify(body) : undefined,
+    ...init,
   });
   if (!res.ok) throw new WorkbenchApiError(`${path} failed (${res.status} ${res.statusText})`);
   return (await res.json()) as T;
+}
+
+async function post<T>(path: string, body?: unknown): Promise<T> {
+  return request<T>('POST', path, body);
+}
+
+async function patch<T>(path: string, body?: unknown): Promise<T> {
+  return request<T>('PATCH', path, body);
 }
 
 const repoId = () => getActiveRepoId() ?? 'mock';
@@ -142,6 +154,14 @@ export async function createWorkbenchSession(intent?: Partial<IntentInput>): Pro
     return { ...mockWorkbench, intent: { ...mockWorkbench.intent, ...intent } };
   }
   return post<WorkbenchSession>('/api/workbench/sessions', { repoId: repoId(), intent });
+}
+
+export async function updateWorkbenchIntent(id: string, intent: IntentInput): Promise<WorkbenchSession> {
+  if (!API_BASE) {
+    await delay(100);
+    return { ...mockWorkbench, id, intent: { ...mockWorkbench.intent, ...intent } };
+  }
+  return patch<WorkbenchSession>(`/api/workbench/${id}`, { intent });
 }
 
 /** S2 — isolate & classify the requested behavior. */

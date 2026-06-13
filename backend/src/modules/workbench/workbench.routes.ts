@@ -15,6 +15,10 @@ interface CreateSessionBody {
   intent?: Partial<IntentInput>;
 }
 
+interface UpdateSessionBody {
+  intent?: Partial<IntentInput>;
+}
+
 interface GenerateJobBody {
   approval?: PlanApproval;
 }
@@ -23,6 +27,14 @@ export function buildWorkbenchRoutes(service: WorkbenchService) {
   return async function workbenchRoutes(app: FastifyInstance) {
     app.post('/sessions', async (request: FastifyRequest<{ Body: CreateSessionBody }>) => {
       return service.createSession(request.body?.intent);
+    });
+
+    app.patch('/:sessionId', async (request: FastifyRequest<{ Params: SessionParams; Body: UpdateSessionBody }>, reply) => {
+      try {
+        return service.updateSessionIntent(request.params.sessionId, request.body?.intent ?? {});
+      } catch (error) {
+        return routeError(reply, error);
+      }
     });
 
     app.post('/:sessionId/analyze/jobs', async (request: FastifyRequest<{ Params: SessionParams }>, reply) => {
@@ -80,6 +92,9 @@ export function buildWorkbenchRoutes(service: WorkbenchService) {
           'Content-Type': 'text/event-stream',
           'Cache-Control': 'no-cache',
           Connection: 'keep-alive',
+          'Access-Control-Allow-Origin': '*',
+          'Access-Control-Allow-Methods': 'GET,POST,PATCH,OPTIONS',
+          'Access-Control-Allow-Headers': 'Content-Type',
         });
 
         const replayCounts = new Map<string, number>();

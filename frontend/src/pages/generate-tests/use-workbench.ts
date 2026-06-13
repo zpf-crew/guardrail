@@ -2,6 +2,7 @@ import * as React from 'react';
 import type { WorkbenchSession, IntentInput } from '@/types/testlens';
 import {
   createWorkbenchSession,
+  updateWorkbenchIntent,
   analyzeSession,
   planSession,
   generateSession,
@@ -85,7 +86,9 @@ export function useWorkbench(initialIntent?: Partial<IntentInput>): UseWorkbench
     if (!session) return;
     setPending('analyze');
     try {
-      const isolation = await analyzeSession(session.id);
+      const updated = await updateWorkbenchIntent(session.id, session.intent);
+      setSession(updated);
+      const isolation = await analyzeSession(updated.id);
       setSession(s => (s ? { ...s, isolation } : s));
       setCurrentStep(1);
     } catch (e) {

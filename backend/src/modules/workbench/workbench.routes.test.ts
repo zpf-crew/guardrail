@@ -6,7 +6,13 @@ import type { WorkbenchJobEvent, WorkbenchJobStatus } from './workbench.types.js
 type Snapshot = {
   job: { status: WorkbenchJobStatus; error?: string };
   events: WorkbenchJobEvent[];
-  session: { steps: Record<string, string> };
+  session: {
+    intent: {
+      prompt: string;
+      testTypes: string[];
+    };
+    steps: Record<string, string>;
+  };
 };
 
 test('workbench routes create session, start analyze job, and expose job events', async () => {
@@ -40,6 +46,82 @@ test('workbench routes return 404 for missing session and job', async () => {
     url: `/api/workbench/${session.id}/jobs/missing-job`,
   });
   assert.equal(missingJobRes.statusCode, 404);
+});
+
+test('workbench routes allow browser clients from the frontend origin', async () => {
+  const app = buildApp();
+
+  const optionsRes = await app.inject({
+    method: 'OPTIONS',
+    url: '/api/workbench/sessions',
+    headers: { origin: 'http://127.0.0.1:5173' },
+  });
+  assert.equal(optionsRes.statusCode, 204);
+  assert.equal(optionsRes.headers['access-control-allow-origin'], '*');
+  assert.match(String(optionsRes.headers['access-control-allow-methods']), /POST/);
+  assert.match(String(optionsRes.headers['access-control-allow-methods']), /PATCH/);
+
+  const sessionRes = await app.inject({
+    method: 'POST',
+    url: '/api/workbench/sessions',
+    headers: { origin: 'http://127.0.0.1:5173' },
+    payload: { intent: { prompt: 'Test onboarding', feature: 'Checkout', testTypes: ['UI / Browser'], sources: ['Codebase'] } },
+  });
+  assert.equal(sessionRes.statusCode, 200);
+  assert.equal(sessionRes.headers['access-control-allow-origin'], '*');
+
+  const session = sessionRes.json();
+  const jobRes = await app.inject({
+    method: 'POST',
+    url: `/api/workbench/${session.id}/analyze/jobs`,
+    headers: { origin: 'http://127.0.0.1:5173' },
+  });
+  assert.equal(jobRes.statusCode, 200);
+  const job = jobRes.json();
+  await waitForJob(app, session.id, job.jobId, ['succeeded']);
+
+  const eventsRes = await withTimeout(
+    app.inject({
+      method: 'GET',
+      url: `/api/workbench/${session.id}/jobs/${job.jobId}/events`,
+      headers: { origin: 'http://127.0.0.1:5173' },
+    }),
+    500,
+  );
+  assert.equal(eventsRes.statusCode, 200);
+  assert.equal(eventsRes.headers['access-control-allow-origin'], '*');
+  assert.equal(eventsRes.headers['content-type'], 'text/event-stream');
+});
+
+test('workbench routes update session intent before starting jobs', async () => {
+  const app = buildApp();
+  const session = await createSession(app);
+
+  const updateRes = await app.inject({
+    method: 'PATCH',
+    url: `/api/workbench/${session.id}`,
+    headers: { origin: 'http://127.0.0.1:5173' },
+    payload: {
+      intent: {
+        prompt: 'Add UI Browser tests for onboarding repository selection',
+        feature: 'Checkout',
+        testTypes: ['UI / Browser'],
+        sources: ['Codebase'],
+      },
+    },
+  });
+  assert.equal(updateRes.statusCode, 200);
+  assert.equal(updateRes.headers['access-control-allow-origin'], '*');
+  assert.equal(updateRes.json().intent.prompt, 'Add UI Browser tests for onboarding repository selection');
+  assert.deepEqual(updateRes.json().intent.testTypes, ['UI / Browser']);
+
+  const jobRes = await app.inject({ method: 'POST', url: `/api/workbench/${session.id}/analyze/jobs` });
+  assert.equal(jobRes.statusCode, 200);
+  const job = jobRes.json();
+
+  const snapshot = await waitForJob(app, session.id, job.jobId, ['succeeded']);
+  assert.equal(snapshot.session.intent.prompt, 'Add UI Browser tests for onboarding repository selection');
+  assert.deepEqual(snapshot.session.intent.testTypes, ['UI / Browser']);
 });
 
 test('workbench plan job without isolation fails and marks the step warn', async () => {
