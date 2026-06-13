@@ -21,6 +21,7 @@ test('scanner finds onboarding files from local guardrail repo', async () => {
   assert.equal(onboardingSnippet.startLine, 1);
   assert.ok(onboardingSnippet.endLine >= onboardingSnippet.startLine);
   assert.ok(onboardingSnippet.text.length > 0);
+  assert.ok(context.frontend);
   assert.equal(context.frontend.route, '/onboarding');
   assert.ok(context.qcCases.some(qcCase => qcCase.id === 'QC-ONB-001'));
 });

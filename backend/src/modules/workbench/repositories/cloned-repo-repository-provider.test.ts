@@ -3,7 +3,38 @@ import assert from 'node:assert/strict';
 import { mkdtemp, mkdir, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
+import type { DashboardPayload } from '../../onboarding/onboarding.types.js';
 import { ClonedRepoRepositoryProvider } from './cloned-repo-repository-provider.js';
+
+const emptyDashboardSections = {
+  structure: [],
+  coverage: [],
+  riskHeatmap: { columns: ['Failed', 'Flaky', 'Missing', 'Suspect'] as DashboardPayload['riskHeatmap']['columns'], rows: [] },
+  activity: [],
+};
+
+function dashboardFixture(
+  root: string,
+  overrides: Partial<DashboardPayload> = {},
+): DashboardPayload {
+  return {
+    lastScanAt: '2026-06-13T00:00:00.000Z',
+    health: { score: 72, max: 100, grade: 'C+', trend: { value: 0, sentiment: 'neutral' } },
+    metrics: { coverage: { value: 45 } },
+    testCases: [{
+      id: 'TC-1', title: 'Login flow', status: 'missing', type: 'UI / Browser',
+      feature: 'Auth', risk: 'High', lastRunAt: null, recentRuns: [], description: 'No UI test',
+    }],
+    insights: [{
+      id: 'INS-1', severity: 'High', title: 'Missing UI coverage', description: 'Auth untested',
+      action: 'Generate missing tests', relatedTestIds: ['TC-1'],
+    }],
+    repo: { name: 'acme-app', path: root, branch: 'main' },
+    filesIndexed: 10,
+    ...emptyDashboardSections,
+    ...overrides,
+  };
+}
 
 test('returns hybrid context from clone scan and onboarding dashboard', async () => {
   const root = await mkdtemp(join(tmpdir(), 'guardrail-clone-'));
@@ -25,18 +56,7 @@ test('returns hybrid context from clone scan and onboarding dashboard', async ()
       commitSha: 'abc123',
       status: 'cloned',
     }),
-    getDashboard: async () => ({
-      lastScanAt: '2026-06-13T00:00:00.000Z',
-      health: { score: 72, max: 100, grade: 'C+', trend: { value: 0, sentiment: 'neutral' } },
-      metrics: { coverage: { value: 45 } },
-      testCases: [{
-        id: 'TC-1', title: 'Login flow', status: 'missing', type: 'UI / Browser',
-        feature: 'Auth', risk: 'High', lastRunAt: null, recentRuns: [], description: 'No UI test',
-      }],
-      insights: [{ id: 'INS-1', severity: 'High', title: 'Missing UI coverage', description: 'Auth untested', action: 'Generate missing tests', relatedTestIds: ['TC-1'] }],
-      repo: { name: 'acme-app', path: root, branch: 'main' },
-      filesIndexed: 10,
-    }),
+    getDashboard: async () => dashboardFixture(root),
   });
 
   const context = await provider.getContext('repo-1', 'user-1', {

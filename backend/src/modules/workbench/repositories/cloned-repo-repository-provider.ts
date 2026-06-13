@@ -37,7 +37,7 @@ export class ClonedRepoRepositoryProvider implements RepositoryContextProvider {
     const dashboard = await this.#deps.getDashboard(repoId, userId);
     const scanner = new RepositoryScanner({ rootDir: repo.clonePath });
     const files = await scanner.scanFiles(intent ?? {
-      prompt: '', feature: null, testTypes: ['UI / Browser'], sources: ['Codebase'],
+      prompt: '', feature: null, testTypes: ['UI / Browser'],
     });
 
     return {

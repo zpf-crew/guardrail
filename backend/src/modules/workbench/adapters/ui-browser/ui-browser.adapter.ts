@@ -120,7 +120,7 @@ export class UiBrowserAdapter implements TestTypeAdapter {
     } else {
       const orchestrator = new DevServerOrchestrator();
       this.#devServer = {
-        resolve: resolveDevServerTarget,
+        resolve: (clonePath, sessionId) => resolveDevServerTarget(clonePath, { sessionId }),
         start: (target, signal, route) => orchestrator.start(target, signal, route),
         stop: lease => orchestrator.stop(lease),
       };
