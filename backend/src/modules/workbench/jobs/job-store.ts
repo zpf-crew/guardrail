@@ -1,5 +1,4 @@
 import { randomUUID } from 'node:crypto';
-import path from 'node:path';
 import type {
   IntentInput,
   RepoRef,
@@ -20,12 +19,6 @@ type WorkbenchStepResultByStep = {
   review: NonNullable<WorkbenchSession['review']>;
 };
 
-const DEFAULT_REPO: RepoRef = {
-  name: 'guardrail',
-  path: path.basename(process.cwd()) === 'backend' ? path.dirname(process.cwd()) : process.cwd(),
-  branch: 'main',
-};
-
 const DEFAULT_INTENT: IntentInput = {
   prompt: '',
   feature: null,
@@ -38,10 +31,17 @@ export class WorkbenchJobStore {
   private readonly jobs = new Map<string, Map<string, WorkbenchJob>>();
   private readonly events = new Map<string, Map<string, WorkbenchJobEvent[]>>();
 
-  createSession(intent: Partial<IntentInput> = {}): WorkbenchSession {
+  createSession(input: {
+    repoId: string;
+    userId: string;
+    repo: RepoRef;
+    intent?: Partial<IntentInput>;
+  }): WorkbenchSession {
     const session = clone<WorkbenchSession>({
       id: randomUUID(),
-      repo: DEFAULT_REPO,
+      repoId: input.repoId,
+      userId: input.userId,
+      repo: input.repo,
       createdAt: new Date().toISOString(),
       steps: {
         intent: 'active',
@@ -51,7 +51,7 @@ export class WorkbenchJobStore {
         run: 'locked',
         review: 'locked',
       },
-      intent: { ...DEFAULT_INTENT, ...intent },
+      intent: { ...DEFAULT_INTENT, ...input.intent },
     });
 
     this.sessions.set(session.id, session);

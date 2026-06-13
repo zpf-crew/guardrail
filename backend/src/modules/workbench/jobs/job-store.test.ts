@@ -1,10 +1,26 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { WorkbenchJobStore } from './job-store.js';
+import type { IntentInput, RepoRef } from '../workbench.types.js';
+
+const TEST_REPO: RepoRef = {
+  name: 'guardrail',
+  path: process.cwd(),
+  branch: 'main',
+};
+
+function createTestSession(store: WorkbenchJobStore, intent?: Partial<IntentInput>) {
+  return store.createSession({
+    repoId: 'guardrail',
+    userId: 'user-1',
+    repo: TEST_REPO,
+    intent,
+  });
+}
 
 test('job store records sessions, jobs, events, and step results', () => {
   const store = new WorkbenchJobStore();
-  const session = store.createSession({
+  const session = createTestSession(store, {
     prompt: 'Run onboarding UI Browser test',
     feature: 'Checkout',
     testTypes: ['UI / Browser'],
@@ -34,7 +50,7 @@ test('job store records sessions, jobs, events, and step results', () => {
 
 test('job store returns snapshots that do not mutate internal state', () => {
   const store = new WorkbenchJobStore();
-  const session = store.createSession({ prompt: 'Check snapshots' });
+  const session = createTestSession(store, { prompt: 'Check snapshots' });
   const job = store.createJob(session.id, 'plan');
 
   session.intent.prompt = 'mutated prompt';
@@ -50,7 +66,7 @@ test('job store does not retain caller-owned intent arrays', () => {
   const store = new WorkbenchJobStore();
   const testTypes: Array<'UI / Browser' | 'Unit'> = ['UI / Browser'];
   const sources: Array<'Codebase' | 'QC test cases'> = ['Codebase'];
-  const session = store.createSession({
+  const session = createTestSession(store, {
     prompt: 'Check caller arrays',
     testTypes,
     sources,

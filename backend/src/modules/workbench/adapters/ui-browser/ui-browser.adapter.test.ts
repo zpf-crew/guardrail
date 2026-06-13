@@ -6,9 +6,15 @@ import type { AdapterInput } from '../test-type-adapter.js';
 import type { GenerationResult, WorkbenchSession, TestPlan } from '../../workbench.types.js';
 
 async function buildInput(overrides: Partial<AdapterInput> = {}): Promise<AdapterInput> {
-  const repo = await new LocalGuardrailRepositoryProvider({ rootDir: process.cwd() }).getContext('guardrail');
+  const repo = await new LocalGuardrailRepositoryProvider({ rootDir: process.cwd() }).getContext(
+    'guardrail',
+    'user-1',
+    { prompt: 'Test onboarding', feature: 'Checkout', testTypes: ['UI / Browser'], sources: ['Codebase'] },
+  );
   const session: WorkbenchSession = {
     id: 'wb-test',
+    repoId: 'guardrail',
+    userId: 'user-1',
     repo: repo.repo,
     createdAt: '2026-06-12T00:00:00.000Z',
     steps: { intent: 'done', isolation: 'active', plan: 'locked', generate: 'locked', run: 'locked', review: 'locked' },

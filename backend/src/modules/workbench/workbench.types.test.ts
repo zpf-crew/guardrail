@@ -11,6 +11,8 @@ import type {
 test('workbench schema mirror accepts the shared frontend workbench shapes', () => {
   const session: WorkbenchSession = {
     id: 'wb-local-1',
+    repoId: 'guardrail',
+    userId: 'user-1',
     repo: { name: 'guardrail', path: '/repo', branch: 'main', commit: 'abc123' },
     createdAt: '2026-06-12T00:00:00.000Z',
     steps: {

@@ -58,6 +58,7 @@ export type WorkflowStepStatus = 'locked' | 'active' | 'done' | 'warn';
 export interface WorkbenchSession {
   id: string;
   repoId: string;
+  userId: string;
   repo: RepoRef;
   createdAt: string;
   steps: Record<WorkflowStepId, WorkflowStepStatus>;

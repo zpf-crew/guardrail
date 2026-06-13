@@ -14,6 +14,7 @@ import type {
   IntentInput,
   IsolationResult,
   PlanApproval,
+  RepoRef,
   ReviewSummary,
   TestPlan,
   TestRunResult,
@@ -51,8 +52,13 @@ export class WorkbenchService {
     private readonly testHooks?: WorkbenchServiceTestHooks,
   ) {}
 
-  createSession(intent?: Partial<IntentInput>): WorkbenchSession {
-    return this.store.createSession(intent);
+  createSession(
+    repoId: string,
+    userId: string,
+    repo: RepoRef,
+    intent?: Partial<IntentInput>,
+  ): WorkbenchSession {
+    return this.store.createSession({ repoId, userId, repo, intent });
   }
 
   updateSessionIntent(sessionId: string, intent: Partial<IntentInput>): WorkbenchSession {
@@ -74,7 +80,11 @@ export class WorkbenchService {
       onError: message => this.onError(session.id, job.id, message),
       run: async signal => {
         const currentSession = this.requireSession(session.id);
-        const repository = await this.repositoryProvider.getContext(currentSession.repo.name, currentSession.intent);
+        const repository = await this.repositoryProvider.getContext(
+          currentSession.repoId,
+          currentSession.userId,
+          currentSession.intent,
+        );
         const adapter = this.requireUiBrowserAdapter();
         const repoRoot = basename(process.cwd()) === 'backend' ? join(process.cwd(), '..') : process.cwd();
         const skills = (this.testHooks?.skills
