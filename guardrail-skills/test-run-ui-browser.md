@@ -12,7 +12,7 @@ The backend provides JSON with:
 - `generation`
 - `repository`
 - `availableActions`
-- `schemaName`: `UiBrowserRunPlan`
+- `schemaName`: `UiBrowserRunPlan`, a backend runtime validation contract introduced by the workbench pipeline, not a `WorkbenchStepResult`.
 
 ## Rules
 
@@ -23,6 +23,8 @@ The backend provides JSON with:
 - Return JSON only.
 
 ## Required Output
+
+The backend validates this action-plan JSON before converting it into `TestRunResult` through `agent-browser` execution.
 
 Return:
 

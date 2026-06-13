@@ -16,6 +16,7 @@ The backend provides JSON with:
 
 - Use repository evidence first.
 - Do not invent files, coverage, failures, or existing tests.
+- If line or branch coverage is unknown, set the missing `currentCoverage` number to `0` and explain the unknown coverage in `classifications[].explanation`.
 - If evidence is missing, state the uncertainty in `classifications[].explanation`.
 - Prefer behavior-level classifications over implementation details.
 - For UI Browser requests, include browser-visible user journeys when the repository context supports them.
