@@ -16,7 +16,7 @@ test('buildReviewSummary counts changes and run outcomes', () => {
       ui: { command: 'agent-browser open http://localhost:5173/onboarding', browser: 'Chromium', outcome: 'Passed', passed: 1, durationMs: 1200, evidence: [{ kind: 'screenshot', label: 'Loaded', href: '/api/workbench/s/a.png' }] },
       mobile: { command: 'not run', devices: [], outcome: 'Skipped', passed: 0, durationMs: 0, evidence: [] },
       coverage: [{ metric: 'Line coverage', before: 40, after: 40 }],
-      matrix: [{ title: 'T1', type: 'UI / Browser', status: 'Passed', duration: '1.2s', evidence: 'screenshot', file: 'guardrail-tests/ui/a.feature' }],
+      matrix: [{ title: 'T1', type: 'UI / Browser', status: 'Passed', duration: '1.2s', evidence: 'screenshot', reason: null, file: 'guardrail-tests/ui/a.feature' }],
     },
   }, 'Apply after reviewing screenshot evidence.');
 
@@ -40,7 +40,7 @@ test('buildReviewSummary counts unresolved plan questions', () => {
       ui: { command: 'agent-browser open http://localhost:5173/onboarding', browser: 'Chromium', outcome: 'Passed', passed: 1, durationMs: 1200, evidence: [] },
       mobile: { command: 'not run', devices: [], outcome: 'Skipped', passed: 0, durationMs: 0, evidence: [] },
       coverage: [{ metric: 'Line coverage', before: 40, after: 40 }],
-      matrix: [{ title: 'T1', type: 'UI / Browser', status: 'Passed', duration: '1.2s', evidence: null, file: 'guardrail-tests/ui/a.feature' }],
+      matrix: [{ title: 'T1', type: 'UI / Browser', status: 'Passed', duration: '1.2s', evidence: null, reason: null, file: 'guardrail-tests/ui/a.feature' }],
     },
     plan: {
       proposedActions: [{ action: 'add', label: 'Add tests', count: 1 }],

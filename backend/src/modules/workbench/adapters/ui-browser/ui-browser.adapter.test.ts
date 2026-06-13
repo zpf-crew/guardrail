@@ -374,6 +374,28 @@ test('ui browser adapter returns attention for flaky runner results', async () =
   assert.equal(run.attention?.kind, 'flaky');
 });
 
+test('ui browser adapter stores per-test failure reason in matrix rows', async () => {
+  const adapter = new UiBrowserAdapter({
+    devServer: stubDevServer(),
+    runner: {
+      run: async () => ({
+        outcome: 'Failed',
+        durationMs: 2100,
+        evidence: [{ kind: 'screenshot', label: 'Homepage loaded', href: '/tmp/home.png' }],
+        errorMessage: 'agent-browser find role button click --name Add to cart failed: element not found',
+      }),
+    },
+  });
+  const input = await buildInput({ structuredModel: generationStructuredModel() });
+  const generation = await adapter.generate({ ...input, plan, approval: { decision: 'approve', answers: {} } });
+
+  const run = await adapter.run({ ...input, generation });
+
+  assert.equal(run.matrix[0]?.status, 'Failed');
+  assert.match(run.matrix[0]?.reason ?? '', /Add to cart failed/);
+  assert.match(run.attention?.reason ?? '', /Add to cart failed/);
+});
+
 test('ui browser adapter returns failed result for non-abort runner failure', async () => {
   const adapter = new UiBrowserAdapter({
     devServer: stubDevServer(),

@@ -19,7 +19,9 @@ The backend provides JSON with:
 ## Rules
 
 - Use only supported browser actions.
-- Prefer role/name selectors and visible UI text.
+- Prefer role/name selectors and visible UI text from repository snippets.
+- `assertText` must use **literal visible UI strings** on the page (button labels, headings, toast text) — not Gherkin paraphrases like "product card displays price".
+- `click` names must match the element's accessible name in the app.
 - Add screenshot checkpoints after meaningful user-visible state changes.
 - Do not claim success for unmapped steps.
 - Return JSON only.

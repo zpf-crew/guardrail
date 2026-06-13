@@ -64,6 +64,11 @@ function matrixEvidenceLabel(evidence: UiBrowserRunnerResult['evidence']): strin
   return evidence.length > 0 ? evidence.map(item => item.kind).join(', ') : null;
 }
 
+function matrixFailureReason(outcome: RunOutcome, errorMessage?: string): string | null {
+  if (outcome === 'Passed' || outcome === 'Skipped') return null;
+  return errorMessage ?? `UI Browser runner reported ${outcome.toLowerCase()} outcome.`;
+}
+
 function uiCommandFor(targetUrl: string | null): string {
   return targetUrl ? `agent-browser open ${targetUrl}` : 'agent-browser open (dev server unavailable)';
 }
@@ -129,6 +134,7 @@ function noOpRun(): TestRunResult {
         status: 'Skipped',
         duration: null,
         evidence: null,
+        reason: null,
         file: '',
       },
     ],
@@ -307,7 +313,6 @@ export class UiBrowserAdapter implements TestTypeAdapter {
     const { result: runnerResult, targetUrl, matrix } = await this.#runUi(input);
     const command = uiCommandFor(targetUrl);
     const evidence = runnerResult.evidence;
-    const primaryChange = uiChanges[0];
     const passedCount = matrix.filter(row => row.status === 'Passed').length;
 
     return {
@@ -326,7 +331,7 @@ export class UiBrowserAdapter implements TestTypeAdapter {
         { metric: 'Branch coverage', before: 0, after: 0 },
       ],
       matrix,
-      attention: this.#attentionFor(runnerResult, primaryChange?.title ?? 'UI Browser test'),
+      attention: this.#attentionFor(matrix),
     };
   }
 
@@ -391,6 +396,7 @@ export class UiBrowserAdapter implements TestTypeAdapter {
         status: 'Failed',
         duration: null,
         evidence: null,
+        reason: errorMessage,
         file: change.file,
       })),
     });
@@ -491,6 +497,7 @@ export class UiBrowserAdapter implements TestTypeAdapter {
           duration: durationLabel(changeResult.durationMs),
           evidence: matrixEvidenceLabel(changeEvidence),
           evidenceItems: changeEvidence.length > 0 ? changeEvidence : undefined,
+          reason: matrixFailureReason(changeResult.outcome, changeResult.errorMessage),
           file: change.file,
         });
       }
@@ -521,6 +528,7 @@ export class UiBrowserAdapter implements TestTypeAdapter {
           status: 'Failed',
           duration: null,
           evidence: null,
+          reason: errorMessage,
           file: change.file,
         });
       }
@@ -541,21 +549,22 @@ export class UiBrowserAdapter implements TestTypeAdapter {
     }
   }
 
-  #attentionFor(result: UiBrowserRunnerResult, testTitle: string): TestRunResult['attention'] {
-    if (result.outcome !== 'Failed' && result.outcome !== 'Flaky') {
+  #attentionFor(matrix: TestResultRow[]): TestRunResult['attention'] {
+    const failed = matrix.find(row => row.status === 'Failed' || row.status === 'Flaky');
+    if (!failed) {
       return undefined;
     }
 
     return {
-      testTitle,
-      kind: result.outcome === 'Flaky' ? 'flaky' : 'failed',
-      reason: result.errorMessage ?? `UI Browser runner reported ${result.outcome.toLowerCase()} outcome.`,
-      likelyCause: result.outcome === 'Flaky'
+      testTitle: failed.title,
+      kind: failed.status === 'Flaky' ? 'flaky' : 'failed',
+      reason: failed.reason ?? `UI Browser runner reported ${failed.status.toLowerCase()} outcome.`,
+      likelyCause: failed.status === 'Flaky'
         ? 'The UI or browser automation has inconsistent timing or state.'
-        : 'The local frontend page was unavailable or did not reach the expected state.',
-      suggestedFix: result.outcome === 'Flaky'
+        : 'A browser command in the run plan did not complete successfully.',
+      suggestedFix: failed.status === 'Flaky'
         ? 'Review the captured trace and stabilize wait conditions before applying.'
-        : 'Start the frontend and rerun the UI Browser scenario.',
+        : 'Review the failure reason, fix selectors or assertions, and rerun.',
       actions: ['ask-agent-to-fix', 'accept-and-keep', 'revert-generated-test'],
     };
   }

@@ -117,7 +117,7 @@ export function RunStep({ run, activeTestType, ranTests, running, progress, evid
         <BlockHeader label="Test results" count={complete ? total : undefined} />
         <table className="w-full border-collapse text-[12.5px] mt-[4px]">
           <thead>
-            <tr>{['Test', 'Type', 'Status', 'Duration', 'Evidence', 'File'].map(h => (
+            <tr>{['Test', 'Type', 'Status', 'Reason', 'Duration', 'Evidence', 'File'].map(h => (
               <th key={h} className="text-left text-[10.5px] uppercase tracking-[0.5px] text-[#6b7488] font-semibold p-[9px_12px] border-b border-[rgba(255,255,255,0.07)]">{h}</th>
             ))}</tr>
           </thead>
@@ -132,6 +132,11 @@ export function RunStep({ run, activeTestType, ranTests, running, progress, evid
                     <span className="inline-flex items-center gap-[6px] text-[12px] font-semibold px-[10px] py-[3px] rounded-[7px]" style={{ background: style.bg, color: style.color }}>
                       <RunResultIcon status={ICON_STATUS[row.status]} />{row.status}
                     </span>
+                  </td>
+                  <td className="p-[11px_12px] border-b border-[rgba(255,255,255,0.07)] text-[#98a1b3] max-w-[280px]">
+                    {row.reason
+                      ? <span className="text-[11.5px] leading-[1.45] text-[#fb7185] break-words">{row.reason}</span>
+                      : <span className="text-[#6b7488]">—</span>}
                   </td>
                   <td className="p-[11px_12px] border-b border-[rgba(255,255,255,0.07)] text-[#98a1b3]">{row.duration ?? '—'}</td>
                   <td className="p-[11px_12px] border-b border-[rgba(255,255,255,0.07)]">

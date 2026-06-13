@@ -244,6 +244,8 @@ export interface TestResultRow {
   duration: string | null;
   evidence: string | null;
   evidenceItems?: Evidence[];
+  /** Why the test failed or was flaky; null when passed/skipped. */
+  reason: string | null;
   file: string;
 }
 

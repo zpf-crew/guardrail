@@ -43,7 +43,7 @@ test('workbench schema mirror accepts the shared frontend workbench shapes', () 
     },
     mobile: { command: 'not run', devices: [], outcome: 'Skipped', passed: 0, durationMs: 0, evidence: [] },
     coverage: [],
-    matrix: [{ title: 'Onboarding flow', type: 'UI / Browser', status: 'Passed', duration: '1.0s', evidence: 'screenshot', file: 'guardrail-tests/ui/onboarding.feature' }],
+    matrix: [{ title: 'Onboarding flow', type: 'UI / Browser', status: 'Passed', duration: '1.0s', evidence: 'screenshot', reason: null, file: 'guardrail-tests/ui/onboarding.feature' }],
   };
 
   const review: ReviewSummary = {

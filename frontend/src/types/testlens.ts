@@ -681,6 +681,8 @@ export interface TestResultRow {
   evidence: string | null;
   /** Clickable artifacts captured for this test row. */
   evidenceItems?: Evidence[];
+  /** Why the test failed or was flaky; null when passed/skipped. */
+  reason: string | null;
   file: string;
 }
 
