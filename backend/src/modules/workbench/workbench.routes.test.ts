@@ -1,9 +1,13 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import cookie from '@fastify/cookie';
 import Fastify, { type FastifyInstance } from 'fastify';
 import { mkdtemp, writeFile } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
+import type { Pool } from 'pg';
+import { buildApp } from '../../app.js';
+import { SESSION_COOKIE } from '../auth/session.service.js';
 import { UiBrowserAdapter } from './adapters/ui-browser/ui-browser.adapter.js';
 import { WorkbenchArtifactStore } from './artifacts/workbench-artifact-store.js';
 import { WorkbenchJobEventBus } from './jobs/job-events.js';
@@ -98,6 +102,51 @@ const modelOutputs = {
   },
 } as const;
 
+const TEST_SESSION_ID = 'test-session-id';
+const TEST_USER_ID = 'user-1';
+const TEST_REPO_ID = 'guardrail';
+
+function authInjectOptions(): { cookies: Record<string, string> } {
+  return { cookies: { [SESSION_COOKIE]: TEST_SESSION_ID } };
+}
+
+function createMockDb(rootDir: string): Pool {
+  const repoRow = {
+    id: TEST_REPO_ID,
+    github_repo_id: 1,
+    full_name: 'org/guardrail',
+    name: 'guardrail',
+    private: false,
+    default_branch: 'main',
+    clone_url: 'https://github.com/org/guardrail.git',
+    html_url: 'https://github.com/org/guardrail',
+    clone_path: rootDir,
+    current_branch: 'test',
+    commit_sha: 'abc123',
+    status: 'cloned',
+  };
+
+  return {
+    query: async (sql: string, params?: unknown[]) => {
+      if (sql.includes('FROM sessions s')) {
+        return { rows: params?.[0] === TEST_SESSION_ID ? [{
+          id: TEST_USER_ID,
+          github_id: 1,
+          login: 'test',
+          name: null,
+          avatar_url: null,
+        }] : [] };
+      }
+      if (sql.includes('FROM repos WHERE id')) {
+        return {
+          rows: params?.[0] === TEST_REPO_ID && params?.[1] === TEST_USER_ID ? [repoRow] : [],
+        };
+      }
+      return { rows: [] };
+    },
+  } as unknown as Pool;
+}
+
 function createFakeStructuredModel(
   outputs: Partial<Record<WorkbenchSchemaName, unknown>> = modelOutputs,
 ): WorkbenchServiceTestHooks['structuredModel'] {
@@ -112,18 +161,37 @@ function createFakeStructuredModel(
   } as WorkbenchServiceTestHooks['structuredModel'];
 }
 
+test('workbench session creation requires auth', async () => {
+  const app = buildApp();
+  const res = await app.inject({
+    method: 'POST',
+    url: '/api/workbench/sessions',
+    payload: { repoId: 'any', intent: { prompt: 'test', testTypes: ['UI / Browser'] } },
+  });
+  assert.equal(res.statusCode, 401);
+  await app.close();
+});
+
 test('workbench routes create session, start analyze job, and expose job events', async () => {
   const app = await buildRouteTestApp();
 
   const session = await createSession(app);
 
-  const jobRes = await app.inject({ method: 'POST', url: `/api/workbench/${session.id}/analyze/jobs` });
+  const jobRes = await app.inject({
+    method: 'POST',
+    url: `/api/workbench/${session.id}/analyze/jobs`,
+    ...authInjectOptions(),
+  });
   assert.equal(jobRes.statusCode, 200);
   const job = jobRes.json();
   assert.equal(job.step, 'isolation');
 
   await new Promise(resolve => setTimeout(resolve, 20));
-  const snapshotRes = await app.inject({ method: 'GET', url: `/api/workbench/${session.id}/jobs/${job.jobId}` });
+  const snapshotRes = await app.inject({
+    method: 'GET',
+    url: `/api/workbench/${session.id}/jobs/${job.jobId}`,
+    ...authInjectOptions(),
+  });
   assert.equal(snapshotRes.statusCode, 200);
   assert.ok(snapshotRes.json().events.length >= 1);
 });
@@ -135,12 +203,14 @@ test('workbench routes return 404 for missing session and job', async () => {
   const missingSessionRes = await app.inject({
     method: 'POST',
     url: '/api/workbench/missing-session/analyze/jobs',
+    ...authInjectOptions(),
   });
   assert.equal(missingSessionRes.statusCode, 404);
 
   const missingJobRes = await app.inject({
     method: 'GET',
     url: `/api/workbench/${session.id}/jobs/missing-job`,
+    ...authInjectOptions(),
   });
   assert.equal(missingJobRes.statusCode, 404);
 });
@@ -152,6 +222,7 @@ test('workbench routes return 404 for missing artifact under existing session', 
   const missingRes = await app.inject({
     method: 'GET',
     url: `/api/workbench/${session.id}/artifacts/missing.png`,
+    ...authInjectOptions(),
   });
 
   assert.equal(missingRes.statusCode, 404);
@@ -168,18 +239,34 @@ test('workbench run job emits screenshot event with served artifact URL', async 
   const app = await buildArtifactRouteTestApp(screenshotPath, loadedScreenshotPath, artifactRoot, screenshotDir);
   const session = await createSession(app);
 
-  const analyzeJob = (await app.inject({ method: 'POST', url: `/api/workbench/${session.id}/analyze/jobs` })).json();
+  const analyzeJob = (await app.inject({
+    method: 'POST',
+    url: `/api/workbench/${session.id}/analyze/jobs`,
+    ...authInjectOptions(),
+  })).json();
   const analyzeSnapshot = await waitForJob(app, session.id, analyzeJob.jobId, ['succeeded']);
   assert.equal(analyzeSnapshot.session.isolation?.target.feature, 'Onboarding');
   assert.equal(analyzeSnapshot.session.isolation?.sourceFiles[0]?.path, 'frontend/src/pages/OnboardingPage.tsx');
 
-  const planJob = (await app.inject({ method: 'POST', url: `/api/workbench/${session.id}/plan/jobs` })).json();
+  const planJob = (await app.inject({
+    method: 'POST',
+    url: `/api/workbench/${session.id}/plan/jobs`,
+    ...authInjectOptions(),
+  })).json();
   await waitForJob(app, session.id, planJob.jobId, ['succeeded']);
 
-  const generateJob = (await app.inject({ method: 'POST', url: `/api/workbench/${session.id}/generate/jobs` })).json();
+  const generateJob = (await app.inject({
+    method: 'POST',
+    url: `/api/workbench/${session.id}/generate/jobs`,
+    ...authInjectOptions(),
+  })).json();
   await waitForJob(app, session.id, generateJob.jobId, ['succeeded']);
 
-  const runJob = (await app.inject({ method: 'POST', url: `/api/workbench/${session.id}/run/jobs` })).json();
+  const runJob = (await app.inject({
+    method: 'POST',
+    url: `/api/workbench/${session.id}/run/jobs`,
+    ...authInjectOptions(),
+  })).json();
   const snapshot = await waitForJob(app, session.id, runJob.jobId, ['succeeded']);
   const screenshot = snapshot.events.find(event => event.type === 'screenshot');
 
@@ -192,11 +279,15 @@ test('workbench run job emits screenshot event with served artifact URL', async 
   assert.match(artifactUrl, new RegExp(`^/api/workbench/${session.id}/artifacts/.+\\.png$`));
   assert.equal(snapshot.session.run?.ui.evidence[0]?.href, artifactUrl);
 
-  const artifactRes = await app.inject({ method: 'GET', url: artifactUrl });
+  const artifactRes = await app.inject({ method: 'GET', url: artifactUrl, ...authInjectOptions() });
   assert.equal(artifactRes.statusCode, 200);
   assert.match(String(artifactRes.headers['content-type']), /^image\/png/);
 
-  const reviewJob = (await app.inject({ method: 'POST', url: `/api/workbench/${session.id}/review/jobs` })).json();
+  const reviewJob = (await app.inject({
+    method: 'POST',
+    url: `/api/workbench/${session.id}/review/jobs`,
+    ...authInjectOptions(),
+  })).json();
   const reviewSnapshot = await waitForJob(app, session.id, reviewJob.jobId, ['succeeded']);
   assert.equal(reviewSnapshot.session.steps.review, 'done');
 });
@@ -210,11 +301,19 @@ test('workbench status and error emit failures are contained in queue callbacks'
   try {
     const session = await createSession(app);
 
-    const analyzeJob = (await app.inject({ method: 'POST', url: `/api/workbench/${session.id}/analyze/jobs` })).json();
+    const analyzeJob = (await app.inject({
+      method: 'POST',
+      url: `/api/workbench/${session.id}/analyze/jobs`,
+      ...authInjectOptions(),
+    })).json();
     await waitForJob(app, session.id, analyzeJob.jobId, ['succeeded']);
 
     const failingSession = await createSession(app);
-    const planJob = (await app.inject({ method: 'POST', url: `/api/workbench/${failingSession.id}/plan/jobs` })).json();
+    const planJob = (await app.inject({
+      method: 'POST',
+      url: `/api/workbench/${failingSession.id}/plan/jobs`,
+      ...authInjectOptions(),
+    })).json();
     await waitForJob(app, failingSession.id, planJob.jobId, ['failed']);
 
     await new Promise(resolve => setImmediate(resolve));
@@ -241,7 +340,11 @@ test('workbench routes allow browser clients from the frontend origin', async ()
     method: 'POST',
     url: '/api/workbench/sessions',
     headers: { origin: 'http://127.0.0.1:5173' },
-    payload: { intent: { prompt: 'Test onboarding', feature: 'Checkout', testTypes: ['UI / Browser'], sources: ['Codebase'] } },
+    ...authInjectOptions(),
+    payload: {
+      repoId: TEST_REPO_ID,
+      intent: { prompt: 'Test onboarding', feature: 'Checkout', testTypes: ['UI / Browser'], sources: ['Codebase'] },
+    },
   });
   assert.equal(sessionRes.statusCode, 200);
   assert.equal(sessionRes.headers['access-control-allow-origin'], '*');
@@ -251,6 +354,7 @@ test('workbench routes allow browser clients from the frontend origin', async ()
     method: 'POST',
     url: `/api/workbench/${session.id}/analyze/jobs`,
     headers: { origin: 'http://127.0.0.1:5173' },
+    ...authInjectOptions(),
   });
   assert.equal(jobRes.statusCode, 200);
   const job = jobRes.json();
@@ -261,6 +365,7 @@ test('workbench routes allow browser clients from the frontend origin', async ()
       method: 'GET',
       url: `/api/workbench/${session.id}/jobs/${job.jobId}/events`,
       headers: { origin: 'http://127.0.0.1:5173' },
+    ...authInjectOptions(),
     }),
     500,
   );
@@ -277,6 +382,7 @@ test('workbench routes update session intent before starting jobs', async () => 
     method: 'PATCH',
     url: `/api/workbench/${session.id}`,
     headers: { origin: 'http://127.0.0.1:5173' },
+    ...authInjectOptions(),
     payload: {
       intent: {
         prompt: 'Add UI Browser tests for onboarding repository selection',
@@ -291,7 +397,11 @@ test('workbench routes update session intent before starting jobs', async () => 
   assert.equal(updateRes.json().intent.prompt, 'Add UI Browser tests for onboarding repository selection');
   assert.deepEqual(updateRes.json().intent.testTypes, ['UI / Browser']);
 
-  const jobRes = await app.inject({ method: 'POST', url: `/api/workbench/${session.id}/analyze/jobs` });
+  const jobRes = await app.inject({
+    method: 'POST',
+    url: `/api/workbench/${session.id}/analyze/jobs`,
+    ...authInjectOptions(),
+  });
   assert.equal(jobRes.statusCode, 200);
   const job = jobRes.json();
 
@@ -304,7 +414,11 @@ test('workbench plan job without isolation fails and marks the step warn', async
   const app = await buildRouteTestApp();
   const session = await createSession(app);
 
-  const jobRes = await app.inject({ method: 'POST', url: `/api/workbench/${session.id}/plan/jobs` });
+  const jobRes = await app.inject({
+    method: 'POST',
+    url: `/api/workbench/${session.id}/plan/jobs`,
+    ...authInjectOptions(),
+  });
   assert.equal(jobRes.statusCode, 200);
   const job = jobRes.json();
 
@@ -320,7 +434,11 @@ test('successful analyze job records ordered status progress result and succeede
   const app = await buildRouteTestApp();
   const session = await createSession(app);
 
-  const jobRes = await app.inject({ method: 'POST', url: `/api/workbench/${session.id}/analyze/jobs` });
+  const jobRes = await app.inject({
+    method: 'POST',
+    url: `/api/workbench/${session.id}/analyze/jobs`,
+    ...authInjectOptions(),
+  });
   assert.equal(jobRes.statusCode, 200);
   const job = jobRes.json();
 
@@ -340,13 +458,21 @@ test('workbench SSE replays existing events through terminal event and closes', 
   const app = await buildRouteTestApp();
   const session = await createSession(app);
 
-  const jobRes = await app.inject({ method: 'POST', url: `/api/workbench/${session.id}/analyze/jobs` });
+  const jobRes = await app.inject({
+    method: 'POST',
+    url: `/api/workbench/${session.id}/analyze/jobs`,
+    ...authInjectOptions(),
+  });
   assert.equal(jobRes.statusCode, 200);
   const job = jobRes.json();
   await waitForJob(app, session.id, job.jobId, ['succeeded']);
 
   const eventsRes = await withTimeout(
-    app.inject({ method: 'GET', url: `/api/workbench/${session.id}/jobs/${job.jobId}/events` }),
+    app.inject({
+      method: 'GET',
+      url: `/api/workbench/${session.id}/jobs/${job.jobId}/events`,
+      ...authInjectOptions(),
+    }),
     500,
   );
 
@@ -368,6 +494,9 @@ async function buildWorkbenchRouteTestApp(options: {
 } = {}): Promise<FastifyInstance> {
   const app = Fastify();
   const rootDir = path.basename(process.cwd()) === 'backend' ? path.dirname(process.cwd()) : process.cwd();
+
+  await app.register(cookie);
+  app.decorate('db', createMockDb(rootDir));
 
   app.addHook('onRequest', async (_request, reply) => {
     reply.header('Access-Control-Allow-Origin', '*');
@@ -426,7 +555,11 @@ async function createSession(app: FastifyInstance) {
   const sessionRes = await app.inject({
     method: 'POST',
     url: '/api/workbench/sessions',
-    payload: { intent: { prompt: 'Test onboarding', feature: 'Checkout', testTypes: ['UI / Browser'], sources: ['Codebase'] } },
+    ...authInjectOptions(),
+    payload: {
+      repoId: TEST_REPO_ID,
+      intent: { prompt: 'Test onboarding', feature: 'Checkout', testTypes: ['UI / Browser'], sources: ['Codebase'] },
+    },
   });
   assert.equal(sessionRes.statusCode, 200);
   return sessionRes.json();
@@ -441,7 +574,11 @@ async function waitForJob(
   const deadline = Date.now() + 5000;
 
   while (Date.now() < deadline) {
-    const snapshotRes = await app.inject({ method: 'GET', url: `/api/workbench/${sessionId}/jobs/${jobId}` });
+    const snapshotRes = await app.inject({
+      method: 'GET',
+      url: `/api/workbench/${sessionId}/jobs/${jobId}`,
+      ...authInjectOptions(),
+    });
     assert.equal(snapshotRes.statusCode, 200);
     const snapshot = snapshotRes.json() as Snapshot;
     if (statuses.includes(snapshot.job.status)) return snapshot;

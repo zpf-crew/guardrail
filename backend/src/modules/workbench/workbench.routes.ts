@@ -1,5 +1,7 @@
 import { createReadStream } from 'node:fs';
 import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
+import { requireAuth } from '../auth/session.service.js';
+import { ReposRepository } from '../repos/repos.repository.js';
 import { formatSse } from './jobs/job-events.js';
 import type { WorkbenchService } from './workbench.service.js';
 import type { IntentInput, PlanApproval, WorkbenchJob, WorkbenchJobEvent } from './workbench.types.js';
@@ -17,6 +19,7 @@ interface ArtifactParams extends SessionParams {
 }
 
 interface CreateSessionBody {
+  repoId?: string;
   intent?: Partial<IntentInput>;
 }
 
@@ -30,8 +33,31 @@ interface GenerateJobBody {
 
 export function buildWorkbenchRoutes(service: WorkbenchService) {
   return async function workbenchRoutes(app: FastifyInstance) {
-    app.post('/sessions', async (request: FastifyRequest<{ Body: CreateSessionBody }>) => {
-      return service.createSession(request.body?.intent);
+    app.addHook('preHandler', requireAuth);
+
+    app.post('/sessions', async (request: FastifyRequest<{ Body: CreateSessionBody }>, reply) => {
+      const user = request.user!;
+      const body = request.body ?? {};
+      if (!body.repoId) {
+        return reply.code(400).send({ error: 'repoId is required' });
+      }
+
+      const repo = await new ReposRepository(app.db).getForUser(body.repoId, user.id);
+      if (!repo?.clonePath || repo.status !== 'cloned') {
+        return reply.code(404).send({ error: 'Repository clone not found' });
+      }
+
+      return service.createSession(
+        body.repoId,
+        user.id,
+        {
+          name: repo.name,
+          path: repo.clonePath,
+          branch: repo.currentBranch ?? repo.defaultBranch,
+          commit: repo.commitSha ?? undefined,
+        },
+        body.intent,
+      );
     });
 
     app.patch('/:sessionId', async (request: FastifyRequest<{ Params: SessionParams; Body: UpdateSessionBody }>, reply) => {

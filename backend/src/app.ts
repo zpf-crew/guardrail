@@ -7,7 +7,7 @@ import { authRoutes } from './modules/auth/auth.routes.js';
 import { reposRoutes } from './modules/repos/repos.routes.js';
 import { onboardingRoutes } from './modules/onboarding/onboarding.routes.js';
 import { dbPlugin } from './plugins/db.js';
-import { workbenchRoutes } from './modules/workbench/index.js';
+import { registerWorkbenchRoutes } from './modules/workbench/index.js';
 
 export function buildApp() {
   const app = Fastify({ logger: true });
@@ -23,7 +23,7 @@ export function buildApp() {
   app.register(authRoutes, { prefix: '/api/auth' });
   app.register(reposRoutes, { prefix: '/api/repos' });
   app.register(onboardingRoutes, { prefix: '/api/repos' });
-  app.register(workbenchRoutes, { prefix: '/api/workbench' });
+  void app.register(registerWorkbenchRoutes);
 
   return app;
 }
