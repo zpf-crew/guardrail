@@ -1,7 +1,7 @@
 import { basename, join } from 'node:path';
 import { modelConnect } from '../model-connect/index.js';
 import { StructuredModelRunner } from './model/structured-model-runner.js';
-import { SkillContractLoader } from './skills/skill-contract-loader.js';
+import { SkillContractLoader, type SkillContract } from './skills/skill-contract-loader.js';
 import type { TestTypeAdapter } from './adapters/test-type-adapter.js';
 import type { RegisteredArtifact, WorkbenchArtifactStore } from './artifacts/workbench-artifact-store.js';
 import type { WorkbenchJobEventBus } from './jobs/job-events.js';
@@ -35,6 +35,11 @@ type ArtifactAdapterEvent = AdapterEvent & {
   artifact: TestRunResult['ui']['evidence'][number];
 };
 
+export interface WorkbenchServiceTestHooks {
+  structuredModel?: Pick<StructuredModelRunner, 'runStep'>;
+  skills?: { load(name: string): Promise<SkillContract> };
+}
+
 export class WorkbenchService {
   constructor(
     private readonly store: WorkbenchJobStore,
@@ -43,6 +48,7 @@ export class WorkbenchService {
     private readonly artifactStore: WorkbenchArtifactStore,
     private readonly repositoryProvider: RepositoryContextProvider,
     private readonly adapters: TestTypeAdapter[],
+    private readonly testHooks?: WorkbenchServiceTestHooks,
   ) {}
 
   createSession(intent?: Partial<IntentInput>): WorkbenchSession {
@@ -71,8 +77,10 @@ export class WorkbenchService {
         const repository = await this.repositoryProvider.getContext(currentSession.repo.name, currentSession.intent);
         const adapter = this.requireUiBrowserAdapter();
         const repoRoot = basename(process.cwd()) === 'backend' ? join(process.cwd(), '..') : process.cwd();
-        const skills = new SkillContractLoader({ skillsDir: join(repoRoot, 'guardrail-skills') });
-        const structuredModel = new StructuredModelRunner({ modelConnect });
+        const skills = (this.testHooks?.skills
+          ?? new SkillContractLoader({ skillsDir: join(repoRoot, 'guardrail-skills') })) as SkillContractLoader;
+        const structuredModel = (this.testHooks?.structuredModel
+          ?? new StructuredModelRunner({ modelConnect })) as StructuredModelRunner;
         const baseInput = {
           session: currentSession,
           repository,
