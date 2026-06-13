@@ -88,6 +88,42 @@ async function patch<T>(path: string, body?: unknown): Promise<T> {
   return request<T>('PATCH', path, body);
 }
 
+function absoluteArtifactHref(href: string | undefined): string | undefined {
+  if (!href) return href;
+  if (/^[a-z][a-z\d+\-.]*:/i.test(href)) return href;
+  if (!href.startsWith('/api/')) return href;
+  return `${API_BASE.replace(/\/$/, '')}${href}`;
+}
+
+function normalizeEvidence(evidence: Evidence): Evidence {
+  return { ...evidence, href: absoluteArtifactHref(evidence.href) };
+}
+
+function normalizeRunResult(run: TestRunResult): TestRunResult {
+  return {
+    ...run,
+    ui: { ...run.ui, evidence: run.ui.evidence.map(normalizeEvidence) },
+    mobile: { ...run.mobile, evidence: run.mobile.evidence.map(normalizeEvidence) },
+  };
+}
+
+function normalizeJobResult<T extends JobResult>(result: T): T {
+  if (result && typeof result === 'object' && 'ui' in result && 'mobile' in result && 'matrix' in result) {
+    return normalizeRunResult(result as TestRunResult) as T;
+  }
+  return result;
+}
+
+function normalizeJobEvent(event: JobEvent): JobEvent {
+  if (event.type === 'screenshot' || event.type === 'artifact') {
+    return { ...event, artifact: normalizeEvidence(event.artifact) };
+  }
+  if (event.type === 'result') {
+    return { ...event, payload: normalizeJobResult(event.payload) };
+  }
+  return event;
+}
+
 const repoId = () => getActiveRepoId() ?? 'mock';
 
 function mockSession(id: string): WorkbenchSession {
@@ -127,7 +163,7 @@ async function runJob<T extends JobResult>(
       close();
       reject(error);
     };
-    const parseEvent = (event: Event) => JSON.parse((event as MessageEvent).data) as JobEvent;
+    const parseEvent = (event: Event) => normalizeJobEvent(JSON.parse((event as MessageEvent).data) as JobEvent);
 
     source.addEventListener('result', event => {
       const parsed = parseEvent(event) as Extract<JobEvent, { type: 'result' }>;
