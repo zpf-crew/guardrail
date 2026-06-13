@@ -1,4 +1,4 @@
-import type { RiskLevel, BehaviorClassification, GeneratedChange, RunOutcome, TestType } from '@/types/testlens';
+import type { RiskLevel, BehaviorClassification, GeneratedChange, RunOutcome, TestType, WorkbenchSession } from '@/types/testlens';
 import type { BadgeProps } from '@/components/ui/badge';
 
 type BadgeVariant = NonNullable<BadgeProps['variant']>;
@@ -70,4 +70,14 @@ export function showsUiRunSuite(testType: TestType): boolean {
 
 export function showsMobileRunSuite(testType: TestType): boolean {
   return testType === 'Mobile';
+}
+
+/** Pick the furthest completed workflow step when restoring a saved session. */
+export function resolveRestoredWorkbenchStep(session: WorkbenchSession): number {
+  if (session.review) return 5;
+  if (session.run) return 4;
+  if (session.generation) return 3;
+  if (session.plan) return 2;
+  if (session.isolation) return 1;
+  return 0;
 }

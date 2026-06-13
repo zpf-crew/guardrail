@@ -1,5 +1,5 @@
-import { useEffect, useState } from 'react';
-import { useNavigate, useLocation } from 'react-router-dom';
+import { useEffect, useState, useCallback, useMemo } from 'react';
+import { useNavigate, useLocation, useSearchParams } from 'react-router-dom';
 import type { Evidence, FeatureModule, IntentInput, QuickAction, TestRunResult } from '@/types/testlens';
 import { TopBar } from '@/components/layout/TopBar';
 import { Button } from '@/components/ui/button';
@@ -61,6 +61,12 @@ function evidenceWithScreenshotFallback(streamedEvidence: Evidence[], run?: Test
 export function GenerateTestsPage() {
   const location = useLocation();
   const handoffState = location.state as HandoffState | null;
+  const [workbenchKey, setWorkbenchKey] = useState(0);
+  const restoreSessionId = useMemo(
+    () => new URLSearchParams(location.search).get('session'),
+    // Re-read the URL only when explicitly starting a fresh workbench instance.
+    [workbenchKey],
+  );
 
   const [quickActions, setQuickActions] = useState<QuickAction[]>([]);
   const [featureOptions, setFeatureOptions] = useState<FeatureModule[]>(fallbackFeatureOptions());
@@ -100,6 +106,9 @@ export function GenerateTestsPage() {
 
   return (
     <GenerateTestsWorkbench
+      key={workbenchKey}
+      restoreSessionId={restoreSessionId}
+      onStartNewSession={() => setWorkbenchKey(key => key + 1)}
       initialIntent={buildInitialIntent(handoffState, quickActions)}
       quickActions={quickActions}
       featureOptions={featureOptions}
@@ -108,17 +117,33 @@ export function GenerateTestsPage() {
 }
 
 interface GenerateTestsWorkbenchProps {
+  restoreSessionId: string | null;
+  onStartNewSession: () => void;
   initialIntent?: Partial<IntentInput>;
   quickActions: QuickAction[];
   featureOptions: FeatureModule[];
 }
 
-function GenerateTestsWorkbench({ initialIntent, quickActions, featureOptions }: GenerateTestsWorkbenchProps) {
+function GenerateTestsWorkbench({
+  restoreSessionId,
+  onStartNewSession,
+  initialIntent,
+  quickActions,
+  featureOptions,
+}: GenerateTestsWorkbenchProps) {
   const navigate = useNavigate();
+  const [, setSearchParams] = useSearchParams();
   const { toast } = useToast();
   const { user, logout } = useAuth();
 
-  const wb = useWorkbench(initialIntent);
+  const syncSessionToUrl = useCallback((id: string) => {
+    setSearchParams({ session: id }, { replace: true });
+  }, [setSearchParams]);
+
+  const wb = useWorkbench(restoreSessionId ? undefined : initialIntent, {
+    sessionId: restoreSessionId ?? undefined,
+    onSessionId: syncSessionToUrl,
+  });
   const { status, error, session, currentStep, pending } = wb;
   const runEvidence = evidenceWithScreenshotFallback(wb.runEvidence, session?.run);
 
@@ -126,7 +151,17 @@ function GenerateTestsWorkbench({ initialIntent, quickActions, featureOptions }:
     return (
       <div className="min-h-screen grid place-items-center text-[#98a1b3]" style={shellStyle}>
         {status === 'error'
-          ? <div className="flex flex-col items-center gap-[12px]"><WarningTriangleIcon className="w-[28px] h-[28px] text-[#fb7185]" /><div>{error ?? 'Failed to load workbench.'}</div></div>
+          ? (
+            <div className="flex flex-col items-center gap-[12px] max-w-[420px] text-center px-[20px]">
+              <WarningTriangleIcon className="w-[28px] h-[28px] text-[#fb7185]" />
+              <div>{error ?? 'Failed to load workbench.'}</div>
+              {restoreSessionId && (
+                <Button variant="outline" onClick={() => { navigate('/tests', { replace: true }); onStartNewSession(); }}>
+                  Start new session
+                </Button>
+              )}
+            </div>
+          )
           : <div className="flex items-center gap-[10px]"><LoaderIcon className="w-[18px] h-[18px] animate-spin" /> Loading workbench…</div>}
       </div>
     );

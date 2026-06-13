@@ -26,8 +26,8 @@ export function WorkbenchProgressPanel({ active, title, fallbackMessage, events 
         <span className="font-mono text-[12px] text-[#818cf8]">{percent}%</span>
       </div>
       <ProgressBar value={percent} />
-      <div className="mt-[12px] flex flex-col gap-[6px]">
-        {events.slice(-5).map((event, index) => (
+      <div className="mt-[12px] flex flex-col gap-[6px] max-h-[220px] overflow-y-auto pr-[4px]">
+        {events.map((event, index) => (
           <div key={`${event.jobId}-${index}-${event.type}`} className="text-[12px] text-[#6b7488] leading-[1.45]">
             <span className="text-[#818cf8] font-mono mr-[8px]">{event.type}</span>
             {event.type === 'progress' ? event.message : event.type === 'error' ? event.message : event.type === 'status' ? event.status : event.message}

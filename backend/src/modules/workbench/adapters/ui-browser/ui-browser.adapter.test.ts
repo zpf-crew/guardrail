@@ -288,6 +288,7 @@ test('ui browser adapter uses normalized screenshot evidence returned from emit'
 
   assert.equal(run.ui.evidence[0]?.href, normalizedHref);
   assert.equal(run.matrix[0]?.evidence, 'screenshot');
+  assert.equal(run.matrix[0]?.evidenceItems?.[0]?.href, normalizedHref);
 });
 
 test('ui browser adapter generate returns no-op changes when ui tests are skipped', async () => {

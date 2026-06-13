@@ -679,6 +679,8 @@ export interface TestResultRow {
   duration: string | null;
   /** Evidence summary string, or null. */
   evidence: string | null;
+  /** Clickable artifacts captured for this test row. */
+  evidenceItems?: Evidence[];
   file: string;
 }
 

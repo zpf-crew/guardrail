@@ -61,6 +61,14 @@ export class WorkbenchService {
     return this.store.createSession({ repoId, userId, repo, intent });
   }
 
+  getSession(sessionId: string, userId: string): WorkbenchSession {
+    const session = this.store.getSession(sessionId);
+    if (!session || session.userId !== userId) {
+      throw new Error(`Workbench session not found: ${sessionId}`);
+    }
+    return session;
+  }
+
   updateSessionIntent(sessionId: string, intent: Partial<IntentInput>): WorkbenchSession {
     this.requireSession(sessionId);
     return this.store.updateSessionIntent(sessionId, intent);

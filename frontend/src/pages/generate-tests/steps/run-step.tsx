@@ -1,6 +1,6 @@
 import * as React from 'react';
 import type { ReactNode } from 'react';
-import type { Evidence, TestRunResult, RunOutcome, TestType } from '@/types/testlens';
+import type { Evidence, TestRunResult, RunOutcome, TestType, TestResultRow } from '@/types/testlens';
 import { Button } from '@/components/ui/button';
 import { ProgressBar } from '@/components/ui/progress-bar';
 import { RunResultIcon, MicIcon, MonitorIcon, SmartphoneIcon, AlertCircleIcon, EyeIcon, LoaderIcon, CheckIcon } from '@/components/icons';
@@ -135,7 +135,7 @@ export function RunStep({ run, activeTestType, ranTests, running, progress, evid
                   </td>
                   <td className="p-[11px_12px] border-b border-[rgba(255,255,255,0.07)] text-[#98a1b3]">{row.duration ?? '—'}</td>
                   <td className="p-[11px_12px] border-b border-[rgba(255,255,255,0.07)]">
-                    {row.evidence && <span className="text-[#818cf8] text-[11.5px] cursor-pointer inline-flex items-center gap-[5px] hover:underline"><EyeIcon className="w-[12px] h-[12px]" />{row.evidence}</span>}
+                    <MatrixEvidenceCell row={row} />
                   </td>
                   <td className="p-[11px_12px] border-b border-[rgba(255,255,255,0.07)] font-mono text-[11px] text-[#6b7488]">{row.file}</td>
                 </tr>
@@ -178,6 +178,31 @@ export function RunStep({ run, activeTestType, ranTests, running, progress, evid
           ? <Button variant="primary" size="lg" onClick={onReview}>Review &amp; Apply</Button>
           : <Button variant="primary" size="lg" disabled><LoaderIcon className="w-[15px] h-[15px] mr-[6px] animate-spin" />Running…</Button>}
       </div>
+    </div>
+  );
+}
+
+function MatrixEvidenceCell({ row }: { row: TestResultRow }) {
+  const items = row.evidenceItems?.filter(item => item.href) ?? [];
+  if (items.length === 0) {
+    if (!row.evidence) return null;
+    return <span className="text-[#6b7488] text-[11.5px]">{row.evidence}</span>;
+  }
+
+  return (
+    <div className="flex flex-wrap gap-x-[10px] gap-y-[4px]">
+      {items.map((item, index) => (
+        <a
+          key={`${row.title}-${item.href}-${index}`}
+          href={item.href}
+          target="_blank"
+          rel="noreferrer"
+          className="text-[#818cf8] text-[11.5px] inline-flex items-center gap-[5px] hover:underline"
+        >
+          <EyeIcon className="w-[12px] h-[12px] flex-shrink-0" />
+          <span>{item.label || `Screenshot ${index + 1}`}</span>
+        </a>
+      ))}
     </div>
   );
 }

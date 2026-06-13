@@ -199,6 +199,22 @@ test('workbench routes return 404 for missing session and job', async () => {
   const app = await buildRouteTestApp();
   const session = await createSession(app);
 
+  const missingGetRes = await app.inject({
+    method: 'GET',
+    url: '/api/workbench/missing-session',
+    ...authInjectOptions(),
+  });
+  assert.equal(missingGetRes.statusCode, 404);
+
+  const getRes = await app.inject({
+    method: 'GET',
+    url: `/api/workbench/${session.id}`,
+    ...authInjectOptions(),
+  });
+  assert.equal(getRes.statusCode, 200);
+  assert.equal(getRes.json().id, session.id);
+  assert.equal(getRes.json().intent.prompt, 'Test onboarding');
+
   const missingSessionRes = await app.inject({
     method: 'POST',
     url: '/api/workbench/missing-session/analyze/jobs',

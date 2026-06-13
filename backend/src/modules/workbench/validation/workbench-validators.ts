@@ -187,6 +187,7 @@ const runSchema = z.object({
     status: outcomeSchema,
     duration: z.string().nullable(),
     evidence: z.string().nullable(),
+    evidenceItems: z.array(evidenceSchema).optional(),
     file: z.string(),
   })),
   attention: z.object({

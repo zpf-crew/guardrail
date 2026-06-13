@@ -57,7 +57,7 @@ export class WorkbenchApiError extends Error {
   }
 }
 
-async function request<T>(method: 'POST' | 'PATCH', path: string, body?: unknown): Promise<T> {
+async function request<T>(method: 'GET' | 'POST' | 'PATCH', path: string, body?: unknown): Promise<T> {
   const init: RequestInit = { method, credentials: 'include' };
   if (body !== undefined) {
     init.headers = { 'Content-Type': 'application/json' };
@@ -67,6 +67,10 @@ async function request<T>(method: 'POST' | 'PATCH', path: string, body?: unknown
   const res = await fetch(`${API_BASE}${path}`, init);
   if (!res.ok) throw new WorkbenchApiError(`${path} failed (${res.status} ${res.statusText})`);
   return (await res.json()) as T;
+}
+
+async function get<T>(path: string): Promise<T> {
+  return request<T>('GET', path);
 }
 
 async function post<T>(path: string, body?: unknown): Promise<T> {
@@ -93,7 +97,16 @@ function normalizeRunResult(run: TestRunResult): TestRunResult {
     ...run,
     ui: { ...run.ui, evidence: run.ui.evidence.map(normalizeEvidence) },
     mobile: { ...run.mobile, evidence: run.mobile.evidence.map(normalizeEvidence) },
+    matrix: run.matrix.map(row => ({
+      ...row,
+      evidenceItems: row.evidenceItems?.map(normalizeEvidence),
+    })),
   };
+}
+
+function normalizeWorkbenchSession(session: WorkbenchSession): WorkbenchSession {
+  if (!session.run) return session;
+  return { ...session, run: normalizeRunResult(session.run) };
 }
 
 function normalizeJobResult<T extends JobResult>(result: T): T {
@@ -226,6 +239,12 @@ export async function createWorkbenchSession(intent?: Partial<IntentInput>): Pro
     throw new WorkbenchApiError('Complete onboarding and select a repository first.');
   }
   return post<WorkbenchSession>('/api/workbench/sessions', { repoId, intent });
+}
+
+/** Load an existing workbench session (for URL restore after reload). */
+export async function fetchWorkbenchSession(sessionId: string): Promise<WorkbenchSession> {
+  const session = await get<WorkbenchSession>(`/api/workbench/${sessionId}`);
+  return normalizeWorkbenchSession(session);
 }
 
 export async function updateWorkbenchIntent(id: string, intent: IntentInput): Promise<WorkbenchSession> {

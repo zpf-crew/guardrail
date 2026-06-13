@@ -243,6 +243,7 @@ export interface TestResultRow {
   status: RunOutcome;
   duration: string | null;
   evidence: string | null;
+  evidenceItems?: Evidence[];
   file: string;
 }
 

@@ -61,6 +61,15 @@ export function buildWorkbenchRoutes(service: WorkbenchService) {
       );
     });
 
+    app.get('/:sessionId', async (request: FastifyRequest<{ Params: SessionParams }>, reply) => {
+      try {
+        const user = request.user!;
+        return service.getSession(request.params.sessionId, user.id);
+      } catch (error) {
+        return routeError(reply, error);
+      }
+    });
+
     app.patch('/:sessionId', async (request: FastifyRequest<{ Params: SessionParams; Body: UpdateSessionBody }>, reply) => {
       try {
         return service.updateSessionIntent(request.params.sessionId, request.body?.intent ?? {});

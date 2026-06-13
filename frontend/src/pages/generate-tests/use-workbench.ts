@@ -1,8 +1,9 @@
 import * as React from 'react';
 import type { WorkbenchSession, IntentInput, Evidence, PlanApproval } from '@/types/testlens';
-import { primaryTestType } from './workbench-presentation';
+import { primaryTestType, resolveRestoredWorkbenchStep } from './workbench-presentation';
 import {
   createWorkbenchSession,
+  fetchWorkbenchSession,
   updateWorkbenchIntent,
   analyzeSession,
   planSession,
@@ -58,12 +59,19 @@ export interface UseWorkbenchResult {
   runTests: () => void;
 }
 
+export interface UseWorkbenchOptions {
+  /** When set, load this session instead of creating a new one (URL restore). */
+  sessionId?: string;
+  /** Called once after a new session is created so the URL can be updated. */
+  onSessionId?: (sessionId: string) => void;
+}
+
 /**
  * Drives the 6-step workbench: loads the session through the seam, holds the
  * editable intent, and advances steps by calling the seam and merging the
  * returned contract slice into the session.
  */
-export function useWorkbench(initialIntent?: Partial<IntentInput>): UseWorkbenchResult {
+export function useWorkbench(initialIntent?: Partial<IntentInput>, options?: UseWorkbenchOptions): UseWorkbenchResult {
   const [status, setStatus] = React.useState<WorkbenchStatus>('loading');
   const [error, setError] = React.useState<string | null>(null);
   const [session, setSession] = React.useState<WorkbenchSession | null>(null);
@@ -80,18 +88,47 @@ export function useWorkbench(initialIntent?: Partial<IntentInput>): UseWorkbench
   const intervalRef = React.useRef<ReturnType<typeof setInterval> | null>(null);
   const genIntervalRef = React.useRef<ReturnType<typeof setInterval> | null>(null);
   const runIdRef = React.useRef(0);
+  const onSessionIdRef = React.useRef(options?.onSessionId);
+  onSessionIdRef.current = options?.onSessionId;
+  const restoredSessionId = options?.sessionId;
 
   React.useEffect(() => {
     let cancelled = false;
-    createWorkbenchSession(initialIntent)
+    setStatus('loading');
+    setError(null);
+    setSession(null);
+    setCurrentStep(0);
+    setPending(null);
+    setRanTests(0);
+    setGenStep(0);
+    setApplied(false);
+    setRunEvents([]);
+    setAnalyzeEvents([]);
+    setPlanEvents([]);
+    setGenerateEvents([]);
+
+    const loadSession = restoredSessionId
+      ? fetchWorkbenchSession(restoredSessionId)
+      : createWorkbenchSession(initialIntent);
+
+    loadSession
       .then(s => {
         if (cancelled) return;
         setSession(s);
+        setCurrentStep(resolveRestoredWorkbenchStep(s));
+        if (s.generation) setGenStep(s.generation.timeline.length);
+        if (s.run) {
+          const activeType = primaryTestType(s.intent.testTypes);
+          setRanTests(s.run.matrix.filter(row => row.type === activeType).length);
+        }
+        if (!restoredSessionId) onSessionIdRef.current?.(s.id);
         setStatus('ready');
       })
       .catch((e: unknown) => {
         if (cancelled) return;
-        setError(e instanceof Error ? e.message : 'Failed to start workbench.');
+        setError(e instanceof Error ? e.message : restoredSessionId
+          ? 'Workbench session not found or expired.'
+          : 'Failed to start workbench.');
         setStatus('error');
       });
     return () => {
@@ -99,9 +136,7 @@ export function useWorkbench(initialIntent?: Partial<IntentInput>): UseWorkbench
       if (intervalRef.current) clearInterval(intervalRef.current);
       if (genIntervalRef.current) clearInterval(genIntervalRef.current);
     };
-    // initialIntent is read once on mount by design.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [restoredSessionId]);
 
   const updateIntent = React.useCallback((patch: Partial<IntentInput>) => {
     setSession(s => (s ? { ...s, intent: { ...s.intent, ...patch } } : s));

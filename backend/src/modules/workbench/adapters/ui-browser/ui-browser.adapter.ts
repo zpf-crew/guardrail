@@ -490,6 +490,7 @@ export class UiBrowserAdapter implements TestTypeAdapter {
           status: changeResult.outcome,
           duration: durationLabel(changeResult.durationMs),
           evidence: matrixEvidenceLabel(changeEvidence),
+          evidenceItems: changeEvidence.length > 0 ? changeEvidence : undefined,
           file: change.file,
         });
       }
