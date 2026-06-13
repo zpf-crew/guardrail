@@ -53,6 +53,7 @@ test('ui browser adapter returns schema-shaped fallback analyze plan generate ru
   const run = await adapter.run({ ...input, generation });
   const review = await adapter.review({ ...input, generation, run });
 
+  assert.equal(isolation.target.feature, 'Onboarding');
   assert.equal(isolation.classifications[0]?.suggestedTypes[0], 'UI / Browser');
   assert.equal(testPlan.risk.browserAutomationRequired, true);
   assert.equal(generation.changes[0]?.file, 'guardrail-tests/ui/onboarding.feature');

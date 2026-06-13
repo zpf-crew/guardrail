@@ -26,6 +26,7 @@ const onboardingBehavior = 'Complete onboarding with selected repository';
 const generatedFile = 'guardrail-tests/ui/onboarding.feature';
 
 function featureFrom(input: AdapterInput): FeatureModule {
+  if (/\bonboarding\b/i.test(input.session.intent.prompt)) return 'Onboarding';
   return input.session.intent.feature ?? 'Checkout';
 }
 

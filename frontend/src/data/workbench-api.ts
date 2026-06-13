@@ -9,7 +9,7 @@ import type {
   Evidence,
 } from '@/types/testlens';
 import { getActiveRepoId } from './dashboard-api';
-import { mockWorkbench } from './generateTestsMockData';
+import { mockWorkbenchForIntent } from './generateTestsMockData';
 
 /**
  * Seam between the Generate/Improve workbench UI and its backend.
@@ -24,6 +24,7 @@ import { mockWorkbench } from './generateTestsMockData';
 
 const API_BASE = import.meta.env.VITE_API_BASE_URL;
 const delay = (ms: number) => new Promise<void>(resolve => setTimeout(resolve, ms));
+const mockSessions = new Map<string, WorkbenchSession>();
 
 export type JobStep = 'isolation' | 'plan' | 'generate' | 'run' | 'review';
 export type JobStatus = 'queued' | 'running' | 'succeeded' | 'failed' | 'timeout';
@@ -84,6 +85,10 @@ async function patch<T>(path: string, body?: unknown): Promise<T> {
 }
 
 const repoId = () => getActiveRepoId() ?? 'mock';
+
+function mockSession(id: string): WorkbenchSession {
+  return mockSessions.get(id) ?? mockWorkbenchForIntent();
+}
 
 const JOB_ENDPOINT_BY_STEP: Record<JobStep, string> = {
   isolation: 'analyze',
@@ -151,7 +156,9 @@ async function runJob<T extends JobResult>(
 export async function createWorkbenchSession(intent?: Partial<IntentInput>): Promise<WorkbenchSession> {
   if (!API_BASE) {
     await delay(300);
-    return { ...mockWorkbench, intent: { ...mockWorkbench.intent, ...intent } };
+    const session = mockWorkbenchForIntent(intent);
+    mockSessions.set(session.id, session);
+    return session;
   }
   return post<WorkbenchSession>('/api/workbench/sessions', { repoId: repoId(), intent });
 }
@@ -159,7 +166,9 @@ export async function createWorkbenchSession(intent?: Partial<IntentInput>): Pro
 export async function updateWorkbenchIntent(id: string, intent: IntentInput): Promise<WorkbenchSession> {
   if (!API_BASE) {
     await delay(100);
-    return { ...mockWorkbench, id, intent: { ...mockWorkbench.intent, ...intent } };
+    const session = { ...mockWorkbenchForIntent(intent), id };
+    mockSessions.set(id, session);
+    return session;
   }
   return patch<WorkbenchSession>(`/api/workbench/${id}`, { intent });
 }
@@ -168,8 +177,9 @@ export async function updateWorkbenchIntent(id: string, intent: IntentInput): Pr
 export async function analyzeSession(id: string, onEvent?: (event: JobEvent) => void): Promise<IsolationResult> {
   if (!API_BASE) {
     await delay(1500);
-    if (!mockWorkbench.isolation) throw new WorkbenchApiError('No isolation result in mock');
-    return mockWorkbench.isolation;
+    const session = mockSession(id);
+    if (!session.isolation) throw new WorkbenchApiError('No isolation result in mock');
+    return session.isolation;
   }
   return runJob<IsolationResult>(id, 'isolation', onEvent);
 }
@@ -178,8 +188,9 @@ export async function analyzeSession(id: string, onEvent?: (event: JobEvent) => 
 export async function planSession(id: string, onEvent?: (event: JobEvent) => void): Promise<TestPlan> {
   if (!API_BASE) {
     await delay(2000);
-    if (!mockWorkbench.plan) throw new WorkbenchApiError('No plan in mock');
-    return mockWorkbench.plan;
+    const session = mockSession(id);
+    if (!session.plan) throw new WorkbenchApiError('No plan in mock');
+    return session.plan;
   }
   return runJob<TestPlan>(id, 'plan', onEvent);
 }
@@ -188,8 +199,9 @@ export async function planSession(id: string, onEvent?: (event: JobEvent) => voi
 export async function generateSession(id: string, onEvent?: (event: JobEvent) => void): Promise<GenerationResult> {
   if (!API_BASE) {
     await delay(600);
-    if (!mockWorkbench.generation) throw new WorkbenchApiError('No generation result in mock');
-    return mockWorkbench.generation;
+    const session = mockSession(id);
+    if (!session.generation) throw new WorkbenchApiError('No generation result in mock');
+    return session.generation;
   }
   return runJob<GenerationResult>(id, 'generate', onEvent);
 }
@@ -198,8 +210,9 @@ export async function generateSession(id: string, onEvent?: (event: JobEvent) =>
 export async function runSession(id: string, onEvent?: (event: JobEvent) => void): Promise<TestRunResult> {
   if (!API_BASE) {
     await delay(400);
-    if (!mockWorkbench.run) throw new WorkbenchApiError('No run result in mock');
-    return mockWorkbench.run;
+    const session = mockSession(id);
+    if (!session.run) throw new WorkbenchApiError('No run result in mock');
+    return session.run;
   }
   return runJob<TestRunResult>(id, 'run', onEvent);
 }
@@ -208,8 +221,9 @@ export async function runSession(id: string, onEvent?: (event: JobEvent) => void
 export async function reviewSession(id: string, onEvent?: (event: JobEvent) => void): Promise<ReviewSummary> {
   if (!API_BASE) {
     await delay(400);
-    if (!mockWorkbench.review) throw new WorkbenchApiError('No review summary in mock');
-    return mockWorkbench.review;
+    const session = mockSession(id);
+    if (!session.review) throw new WorkbenchApiError('No review summary in mock');
+    return session.review;
   }
   return runJob<ReviewSummary>(id, 'review', onEvent);
 }
