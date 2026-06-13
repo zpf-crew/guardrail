@@ -276,7 +276,7 @@ export const mockWorkbench: WorkbenchSession = {
 
   run: {
     unit: { command: 'pnpm test --filter=unit', outcome: 'Passed', passed: 6, durationMs: 1200, suite: 'coupon.test.ts' },
-    ui: { command: 'pnpm test:e2e', browser: 'Chromium', outcome: 'Passed', passed: 3, durationMs: 8400, visual: { matchPercent: 99.4, baseline: 'checkout-timeout' }, evidence: [{ kind: 'screenshot', label: 'timeout message visible', href: 'https://placehold.co/960x540/111827/818cf8?text=UI+Browser+Evidence' }] },
+    ui: { command: 'pnpm test:e2e', browser: 'Chromium', outcome: 'Passed', passed: 3, durationMs: 8400, visual: { matchPercent: 99.4, baseline: 'checkout-timeout' }, evidence: [{ kind: 'screenshot', label: 'timeout message visible' }] },
     mobile: { command: 'pnpm test:mobile', devices: ['Pixel 7', 'iPhone 15'], outcome: 'Failed', passed: 1, flaky: 0, durationMs: 12800, evidence: [{ kind: 'device-log', label: 'iPhone 15 retry log' }] },
     coverage: [
       { metric: 'Line coverage', before: 64, after: 78 },
@@ -435,13 +435,7 @@ const uiBrowserMockWorkbench: WorkbenchSession = {
       outcome: 'Passed',
       passed: 1,
       durationMs: 6100,
-      evidence: [
-        {
-          kind: 'screenshot',
-          label: 'Onboarding screenshot',
-          href: 'https://placehold.co/960x540/111827/818cf8?text=Onboarding+UI+Evidence',
-        },
-      ],
+      evidence: [{ kind: 'screenshot', label: 'Onboarding screenshot' }],
     },
     mobile: { command: 'not run', devices: [], outcome: 'Skipped', passed: 0, durationMs: 0, evidence: [] },
     coverage: [

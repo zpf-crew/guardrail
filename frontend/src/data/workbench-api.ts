@@ -14,15 +14,16 @@ import { mockWorkbenchForIntent } from './generateTestsMockData';
 /**
  * Seam between the Generate/Improve workbench UI and its backend.
  *
- * - No `VITE_API_BASE_URL` → resolves slices of the mock session (with small
- *   delays so pending states are exercised).
- * - Configured → calls the `/workbench/...` endpoints (contract §4).
+ * - Default → calls the local workbench backend so UI Browser runs can capture
+ *   real agent-browser evidence.
+ * - `VITE_WORKBENCH_USE_MOCK=true` → resolves slices of the mock session.
  *
  * Each transition returns the contract slice it produces; the hook merges it
  * into the session, so mock and real share one code path.
  */
 
-const API_BASE = import.meta.env.VITE_API_BASE_URL;
+const API_BASE = import.meta.env.VITE_API_BASE_URL ?? 'http://127.0.0.1:3000';
+const USE_MOCK = import.meta.env.VITE_WORKBENCH_USE_MOCK === 'true';
 const delay = (ms: number) => new Promise<void>(resolve => setTimeout(resolve, ms));
 const mockSessions = new Map<string, WorkbenchSession>();
 
@@ -154,7 +155,7 @@ async function runJob<T extends JobResult>(
 
 /** S1 — create a session from the user's intent. */
 export async function createWorkbenchSession(intent?: Partial<IntentInput>): Promise<WorkbenchSession> {
-  if (!API_BASE) {
+  if (USE_MOCK) {
     await delay(300);
     const session = mockWorkbenchForIntent(intent);
     mockSessions.set(session.id, session);
@@ -164,7 +165,7 @@ export async function createWorkbenchSession(intent?: Partial<IntentInput>): Pro
 }
 
 export async function updateWorkbenchIntent(id: string, intent: IntentInput): Promise<WorkbenchSession> {
-  if (!API_BASE) {
+  if (USE_MOCK) {
     await delay(100);
     const session = { ...mockWorkbenchForIntent(intent), id };
     mockSessions.set(id, session);
@@ -175,7 +176,7 @@ export async function updateWorkbenchIntent(id: string, intent: IntentInput): Pr
 
 /** S2 — isolate & classify the requested behavior. */
 export async function analyzeSession(id: string, onEvent?: (event: JobEvent) => void): Promise<IsolationResult> {
-  if (!API_BASE) {
+  if (USE_MOCK) {
     await delay(1500);
     const session = mockSession(id);
     if (!session.isolation) throw new WorkbenchApiError('No isolation result in mock');
@@ -186,7 +187,7 @@ export async function analyzeSession(id: string, onEvent?: (event: JobEvent) => 
 
 /** S3 — produce the proposed test plan. */
 export async function planSession(id: string, onEvent?: (event: JobEvent) => void): Promise<TestPlan> {
-  if (!API_BASE) {
+  if (USE_MOCK) {
     await delay(2000);
     const session = mockSession(id);
     if (!session.plan) throw new WorkbenchApiError('No plan in mock');
@@ -197,7 +198,7 @@ export async function planSession(id: string, onEvent?: (event: JobEvent) => voi
 
 /** S4 — generate the proposed test changes. */
 export async function generateSession(id: string, onEvent?: (event: JobEvent) => void): Promise<GenerationResult> {
-  if (!API_BASE) {
+  if (USE_MOCK) {
     await delay(600);
     const session = mockSession(id);
     if (!session.generation) throw new WorkbenchApiError('No generation result in mock');
@@ -208,7 +209,7 @@ export async function generateSession(id: string, onEvent?: (event: JobEvent) =>
 
 /** S5 — run the generated tests. */
 export async function runSession(id: string, onEvent?: (event: JobEvent) => void): Promise<TestRunResult> {
-  if (!API_BASE) {
+  if (USE_MOCK) {
     await delay(400);
     const session = mockSession(id);
     if (!session.run) throw new WorkbenchApiError('No run result in mock');
@@ -219,7 +220,7 @@ export async function runSession(id: string, onEvent?: (event: JobEvent) => void
 
 /** S6 — summarize the generated changes and remaining risk. */
 export async function reviewSession(id: string, onEvent?: (event: JobEvent) => void): Promise<ReviewSummary> {
-  if (!API_BASE) {
+  if (USE_MOCK) {
     await delay(400);
     const session = mockSession(id);
     if (!session.review) throw new WorkbenchApiError('No review summary in mock');

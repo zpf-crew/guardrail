@@ -31,7 +31,7 @@ const relatedFiles: RelatedFile[] = [
 const qcCases: QCTestCase[] = [
   {
     id: 'QC-ONB-001',
-    feature: 'Checkout',
+    feature: 'Onboarding',
     scenario: 'Complete onboarding with local repository and optional knowledge sources',
     expectedResult: 'The onboarding flow reaches the initial scan step and shows progress or completion state.',
     priority: 'High',
