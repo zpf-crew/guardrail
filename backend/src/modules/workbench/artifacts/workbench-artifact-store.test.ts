@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtemp, readFile, writeFile } from 'node:fs/promises';
+import { mkdir, mkdtemp, readFile, symlink, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import os from 'node:os';
 import { WorkbenchArtifactStore } from './workbench-artifact-store.js';
@@ -54,6 +54,7 @@ test('artifact store keeps metadata when local file cannot be copied', async () 
   const root = await mkdtemp(path.join(os.tmpdir(), 'guardrail-artifacts-'));
   const allowedRoot = await mkdtemp(path.join(os.tmpdir(), 'guardrail-allowed-source-'));
   const missingSource = path.join(allowedRoot, 'missing.png');
+  await mkdir(missingSource);
   const store = new WorkbenchArtifactStore({ rootDir: root, allowedSourceRoots: [allowedRoot] });
 
   const evidence = await store.registerEvidence({
@@ -64,6 +65,27 @@ test('artifact store keeps metadata when local file cannot be copied', async () 
 
   assert.equal(evidence.kind, 'screenshot');
   assert.equal(evidence.label, 'Missing screenshot');
+  assert.equal(evidence.href, undefined);
+});
+
+test('artifact store refuses symlinked screenshot sources outside allowed roots', async () => {
+  const root = await mkdtemp(path.join(os.tmpdir(), 'guardrail-artifacts-'));
+  const allowedRoot = await mkdtemp(path.join(os.tmpdir(), 'guardrail-allowed-source-'));
+  const untrustedRoot = await mkdtemp(path.join(os.tmpdir(), 'guardrail-untrusted-source-'));
+  const target = path.join(untrustedRoot, 'secret.png');
+  const source = path.join(allowedRoot, 'screen.png');
+  await writeFile(target, Buffer.from('secret'));
+  await symlink(target, source);
+
+  const store = new WorkbenchArtifactStore({ rootDir: root, allowedSourceRoots: [allowedRoot] });
+  const evidence = await store.registerEvidence({
+    sessionId: 'session-4',
+    jobId: 'job-4',
+    evidence: { kind: 'screenshot', label: 'Symlink screenshot', href: source },
+  });
+
+  assert.equal(evidence.kind, 'screenshot');
+  assert.equal(evidence.label, 'Symlink screenshot');
   assert.equal(evidence.href, undefined);
 });
 

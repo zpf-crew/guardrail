@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto';
-import { copyFile, mkdir } from 'node:fs/promises';
+import { copyFile, mkdir, realpath } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import type { Evidence } from '../workbench.types.js';
@@ -41,6 +41,9 @@ export class WorkbenchArtifactStore {
     if (!isInsideAnyRoot(sourcePath, this.allowedSourceRoots)) return { ...input.evidence, href: undefined };
     if (!isSafePathSegment(input.sessionId) || !isSafePathSegment(input.jobId)) return { ...input.evidence, href: undefined };
 
+    const resolvedSourcePath = await resolveAllowedSourcePath(sourcePath, this.allowedSourceRoots);
+    if (!resolvedSourcePath) return { ...input.evidence, href: undefined };
+
     const ext = extensionFor(sourcePath);
     const artifactId = `${randomUUID()}${ext}`;
     const dir = path.join(this.rootDir, input.sessionId, input.jobId);
@@ -49,7 +52,7 @@ export class WorkbenchArtifactStore {
 
     try {
       await mkdir(dir, { recursive: true });
-      await copyFile(sourcePath, filePath);
+      await copyFile(resolvedSourcePath, filePath);
     } catch {
       return { ...input.evidence, href: undefined };
     }
@@ -113,4 +116,17 @@ function isInsideAnyRoot(filePath: string, roots: string[]): boolean {
 function isInsideRoot(filePath: string, root: string): boolean {
   const relative = path.relative(root, filePath);
   return relative === '' || (!relative.startsWith('..') && !path.isAbsolute(relative));
+}
+
+async function resolveAllowedSourcePath(sourcePath: string, allowedSourceRoots: string[]): Promise<string | undefined> {
+  let resolvedSourcePath: string;
+  try {
+    resolvedSourcePath = await realpath(sourcePath);
+  } catch {
+    return undefined;
+  }
+
+  const resolvedRoots = await Promise.all(allowedSourceRoots.map(root => realpath(root).catch(() => undefined)));
+  const existingRoots = resolvedRoots.filter((root): root is string => root !== undefined);
+  return isInsideAnyRoot(resolvedSourcePath, existingRoots) ? resolvedSourcePath : undefined;
 }
