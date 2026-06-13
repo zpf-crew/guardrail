@@ -113,6 +113,8 @@ export function GenerateTestsPage() {
               run={session.run ?? null}
               ranTests={wb.ranTests}
               running={wb.running}
+              progress={wb.runProgress}
+              evidence={wb.runEvidence}
               onBack={() => wb.setStep(3)}
               onReview={() => wb.setStep(5)}
               onAttentionAction={a => toast(a === 'fix' ? 'Asked agent to fix the test' : a === 'accept' ? 'Test accepted as known issue' : 'Generated test reverted', 'success')}
@@ -123,6 +125,8 @@ export function GenerateTestsPage() {
               review={session.review}
               changes={session.generation?.changes ?? []}
               applied={wb.applied}
+              progress={wb.runProgress}
+              evidence={wb.runEvidence}
               onBack={() => wb.setStep(4)}
               onApply={() => { wb.apply(); toast('Changes applied to working tree', 'success'); }}
               onCreatePR={() => toast('PR created', 'success')}

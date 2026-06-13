@@ -1,11 +1,13 @@
 import * as React from 'react';
 import type { ReactNode } from 'react';
-import type { TestRunResult, RunOutcome } from '@/types/testlens';
+import type { Evidence, TestRunResult, RunOutcome } from '@/types/testlens';
 import { Button } from '@/components/ui/button';
 import { ProgressBar } from '@/components/ui/progress-bar';
 import { RunResultIcon, MicIcon, MonitorIcon, SmartphoneIcon, AlertCircleIcon, EyeIcon, LoaderIcon, CheckIcon } from '@/components/icons';
 import { StepHeader, BlockHeader } from '../shared';
 import { RUN_OUTCOME_STYLE } from '../workbench-presentation';
+import { EvidencePanel } from '../evidence-panel';
+import type { RunProgressEvent } from '../use-workbench';
 
 const ICON_STATUS: Record<RunOutcome, 'pass' | 'fail' | 'running'> = {
   Passed: 'pass', Failed: 'fail', Flaky: 'fail', Skipped: 'running', 'Needs approval': 'running',
@@ -19,12 +21,14 @@ interface RunStepProps {
   run: TestRunResult | null;
   ranTests: number;
   running: boolean;
+  progress: RunProgressEvent[];
+  evidence: Evidence[];
   onBack: () => void;
   onReview: () => void;
   onAttentionAction: (action: 'fix' | 'accept' | 'revert') => void;
 }
 
-export function RunStep({ run, ranTests, running, onBack, onReview, onAttentionAction }: RunStepProps) {
+export function RunStep({ run, ranTests, running, progress, evidence, onBack, onReview, onAttentionAction }: RunStepProps) {
   const [resolution, setResolution] = React.useState<Resolution>(null);
 
   // Real API: results not back yet — show an honest running placeholder.
@@ -36,6 +40,9 @@ export function RunStep({ run, ranTests, running, onBack, onReview, onAttentionA
         <div className="flex items-center gap-[9px] text-[12.5px] text-[#98a1b3] mt-[14px]">
           <LoaderIcon className="w-[15px] h-[15px] animate-spin text-[#818cf8]" /> Executing the generated test suites…
         </div>
+        <div className="mt-[18px]">
+          <EvidencePanel running progress={progress} evidence={evidence} />
+        </div>
         <div className="mt-[18px]"><Button variant="ghost" onClick={onBack}>Back</Button></div>
       </div>
     );
@@ -43,7 +50,7 @@ export function RunStep({ run, ranTests, running, onBack, onReview, onAttentionA
 
   const total = run.matrix.length;
   const complete = !running;
-  const progress = total ? Math.round((ranTests / total) * 100) : 100;
+  const progressPercent = total ? Math.round((ranTests / total) * 100) : 100;
   const revealed = complete ? run.matrix : run.matrix.slice(0, ranTests);
 
   const act = (action: 'fix' | 'accept' | 'revert', state: Resolution) => {
@@ -56,9 +63,11 @@ export function RunStep({ run, ranTests, running, onBack, onReview, onAttentionA
       <StepHeader eyebrow="Step 5 — Run Tests" title={complete ? 'Test run complete' : 'Running tests…'} />
 
       <div className="mb-[18px]">
-        <ProgressBar value={progress} />
+        <ProgressBar value={progressPercent} />
         <div className="text-[11px] text-[#6b7488] mt-[6px]">{complete ? `${total} / ${total} tests · complete` : `${ranTests} / ${total} tests`}</div>
       </div>
+
+      <EvidencePanel running={running} progress={progress} evidence={evidence.length ? evidence : run.ui.evidence} />
 
       {complete && (
         <div className="flex flex-col gap-[18px] mb-[18px]">

@@ -1,10 +1,12 @@
 import * as React from 'react';
-import type { ReviewSummary, RiskRow, GeneratedChange, DiffLine } from '@/types/testlens';
+import type { ReviewSummary, RiskRow, GeneratedChange, DiffLine, Evidence } from '@/types/testlens';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { CodeDiff } from '@/components/ui/code-diff';
 import { MicIcon, FileCodeIcon, CheckIcon } from '@/components/icons';
 import { StepHeader, BlockHeader } from '../shared';
+import { EvidencePanel } from '../evidence-panel';
+import type { RunProgressEvent } from '../use-workbench';
 
 const RISK_VALUE_STYLE: Record<string, { width: string; color: string; badge: 'pass' | 'flaky' | 'fail' }> = {
   high: { width: '85%', color: '#fb7185', badge: 'fail' },
@@ -16,13 +18,15 @@ interface ReviewStepProps {
   review: ReviewSummary;
   changes: GeneratedChange[];
   applied: boolean;
+  progress: RunProgressEvent[];
+  evidence: Evidence[];
   onBack: () => void;
   onApply: () => void;
   onCreatePR: () => void;
   onExport: () => void;
 }
 
-export function ReviewStep({ review, changes, applied, onBack, onApply, onCreatePR, onExport }: ReviewStepProps) {
+export function ReviewStep({ review, changes, applied, progress, evidence, onBack, onApply, onCreatePR, onExport }: ReviewStepProps) {
   const [expanded, setExpanded] = React.useState<Set<string>>(new Set());
 
   // Combine every generated change's diff by target file (a file may have several).
@@ -67,6 +71,8 @@ export function ReviewStep({ review, changes, applied, onBack, onApply, onCreate
         <MicIcon className="w-[18px] h-[18px] flex-shrink-0 text-[#3ddc97] mt-[1px]" />
         <div><b className="text-[#d6fae8]">Recommended: Apply changes</b> — {review.recommendation}</div>
       </div>
+
+      <EvidencePanel title="Evidence from run" progress={progress} evidence={evidence} />
 
       <div className="grid grid-cols-4 gap-[12px] mb-[20px]">
         {tiles.map(t => (
