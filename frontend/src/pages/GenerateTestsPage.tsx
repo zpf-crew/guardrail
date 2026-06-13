@@ -1,5 +1,5 @@
 import { useNavigate, useLocation } from 'react-router-dom';
-import type { IntentInput, QuickAction } from '@/types/testlens';
+import type { Evidence, IntentInput, QuickAction, TestRunResult } from '@/types/testlens';
 import { TopBar } from '@/components/layout/TopBar';
 import { Button } from '@/components/ui/button';
 import { useToast } from '@/components/ui/toast';
@@ -32,6 +32,21 @@ function buildInitialIntent(state: HandoffState | null): Partial<IntentInput> | 
 
 const shellStyle = { fontFamily: 'var(--sans)' } as const;
 
+function hasScreenshotHref(evidence: Evidence[]): boolean {
+  return evidence.some(item => item.kind === 'screenshot' && Boolean(item.href));
+}
+
+function evidenceWithScreenshotFallback(streamedEvidence: Evidence[], run?: TestRunResult | null): Evidence[] {
+  if (hasScreenshotHref(streamedEvidence) || !run) return streamedEvidence;
+
+  const finalScreenshots = [
+    ...run.ui.evidence,
+    ...run.mobile.evidence,
+  ].filter(item => item.kind === 'screenshot' && item.href);
+
+  return finalScreenshots.length ? [...streamedEvidence, ...finalScreenshots] : streamedEvidence;
+}
+
 export function GenerateTestsPage() {
   const navigate = useNavigate();
   const location = useLocation();
@@ -40,6 +55,7 @@ export function GenerateTestsPage() {
   const initialIntent = buildInitialIntent(location.state as HandoffState | null);
   const wb = useWorkbench(initialIntent);
   const { status, error, session, currentStep, pending } = wb;
+  const runEvidence = evidenceWithScreenshotFallback(wb.runEvidence, session?.run);
 
   if (status === 'loading' || !session) {
     return (
@@ -114,7 +130,7 @@ export function GenerateTestsPage() {
               ranTests={wb.ranTests}
               running={wb.running}
               progress={wb.runProgress}
-              evidence={wb.runEvidence}
+              evidence={runEvidence}
               onBack={() => wb.setStep(3)}
               onReview={() => wb.setStep(5)}
               onAttentionAction={a => toast(a === 'fix' ? 'Asked agent to fix the test' : a === 'accept' ? 'Test accepted as known issue' : 'Generated test reverted', 'success')}
@@ -126,7 +142,7 @@ export function GenerateTestsPage() {
               changes={session.generation?.changes ?? []}
               applied={wb.applied}
               progress={wb.runProgress}
-              evidence={wb.runEvidence}
+              evidence={runEvidence}
               onBack={() => wb.setStep(4)}
               onApply={() => { wb.apply(); toast('Changes applied to working tree', 'success'); }}
               onCreatePR={() => toast('PR created', 'success')}

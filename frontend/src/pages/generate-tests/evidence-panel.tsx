@@ -11,7 +11,9 @@ interface EvidencePanelProps {
 }
 
 export function EvidencePanel({ title = 'Evidence', running = false, progress, evidence }: EvidencePanelProps) {
-  const recentProgress = progress.slice(-8);
+  const recentProgress = progress
+    .map((event, index) => ({ event, index }))
+    .slice(-8);
   const latestScreenshot = [...evidence].reverse().find(item => item.kind === 'screenshot' && item.href);
 
   return (
@@ -27,8 +29,8 @@ export function EvidencePanel({ title = 'Evidence', running = false, progress, e
             {recentProgress.length === 0 && (
               <div className="text-[12.5px] text-[#6b7488]">Waiting for run progress...</div>
             )}
-            {recentProgress.map((event, index) => (
-              <div key={`${event.jobId}-${event.type}-${index}`} className="text-[12.5px] text-[#98a1b3] leading-[1.45] flex gap-[8px] min-w-0">
+            {recentProgress.map(({ event, index }) => (
+              <div key={`${event.jobId}-${index}-${event.type}-${eventLabel(event)}`} className="text-[12.5px] text-[#98a1b3] leading-[1.45] flex gap-[8px] min-w-0">
                 <span className="text-[#818cf8] font-mono text-[11px] mt-[1px] flex-shrink-0">{event.type}</span>
                 <span className="min-w-0 break-words">{eventLabel(event)}</span>
               </div>

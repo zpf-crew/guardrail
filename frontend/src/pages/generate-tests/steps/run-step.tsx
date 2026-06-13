@@ -67,7 +67,7 @@ export function RunStep({ run, ranTests, running, progress, evidence, onBack, on
         <div className="text-[11px] text-[#6b7488] mt-[6px]">{complete ? `${total} / ${total} tests · complete` : `${ranTests} / ${total} tests`}</div>
       </div>
 
-      <EvidencePanel running={running} progress={progress} evidence={evidence.length ? evidence : run.ui.evidence} />
+      <EvidencePanel running={running} progress={progress} evidence={evidenceWithScreenshotFallback(evidence, run)} />
 
       {complete && (
         <div className="flex flex-col gap-[18px] mb-[18px]">
@@ -172,6 +172,14 @@ export function RunStep({ run, ranTests, running, progress, evidence, onBack, on
       </div>
     </div>
   );
+}
+
+function evidenceWithScreenshotFallback(evidence: Evidence[], run: TestRunResult): Evidence[] {
+  const hasScreenshotHref = evidence.some(item => item.kind === 'screenshot' && item.href);
+  if (hasScreenshotHref) return evidence;
+
+  const finalScreenshots = run.ui.evidence.filter(item => item.kind === 'screenshot' && item.href);
+  return finalScreenshots.length ? [...evidence, ...finalScreenshots] : evidence;
 }
 
 function SuiteHeader({ icon, title, command, pass, duration, ok }: { icon: ReactNode; title: string; command: string; pass: string; duration: string; ok: boolean }) {
