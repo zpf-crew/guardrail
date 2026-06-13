@@ -4,6 +4,33 @@ import { UiBrowserAdapter } from './ui-browser.adapter.js';
 import { LocalGuardrailRepositoryProvider } from '../../repositories/local-guardrail-repository-provider.js';
 import type { AdapterInput } from '../test-type-adapter.js';
 import type { GenerationResult, WorkbenchSession, TestPlan } from '../../workbench.types.js';
+import type { DevServerLease } from '../../dev-server/dev-server-orchestrator.js';
+import type { DevServerTarget } from '../../dev-server/dev-server-resolver.js';
+
+interface StubDevServerOptions {
+  resolve?: (clonePath: string, sessionId?: string) => Promise<DevServerTarget | null>;
+  start?: (target: DevServerTarget, signal: AbortSignal, route?: string) => Promise<DevServerLease>;
+  stop?: (lease: DevServerLease) => Promise<void>;
+}
+
+function stubDevServer(options: StubDevServerOptions = {}) {
+  return {
+    resolve: options.resolve ?? (async () => ({
+      kind: 'subprocess' as const,
+      command: 'pnpm',
+      args: ['dev'],
+      cwd: '/tmp',
+      port: 5555,
+      healthPath: '/',
+    })),
+    start: options.start ?? (async (_target, _signal, route = '/') => ({
+      baseUrl: 'http://127.0.0.1:5555',
+      route,
+      stop: async () => {},
+    })),
+    stop: options.stop ?? (async lease => { await lease.stop(); }),
+  };
+}
 
 async function buildInput(overrides: Partial<AdapterInput> = {}): Promise<AdapterInput> {
   const repo = await new LocalGuardrailRepositoryProvider({ rootDir: process.cwd() }).getContext(
@@ -146,7 +173,10 @@ test('ui browser adapter uses structured model outputs for analyze plan generate
       },
     } as never,
   });
-  const adapter = new UiBrowserAdapter({ runner: { run: async () => ({ outcome: 'Passed', durationMs: 1000, evidence: [] }) } });
+  const adapter = new UiBrowserAdapter({
+    devServer: stubDevServer(),
+    runner: { run: async () => ({ outcome: 'Passed', durationMs: 1000, evidence: [] }) },
+  });
 
   const isolation = await adapter.analyze(input);
   const testPlan = await adapter.plan({ ...input, isolation });
@@ -166,6 +196,7 @@ test('ui browser adapter uses structured model outputs for analyze plan generate
 test('ui browser adapter uses normalized screenshot evidence returned from emit', async () => {
   const normalizedHref = '/api/workbench/wb-test/artifacts/onboarding.png';
   const adapter = new UiBrowserAdapter({
+    devServer: stubDevServer(),
     runner: {
       run: async () => ({
         outcome: 'Passed',
@@ -233,7 +264,10 @@ test('ui browser adapter generate returns no-op changes when approval is cancele
 
 test('ui browser adapter propagates runner abort rejection', async () => {
   const abortError = new DOMException('The operation was aborted.', 'AbortError');
-  const adapter = new UiBrowserAdapter({ runner: { run: async () => { throw abortError; } } });
+  const adapter = new UiBrowserAdapter({
+    devServer: stubDevServer(),
+    runner: { run: async () => { throw abortError; } },
+  });
   const input = await buildInput({ structuredModel: generationStructuredModel() });
   const generation = await adapter.generate({ ...input, plan, approval: { decision: 'approve', answers: {} } });
 
@@ -256,7 +290,10 @@ test('ui browser adapter propagates model abort rejection', async () => {
 });
 
 test('ui browser adapter returns attention for flaky runner results', async () => {
-  const adapter = new UiBrowserAdapter({ runner: { run: async () => ({ outcome: 'Flaky', durationMs: 1500, evidence: [] }) } });
+  const adapter = new UiBrowserAdapter({
+    devServer: stubDevServer(),
+    runner: { run: async () => ({ outcome: 'Flaky', durationMs: 1500, evidence: [] }) },
+  });
   const input = await buildInput({ structuredModel: generationStructuredModel() });
   const generation = await adapter.generate({ ...input, plan, approval: { decision: 'approve', answers: {} } });
 
@@ -267,7 +304,10 @@ test('ui browser adapter returns attention for flaky runner results', async () =
 });
 
 test('ui browser adapter returns failed result for non-abort runner failure', async () => {
-  const adapter = new UiBrowserAdapter({ runner: { run: async () => { throw new Error('browser unavailable'); } } });
+  const adapter = new UiBrowserAdapter({
+    devServer: stubDevServer(),
+    runner: { run: async () => { throw new Error('browser unavailable'); } },
+  });
   const input = await buildInput({ structuredModel: generationStructuredModel() });
   const generation = await adapter.generate({ ...input, plan, approval: { decision: 'approve', answers: {} } });
 
@@ -327,4 +367,33 @@ test('ui browser adapter does not call runner after no-op generation', async () 
   assert.equal(run.matrix[0]?.status, 'Skipped');
   assert.equal(review.testsAdded, 0);
   assert.equal(review.testsPassing, '0/0');
+});
+
+test('run starts and stops dev server before agent-browser', async () => {
+  const events: string[] = [];
+  const adapter = new UiBrowserAdapter({
+    devServer: {
+      start: async () => ({
+        baseUrl: 'http://127.0.0.1:5555',
+        route: '/',
+        stop: async () => { events.push('stopped'); },
+      }),
+      resolve: async () => ({
+        kind: 'subprocess',
+        command: 'pnpm',
+        args: ['dev'],
+        cwd: '/tmp',
+        port: 5555,
+        healthPath: '/',
+      }),
+      stop: async lease => { await lease.stop(); },
+    },
+    runner: { run: async () => ({ outcome: 'Passed', durationMs: 100, evidence: [] }) },
+  });
+  const input = await buildInput({ structuredModel: generationStructuredModel() });
+  const generation = await adapter.generate({ ...input, plan, approval: { decision: 'approve', answers: {} } });
+
+  await adapter.run({ ...input, generation });
+
+  assert.deepEqual(events, ['stopped']);
 });

@@ -7,6 +7,12 @@ import type {
   TestPlan,
   TestRunResult,
 } from '../../workbench.types.js';
+import { DevServerOrchestrator, type DevServerLease } from '../../dev-server/dev-server-orchestrator.js';
+import {
+  resolveDevServerTarget,
+  resolveRouteFromScenario,
+  type DevServerTarget,
+} from '../../dev-server/dev-server-resolver.js';
 import { scenarioTextFromGeneration, fallbackRunPlanFromScenario } from './ui-browser-scenario.js';
 import { UiBrowserRunner, type UiBrowserRunnerResult, type UiBrowserRunnerRunArgs } from './ui-browser-runner.js';
 
@@ -14,12 +20,24 @@ interface UiBrowserRunnerLike {
   run(args: UiBrowserRunnerRunArgs): Promise<UiBrowserRunnerResult>;
 }
 
-interface UiBrowserAdapterOptions {
-  runner?: UiBrowserRunnerLike;
+interface DevServerLike {
+  resolve: (clonePath: string, sessionId?: string) => Promise<DevServerTarget | null>;
+  start: (target: DevServerTarget, signal: AbortSignal, route?: string) => Promise<DevServerLease>;
+  stop: (lease: DevServerLease) => Promise<void>;
 }
 
-function uiCommandFor(input: AdapterInput): string {
-  return `agent-browser open ${input.repository.frontend.url}`;
+interface UiBrowserAdapterOptions {
+  runner?: UiBrowserRunnerLike;
+  devServer?: DevServerLike;
+}
+
+interface UiRunOutcome {
+  result: UiBrowserRunnerResult;
+  targetUrl: string | null;
+}
+
+function uiCommandFor(targetUrl: string | null): string {
+  return targetUrl ? `agent-browser open ${targetUrl}` : 'agent-browser open (dev server unavailable)';
 }
 
 function durationLabel(durationMs: number): string {
@@ -93,9 +111,20 @@ export class UiBrowserAdapter implements TestTypeAdapter {
   readonly testType = 'UI / Browser' as const;
 
   readonly #runner: UiBrowserRunnerLike;
+  readonly #devServer: DevServerLike;
 
   constructor(options: UiBrowserAdapterOptions = {}) {
     this.#runner = options.runner ?? new UiBrowserRunner();
+    if (options.devServer) {
+      this.#devServer = options.devServer;
+    } else {
+      const orchestrator = new DevServerOrchestrator();
+      this.#devServer = {
+        resolve: resolveDevServerTarget,
+        start: (target, signal, route) => orchestrator.start(target, signal, route),
+        stop: lease => orchestrator.stop(lease),
+      };
+    }
   }
 
   async analyze(input: AdapterInput): Promise<IsolationResult> {
@@ -167,8 +196,8 @@ export class UiBrowserAdapter implements TestTypeAdapter {
       return noOpRun();
     }
 
-    const runnerResult = await this.#runUi(input);
-    const command = uiCommandFor(input);
+    const { result: runnerResult, targetUrl } = await this.#runUi(input);
+    const command = uiCommandFor(targetUrl);
     const evidence = runnerResult.evidence;
     const primaryChange = input.generation.changes[0];
 
@@ -218,15 +247,42 @@ export class UiBrowserAdapter implements TestTypeAdapter {
     });
   }
 
-  async #runUi(input: AdapterInput & { generation: GenerationResult }): Promise<UiBrowserRunnerResult> {
+  async #runUi(input: AdapterInput & { generation: GenerationResult }): Promise<UiRunOutcome> {
     let commandProgress = Promise.resolve();
     const scenarioText = scenarioTextFromGeneration(input.generation);
     const runPlan = fallbackRunPlanFromScenario(scenarioText);
+    const clonePath = input.repository.repo.path;
+    const sessionId = input.session.id;
+    let lease: DevServerLease | null = null;
+    let targetUrl: string | null = null;
+
     try {
+      const target = await this.#devServer.resolve(clonePath, sessionId);
+      if (!target) {
+        return {
+          result: {
+            outcome: 'Failed',
+            durationMs: 0,
+            evidence: [],
+            errorMessage: 'No dev server could be resolved for this repository.',
+          },
+          targetUrl: null,
+        };
+      }
+
+      await input.emit({ type: 'progress', message: 'Starting managed dev server.', percent: 76 });
+      const route = resolveRouteFromScenario(scenarioText);
+      lease = await this.#devServer.start(target, input.signal, route);
+      targetUrl = `${lease.baseUrl}${lease.route}`;
+      await input.emit({
+        type: 'progress',
+        message: `Dev server ready at ${targetUrl}.`,
+        percent: 77,
+      });
       await input.emit({ type: 'progress', message: 'Opening frontend in agent-browser.', percent: 78 });
       const result = await this.#runner.run({
-        url: input.repository.frontend.url,
-        route: input.repository.frontend.route,
+        url: targetUrl,
+        route: lease.route,
         plan: runPlan,
         signal: input.signal,
         onCommand: (args, index, total) => {
@@ -247,7 +303,7 @@ export class UiBrowserAdapter implements TestTypeAdapter {
           evidence.push(item);
         }
       }
-      return { ...result, evidence };
+      return { result: { ...result, evidence }, targetUrl };
     } catch (error) {
       await commandProgress;
       rethrowIfAbort(error, input.signal);
@@ -257,11 +313,18 @@ export class UiBrowserAdapter implements TestTypeAdapter {
         percent: 80,
       });
       return {
-        outcome: 'Failed',
-        durationMs: 0,
-        evidence: [],
-        errorMessage: error instanceof Error ? error.message : String(error),
+        result: {
+          outcome: 'Failed',
+          durationMs: 0,
+          evidence: [],
+          errorMessage: error instanceof Error ? error.message : String(error),
+        },
+        targetUrl,
       };
+    } finally {
+      if (lease) {
+        await this.#devServer.stop(lease);
+      }
     }
   }
 
