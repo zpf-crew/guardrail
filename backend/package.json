@@ -9,7 +9,8 @@
     "build": "tsc",
     "start": "node dist/server.js",
     "typecheck": "tsc --noEmit",
-    "lint": "echo 'no lint yet'"
+    "lint": "echo 'no lint yet'",
+    "test": "pnpm run typecheck && node --import tsx --test src/**/*.test.ts"
   },
   "dependencies": {
     "@fastify/cookie": "^9.4.0",

@@ -1,5 +1,6 @@
 import type {
   WorkbenchSession,
+  IntentInput,
   QuickAction,
   GeneratedChange,
   TestResultRow,
@@ -17,6 +18,13 @@ const repo = {
   path: '/Users/dev/projects/checkout-service',
   branch: 'feature/coupon-refactor',
   commit: 'a1b2c3d',
+};
+
+const guardrailRepo = {
+  name: 'guardrail',
+  path: '/Users/lap15961/Workspace/clawathon/guardrail',
+  branch: 'main',
+  commit: 'local',
 };
 
 /** Canned starting points surfaced from dashboard insights (Intent step). */
@@ -312,3 +320,162 @@ export const mockWorkbench: WorkbenchSession = {
     recommendation: '10 of 11 tests pass. Coverage improved from 64% to 78%. 1 mobile test fails on iPhone 15.',
   },
 };
+
+const onboardingFeatureText = [
+  'Feature: Guardrail onboarding',
+  '',
+  '  Scenario: Complete onboarding with local repository and optional knowledge sources',
+  '    Given a developer opens Guardrail onboarding',
+  '    When they select the local repository and continue',
+  '    Then the initial scan starts and onboarding progress is visible',
+].join('\n');
+
+const onboardingChange: GeneratedChange = {
+  id: 'ui-browser-onboarding',
+  action: 'Add',
+  testType: 'UI / Browser',
+  title: 'Complete onboarding with selected repository',
+  file: 'guardrail-tests/ui/onboarding.feature',
+  feature: 'Onboarding',
+  risk: 'High',
+  reason: 'Adds browser-level evidence for repository selection and initial scan progress.',
+  diff: onboardingFeatureText.split('\n').map(line => ({ kind: 'add', text: line })),
+  status: 'staged',
+};
+
+const onboardingMatrix: TestResultRow[] = [
+  {
+    title: 'Complete onboarding with selected repository',
+    type: 'UI / Browser',
+    status: 'Passed',
+    duration: '6.1s',
+    evidence: 'screenshot',
+    file: onboardingChange.file,
+  },
+];
+
+const uiBrowserMockWorkbench: WorkbenchSession = {
+  id: 'WB-UI-001',
+  repo: guardrailRepo,
+  createdAt: new Date().toISOString(),
+  steps: { intent: 'active', isolation: 'locked', plan: 'locked', generate: 'locked', run: 'locked', review: 'locked' },
+
+  intent: {
+    prompt: 'Improve onboarding UI test coverage',
+    feature: 'Onboarding',
+    testTypes: ['UI / Browser'],
+    sources: ['Codebase', 'QC test cases'],
+  },
+
+  isolation: {
+    target: { feature: 'Onboarding', repo: guardrailRepo },
+    sourceFiles: [
+      { path: 'frontend/src/pages/OnboardingPage.tsx', kind: 'source', meta: 'Primary onboarding flow page for selected repository setup.' },
+      { path: 'frontend/src/data/onboardingMockData.ts', kind: 'source', meta: 'Mock onboarding data used by the hackathon slice.' },
+      { path: 'frontend/src/pages/GenerateTestsPage.tsx', kind: 'source', meta: 'Generate/improve tests page connected to the workbench experience.' },
+      { path: 'frontend/src/data/workbench-api.ts', kind: 'source', meta: 'Frontend workbench API data adapter.' },
+    ],
+    existingTestFiles: [],
+    specDocs: [],
+    qcCases: [
+      {
+        id: 'QC-ONB-001',
+        feature: 'Onboarding',
+        scenario: 'Complete onboarding with local repository and optional knowledge sources',
+        expectedResult: 'Repository scan starts and progress is visible to the user.',
+        priority: 'High',
+        automationStatus: 'missing',
+      },
+    ],
+    currentCoverage: { line: 0, branch: 0 },
+    currentStatus: { failed: 0, suspicious: 0, missing: 1, flaky: 0 },
+    userJourneys: ['Complete onboarding with selected repository'],
+    classifications: [
+      {
+        behavior: 'Complete onboarding with selected repository',
+        status: 'Missing',
+        suggestedTypes: ['UI / Browser'],
+        risk: 'High',
+        explanation: 'The onboarding flow has real browser behavior, but no UI Browser evidence is captured yet.',
+      },
+    ],
+  },
+
+  plan: {
+    proposedActions: [{ action: 'add', label: 'Add UI Browser onboarding test', count: 1 }],
+    risk: {
+      productionCodeChanges: 'none',
+      testDataChanges: false,
+      browserAutomationRequired: true,
+      mobileSimulatorRequired: 'no',
+      externalApiMocking: 'no',
+    },
+    filesToChange: [onboardingChange.file],
+    questions: [],
+  },
+
+  generation: {
+    timeline: [
+      { label: 'Load onboarding repository context', status: 'done' },
+      { label: 'Draft UI Browser onboarding scenario', status: 'done' },
+      { label: 'Stage generated feature payload', status: 'done' },
+    ],
+    changes: [onboardingChange],
+    beforeAfter: {
+      before: ['Onboarding has no UI Browser automation evidence.'],
+      after: ['One UI Browser onboarding feature is staged for review.'],
+    },
+  },
+
+  run: {
+    unit: { command: 'not run', outcome: 'Skipped', passed: 0, durationMs: 0, suite: 'Unit' },
+    ui: {
+      command: 'agent-browser open http://127.0.0.1:5176/onboarding',
+      browser: 'Chromium',
+      outcome: 'Passed',
+      passed: 1,
+      durationMs: 6100,
+      evidence: [{ kind: 'screenshot', label: 'Onboarding screenshot' }],
+    },
+    mobile: { command: 'not run', devices: [], outcome: 'Skipped', passed: 0, durationMs: 0, evidence: [] },
+    coverage: [
+      { metric: 'Line coverage', before: 0, after: 0 },
+      { metric: 'Branch coverage', before: 0, after: 0 },
+    ],
+    matrix: onboardingMatrix,
+  },
+
+  review: {
+    testsAdded: 1,
+    testsUpdated: 0,
+    testsDeleted: 0,
+    testsPassing: '1/1',
+    coverage: { lineDelta: 0, branchDelta: 0 },
+    flakyTracked: 0,
+    filesChanged: [{ path: onboardingChange.file, diffStat: '+6', changeKind: 'add' }],
+    remainingRisk: [
+      {
+        label: 'Persistence',
+        value: 'Generated UI Browser payload is staged only; persistence is outside this hackathon slice.',
+        sentiment: 'neutral',
+      },
+    ],
+    openQuestions: 0,
+    recommendation: 'Review the captured onboarding evidence before enabling persistence.',
+  },
+};
+
+export function mockWorkbenchForIntent(intent: Partial<IntentInput> = {}): WorkbenchSession {
+  const mergedIntent = { ...mockWorkbench.intent, ...intent };
+  const wantsUiBrowser = mergedIntent.testTypes?.includes('UI / Browser')
+    || /ui|browser|onboarding/i.test(mergedIntent.prompt ?? '')
+    || mergedIntent.feature === 'Onboarding';
+  const inferredFeature = /onboarding/i.test(mergedIntent.prompt ?? '') ? 'Onboarding' : intent.feature;
+
+  const base = structuredClone(wantsUiBrowser ? uiBrowserMockWorkbench : mockWorkbench);
+  return {
+    ...base,
+    createdAt: new Date().toISOString(),
+    intent: { ...base.intent, ...intent, ...(inferredFeature ? { feature: inferredFeature } : {}) },
+  };
+}

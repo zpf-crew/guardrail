@@ -6,6 +6,7 @@ backend/.guardrail-workspaces/
 *.log
 .agentbase/
 dist/
+backend/.artifacts/
 
 # Claude Code
 CLAUDE.md
