@@ -22,7 +22,10 @@ import { mockWorkbenchForIntent } from './generateTestsMockData';
  * into the session, so mock and real share one code path.
  */
 
-const API_BASE = import.meta.env.VITE_API_BASE_URL ?? 'http://127.0.0.1:3000';
+const configuredApiBase = import.meta.env.VITE_API_BASE_URL?.trim();
+const API_BASE = configuredApiBase && configuredApiBase.length > 0
+  ? configuredApiBase
+  : 'http://127.0.0.1:3000';
 const USE_MOCK = import.meta.env.VITE_WORKBENCH_USE_MOCK === 'true';
 const delay = (ms: number) => new Promise<void>(resolve => setTimeout(resolve, ms));
 const mockSessions = new Map<string, WorkbenchSession>();
