@@ -1,0 +1,262 @@
+import { z } from 'zod';
+import type {
+  GenerationResult,
+  IsolationResult,
+  ReviewSummary,
+  TestPlan,
+  TestRunResult,
+} from '../workbench.types.js';
+
+const testTypeSchema = z.enum([
+  'Unit',
+  'Integration',
+  'E2E',
+  'Contract',
+  'Regression',
+  'Edge Case',
+  'Security',
+  'UI / Browser',
+  'Visual Screenshot',
+  'Mobile',
+]);
+
+const riskSchema = z.enum(['Low', 'Medium', 'High', 'Critical']);
+
+const repoSchema = z.object({
+  name: z.string(),
+  path: z.string(),
+  branch: z.string(),
+  commit: z.string().optional(),
+});
+
+const relatedFileSchema = z.object({
+  path: z.string(),
+  kind: z.enum(['source', 'test', 'spec', 'qc']),
+  meta: z.string().optional(),
+});
+
+const qcCaseSchema = z.object({
+  id: z.string(),
+  feature: z.string(),
+  scenario: z.string(),
+  expectedResult: z.string(),
+  priority: z.enum(['Critical', 'High', 'Medium', 'Low']),
+  automationStatus: z.enum(['automated', 'missing', 'unknown']),
+});
+
+const isolationSchema = z.object({
+  target: z.object({ feature: z.string(), repo: repoSchema }),
+  sourceFiles: z.array(relatedFileSchema),
+  existingTestFiles: z.array(relatedFileSchema),
+  specDocs: z.array(relatedFileSchema),
+  qcCases: z.array(qcCaseSchema),
+  currentCoverage: z.object({ line: z.number(), branch: z.number() }),
+  currentStatus: z.object({
+    failed: z.number(),
+    suspicious: z.number(),
+    missing: z.number(),
+    flaky: z.number().optional(),
+  }),
+  userJourneys: z.array(z.string()),
+  classifications: z.array(z.object({
+    behavior: z.string(),
+    status: z.enum(['Covered', 'Missing', 'Weak', 'Failed', 'Suspicious']),
+    suggestedTypes: z.array(testTypeSchema),
+    risk: riskSchema,
+    explanation: z.string(),
+  })),
+});
+
+const planSchema = z.object({
+  proposedActions: z.array(z.object({
+    action: z.enum(['add', 'update', 'delete', 'run']),
+    label: z.string(),
+    count: z.number().nullable(),
+  })),
+  risk: z.object({
+    productionCodeChanges: z.enum(['none', 'expected']),
+    testDataChanges: z.boolean(),
+    browserAutomationRequired: z.boolean(),
+    mobileSimulatorRequired: z.enum(['required', 'optional', 'no']),
+    externalApiMocking: z.enum(['required', 'optional', 'no']),
+  }),
+  filesToChange: z.array(z.string()),
+  questions: z.array(z.object({
+    id: z.string(),
+    question: z.string(),
+    options: z.array(z.string()),
+    answerIndex: z.number().optional(),
+  })),
+});
+
+const diffLineSchema = z.object({
+  kind: z.enum(['add', 'del', 'context', 'meta']),
+  text: z.string(),
+});
+
+const generationSchema = z.object({
+  timeline: z.array(z.object({
+    label: z.string(),
+    status: z.enum(['pending', 'running', 'done']),
+  })),
+  changes: z.array(z.object({
+    id: z.string(),
+    action: z.enum(['Add', 'Update', 'Delete']),
+    testType: testTypeSchema,
+    title: z.string(),
+    file: z.string(),
+    feature: z.string(),
+    risk: riskSchema,
+    reason: z.string(),
+    diff: z.array(diffLineSchema),
+    status: z.enum(['staged', 'applied', 'reverted']),
+  })),
+  beforeAfter: z.object({
+    before: z.array(z.string()),
+    after: z.array(z.string()),
+  }),
+});
+
+const outcomeSchema = z.enum(['Passed', 'Failed', 'Flaky', 'Skipped', 'Needs approval']);
+
+const evidenceSchema = z.object({
+  kind: z.enum(['screenshot', 'video', 'trace', 'device-log', 'visual-diff']),
+  label: z.string(),
+  href: z.string().optional(),
+});
+
+const runSchema = z.object({
+  unit: z.object({
+    command: z.string(),
+    outcome: outcomeSchema,
+    passed: z.number(),
+    failed: z.number().optional(),
+    durationMs: z.number(),
+    suite: z.string(),
+  }),
+  ui: z.object({
+    command: z.string(),
+    browser: z.string(),
+    outcome: outcomeSchema,
+    passed: z.number(),
+    durationMs: z.number(),
+    visual: z.object({ matchPercent: z.number(), baseline: z.string() }).optional(),
+    evidence: z.array(evidenceSchema),
+  }),
+  mobile: z.object({
+    command: z.string(),
+    devices: z.array(z.string()),
+    network: z.string().optional(),
+    outcome: outcomeSchema,
+    passed: z.number(),
+    flaky: z.number().optional(),
+    durationMs: z.number(),
+    evidence: z.array(evidenceSchema),
+  }),
+  coverage: z.array(z.object({
+    metric: z.enum(['Line coverage', 'Branch coverage', 'Function coverage', 'Changed-files']),
+    before: z.number(),
+    after: z.number(),
+  })),
+  matrix: z.array(z.object({
+    title: z.string(),
+    type: testTypeSchema,
+    status: outcomeSchema,
+    duration: z.string().nullable(),
+    evidence: z.string().nullable(),
+    file: z.string(),
+  })),
+  attention: z.object({
+    testTitle: z.string(),
+    kind: z.enum(['failed', 'flaky']),
+    reason: z.string(),
+    likelyCause: z.string(),
+    suggestedFix: z.string(),
+    actions: z.array(z.enum(['ask-agent-to-fix', 'accept-and-keep', 'revert-generated-test'])),
+  }).optional(),
+});
+
+const reviewSchema = z.object({
+  testsAdded: z.number(),
+  testsUpdated: z.number(),
+  testsDeleted: z.number(),
+  testsPassing: z.string(),
+  coverage: z.object({ lineDelta: z.number(), branchDelta: z.number() }),
+  flakyTracked: z.number(),
+  filesChanged: z.array(z.object({
+    path: z.string(),
+    diffStat: z.string(),
+    changeKind: z.enum(['add', 'update', 'delete']),
+  })),
+  remainingRisk: z.array(z.object({
+    label: z.string(),
+    value: z.string(),
+    sentiment: z.enum(['good', 'bad', 'neutral']),
+  })),
+  openQuestions: z.number(),
+  recommendation: z.string(),
+});
+
+const uiBrowserRunActionSchema = z.discriminatedUnion('kind', [
+  z.object({ kind: z.literal('open'), path: z.string() }),
+  z.object({ kind: z.literal('waitForLoad'), state: z.enum(['load', 'domcontentloaded', 'networkidle']) }),
+  z.object({ kind: z.literal('snapshot') }),
+  z.object({ kind: z.literal('screenshot'), label: z.string() }),
+  z.object({ kind: z.literal('click'), role: z.string(), name: z.string() }),
+  z.object({ kind: z.literal('fill'), label: z.string(), value: z.string() }),
+  z.object({ kind: z.literal('assertText'), text: z.string() }),
+]);
+
+const uiBrowserRunPlanSchema = z.object({
+  scenarioTitle: z.string(),
+  actions: z.array(uiBrowserRunActionSchema).min(1),
+});
+
+const schemas = {
+  IsolationResult: isolationSchema,
+  TestPlan: planSchema,
+  GenerationResult: generationSchema,
+  TestRunResult: runSchema,
+  ReviewSummary: reviewSchema,
+} as const;
+
+interface WorkbenchStepResultByName {
+  IsolationResult: IsolationResult;
+  TestPlan: TestPlan;
+  GenerationResult: GenerationResult;
+  TestRunResult: TestRunResult;
+  ReviewSummary: ReviewSummary;
+}
+
+export type WorkbenchSchemaName = keyof typeof schemas;
+export type UiBrowserRunPlan = z.infer<typeof uiBrowserRunPlanSchema>;
+
+export function validateWorkbenchStepResult<TName extends WorkbenchSchemaName>(
+  schemaName: TName,
+  value: unknown,
+): WorkbenchStepResultByName[TName] {
+  const result = schemas[schemaName].safeParse(value);
+  if (!result.success) {
+    throw new Error(`${schemaName} validation failed: ${formatIssues(result.error.issues)}`);
+  }
+
+  return result.data as WorkbenchStepResultByName[TName];
+}
+
+export function validateUiBrowserRunPlan(value: unknown): UiBrowserRunPlan {
+  const result = uiBrowserRunPlanSchema.safeParse(value);
+  if (!result.success) {
+    throw new Error(`UiBrowserRunPlan validation failed: ${formatIssues(result.error.issues)}`);
+  }
+
+  return result.data;
+}
+
+function formatIssues(issues: z.ZodIssue[]): string {
+  return issues
+    .map(issue => {
+      const path = issue.path.join('.');
+      return path ? `${path}: ${issue.message}` : issue.message;
+    })
+    .join(', ');
+}
