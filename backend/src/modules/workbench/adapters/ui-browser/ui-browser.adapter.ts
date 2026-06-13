@@ -98,6 +98,35 @@ function noOpGeneration(reason: string, after: string): GenerationResult {
   };
 }
 
+function noOpRun(): TestRunResult {
+  return {
+    unit: { command: 'not run', outcome: 'Skipped', passed: 0, durationMs: 0, suite: 'Unit' },
+    ui: {
+      command: 'not run',
+      browser: 'Chromium',
+      outcome: 'Skipped',
+      passed: 0,
+      durationMs: 0,
+      evidence: [],
+    },
+    mobile: { command: 'not run', devices: [], outcome: 'Skipped', passed: 0, durationMs: 0, evidence: [] },
+    coverage: [
+      { metric: 'Line coverage', before: 0, after: 0 },
+      { metric: 'Branch coverage', before: 0, after: 0 },
+    ],
+    matrix: [
+      {
+        title: onboardingBehavior,
+        type: 'UI / Browser',
+        status: 'Skipped',
+        duration: null,
+        evidence: null,
+        file: '',
+      },
+    ],
+  };
+}
+
 export class UiBrowserAdapter implements TestTypeAdapter {
   readonly testType = 'UI / Browser' as const;
 
@@ -200,6 +229,10 @@ export class UiBrowserAdapter implements TestTypeAdapter {
     input.signal.throwIfAborted();
     input.emit({ type: 'progress', message: 'Running UI Browser adapter fallback runner.', percent: 75 });
 
+    if (input.generation.changes.length === 0) {
+      return noOpRun();
+    }
+
     const runnerResult = await this.#runUi(input);
     const command = uiCommandFor(input);
     const evidence = runnerResult.evidence.length > 0
@@ -245,12 +278,13 @@ export class UiBrowserAdapter implements TestTypeAdapter {
     const added = input.generation.changes.filter(change => change.action === 'Add').length;
     const updated = input.generation.changes.filter(change => change.action === 'Update').length;
     const deleted = input.generation.changes.filter(change => change.action === 'Delete').length;
+    const generatedTests = added + updated;
 
     return {
       testsAdded: added,
       testsUpdated: updated,
       testsDeleted: deleted,
-      testsPassing: `${input.run.ui.passed}/1`,
+      testsPassing: generatedTests === 0 ? '0/0' : `${input.run.ui.passed}/${generatedTests}`,
       coverage: { lineDelta: 0, branchDelta: 0 },
       flakyTracked: input.run.ui.outcome === 'Flaky' ? 1 : 0,
       filesChanged: input.generation.changes.map(change => ({
