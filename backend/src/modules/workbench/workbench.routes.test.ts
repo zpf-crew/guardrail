@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import cookie from '@fastify/cookie';
 import Fastify, { type FastifyInstance } from 'fastify';
-import { mkdtemp, writeFile } from 'node:fs/promises';
+import { mkdir, mkdtemp, writeFile } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import type { Pool } from 'pg';
@@ -13,7 +13,9 @@ import { WorkbenchArtifactStore } from './artifacts/workbench-artifact-store.js'
 import { WorkbenchJobEventBus } from './jobs/job-events.js';
 import { WorkbenchJobQueue } from './jobs/job-queue.js';
 import { WorkbenchJobStore } from './jobs/job-store.js';
+import { ClonedRepoRepositoryProvider } from './repositories/cloned-repo-repository-provider.js';
 import { LocalGuardrailRepositoryProvider } from './repositories/local-guardrail-repository-provider.js';
+import type { RepositoryContextProvider } from './repositories/repository-context-provider.js';
 import { buildWorkbenchRoutes } from './workbench.routes.js';
 import { WorkbenchService, type WorkbenchServiceTestHooks } from './workbench.service.js';
 import type { WorkbenchJobEvent, WorkbenchJobStatus } from './workbench.types.js';
@@ -23,6 +25,7 @@ type Snapshot = {
   job: { status: WorkbenchJobStatus; error?: string };
   events: WorkbenchJobEvent[];
   session: {
+    repo: { name: string; path: string; branch: string };
     intent: {
       prompt: string;
       testTypes: string[];
@@ -35,9 +38,14 @@ type Snapshot = {
     run?: {
       ui: {
         outcome: string;
+        command?: string;
         evidence: Array<{ href?: string }>;
       };
       matrix: Array<{ file: string }>;
+      attention?: {
+        kind: string;
+        reason: string;
+      };
     };
   };
 };
@@ -105,22 +113,34 @@ const modelOutputs = {
 const TEST_SESSION_ID = 'test-session-id';
 const TEST_USER_ID = 'user-1';
 const TEST_REPO_ID = 'guardrail';
+const FIXTURE_REPO_ID = 'acme-app-repo';
+const FIXTURE_REPO_NAME = 'acme-app';
 
 function authInjectOptions(): { cookies: Record<string, string> } {
   return { cookies: { [SESSION_COOKIE]: TEST_SESSION_ID } };
 }
 
-function createMockDb(rootDir: string): Pool {
+interface MockDbOptions {
+  repoId?: string;
+  repoName?: string;
+  fullName?: string;
+  clonePath?: string;
+}
+
+function createMockDb(clonePath: string, options: MockDbOptions = {}): Pool {
+  const repoId = options.repoId ?? TEST_REPO_ID;
+  const repoName = options.repoName ?? 'guardrail';
+  const fullName = options.fullName ?? `org/${repoName}`;
   const repoRow = {
-    id: TEST_REPO_ID,
+    id: repoId,
     github_repo_id: 1,
-    full_name: 'org/guardrail',
-    name: 'guardrail',
+    full_name: fullName,
+    name: repoName,
     private: false,
     default_branch: 'main',
-    clone_url: 'https://github.com/org/guardrail.git',
-    html_url: 'https://github.com/org/guardrail',
-    clone_path: rootDir,
+    clone_url: `https://github.com/${fullName}.git`,
+    html_url: `https://github.com/${fullName}`,
+    clone_path: options.clonePath ?? clonePath,
     current_branch: 'test',
     commit_sha: 'abc123',
     status: 'cloned',
@@ -139,8 +159,11 @@ function createMockDb(rootDir: string): Pool {
       }
       if (sql.includes('FROM repos WHERE id')) {
         return {
-          rows: params?.[0] === TEST_REPO_ID && params?.[1] === TEST_USER_ID ? [repoRow] : [],
+          rows: params?.[0] === repoId && params?.[1] === TEST_USER_ID ? [repoRow] : [],
         };
+      }
+      if (sql.includes('onboarding_scan_results')) {
+        return { rows: [] };
       }
       return { rows: [] };
     },
@@ -454,6 +477,93 @@ test('successful analyze job records ordered status progress result and succeede
   assert.equal(snapshot.session.steps.isolation, 'done');
 });
 
+test('workbench routes bind session repo from authenticated user clone fixture', async () => {
+  const cloneRoot = await mkdtemp(path.join(os.tmpdir(), 'guardrail-clone-fixture-'));
+  const homePath = path.join(cloneRoot, 'frontend', 'src', 'pages', 'Home.tsx');
+  await mkdir(path.dirname(homePath), { recursive: true });
+  await writeFile(homePath, 'export default function Home() {}');
+
+  const db = createMockDb(cloneRoot, {
+    repoId: FIXTURE_REPO_ID,
+    repoName: FIXTURE_REPO_NAME,
+    fullName: 'acme/acme-app',
+    clonePath: cloneRoot,
+  });
+  const app = await buildWorkbenchRouteTestApp({
+    db,
+    rootDir: cloneRoot,
+    repositoryProvider: ClonedRepoRepositoryProvider.fromDb(db),
+  });
+
+  const session = await createSession(app, FIXTURE_REPO_ID);
+  assert.equal(session.repo.name, FIXTURE_REPO_NAME);
+  assert.notEqual(session.repo.name, 'guardrail');
+
+  const jobRes = await app.inject({
+    method: 'POST',
+    url: `/api/workbench/${session.id}/analyze/jobs`,
+    ...authInjectOptions(),
+  });
+  assert.equal(jobRes.statusCode, 200);
+  const job = jobRes.json();
+
+  const snapshot = await waitForJob(app, session.id, job.jobId, ['succeeded']);
+  assert.equal(snapshot.session.repo.name, FIXTURE_REPO_NAME);
+  assert.notEqual(snapshot.session.repo.name, 'guardrail');
+  assert.equal(snapshot.session.repo.path, cloneRoot);
+
+  await app.close();
+});
+
+test('workbench run job reports failed UI outcome when dev server cannot be resolved', async () => {
+  const app = await buildWorkbenchRouteTestApp({
+    devServer: {
+      resolve: async () => null,
+      start: async () => {
+        throw new Error('dev server start should not be called when resolve returns null');
+      },
+      stop: async () => {},
+    },
+  });
+  const session = await createSession(app);
+
+  const analyzeJob = (await app.inject({
+    method: 'POST',
+    url: `/api/workbench/${session.id}/analyze/jobs`,
+    ...authInjectOptions(),
+  })).json();
+  await waitForJob(app, session.id, analyzeJob.jobId, ['succeeded']);
+
+  const planJob = (await app.inject({
+    method: 'POST',
+    url: `/api/workbench/${session.id}/plan/jobs`,
+    ...authInjectOptions(),
+  })).json();
+  await waitForJob(app, session.id, planJob.jobId, ['succeeded']);
+
+  const generateJob = (await app.inject({
+    method: 'POST',
+    url: `/api/workbench/${session.id}/generate/jobs`,
+    ...authInjectOptions(),
+  })).json();
+  await waitForJob(app, session.id, generateJob.jobId, ['succeeded']);
+
+  const runJob = (await app.inject({
+    method: 'POST',
+    url: `/api/workbench/${session.id}/run/jobs`,
+    ...authInjectOptions(),
+  })).json();
+  const snapshot = await waitForJob(app, session.id, runJob.jobId, ['succeeded']);
+
+  assert.equal(snapshot.job.status, 'succeeded');
+  assert.equal(snapshot.session.run?.ui.outcome, 'Failed');
+  assert.equal(snapshot.session.run?.attention?.kind, 'failed');
+  assert.match(snapshot.session.run?.attention?.reason ?? '', /dev server/i);
+  assert.match(snapshot.session.run?.ui.command ?? '', /dev server unavailable/i);
+
+  await app.close();
+});
+
 test('workbench SSE replays existing events through terminal event and closes', async () => {
   const app = await buildRouteTestApp();
   const session = await createSession(app);
@@ -488,15 +598,21 @@ async function buildRouteTestApp(): Promise<FastifyInstance> {
 
 async function buildWorkbenchRouteTestApp(options: {
   runner?: NonNullable<NonNullable<ConstructorParameters<typeof UiBrowserAdapter>[0]>['runner']>;
+  devServer?: NonNullable<ConstructorParameters<typeof UiBrowserAdapter>[0]>['devServer'];
   artifactStore?: WorkbenchArtifactStore;
   eventBus?: WorkbenchJobEventBus;
   testHooks?: WorkbenchServiceTestHooks;
+  repositoryProvider?: RepositoryContextProvider;
+  db?: Pool;
+  rootDir?: string;
 } = {}): Promise<FastifyInstance> {
   const app = Fastify();
-  const rootDir = path.basename(process.cwd()) === 'backend' ? path.dirname(process.cwd()) : process.cwd();
+  const rootDir = options.rootDir
+    ?? (path.basename(process.cwd()) === 'backend' ? path.dirname(process.cwd()) : process.cwd());
+  const db = options.db ?? createMockDb(rootDir);
 
   await app.register(cookie);
-  app.decorate('db', createMockDb(rootDir));
+  app.decorate('db', db);
 
   app.addHook('onRequest', async (_request, reply) => {
     reply.header('Access-Control-Allow-Origin', '*');
@@ -508,13 +624,19 @@ async function buildWorkbenchRouteTestApp(options: {
     return reply.code(204).send();
   });
 
+  const repositoryProvider = options.repositoryProvider
+    ?? new LocalGuardrailRepositoryProvider({ rootDir });
+  const uiBrowserOptions: ConstructorParameters<typeof UiBrowserAdapter>[0] = {};
+  if (options.runner) uiBrowserOptions.runner = options.runner;
+  if (options.devServer) uiBrowserOptions.devServer = options.devServer;
+
   const service = new WorkbenchService(
     new WorkbenchJobStore(),
     new WorkbenchJobQueue({ concurrency: 1 }),
     options.eventBus ?? new WorkbenchJobEventBus(),
     options.artifactStore ?? new WorkbenchArtifactStore(),
-    new LocalGuardrailRepositoryProvider({ rootDir }),
-    [new UiBrowserAdapter({ runner: options.runner })],
+    repositoryProvider,
+    [new UiBrowserAdapter(uiBrowserOptions)],
     options.testHooks ?? { structuredModel: createFakeStructuredModel() },
   );
 
@@ -530,6 +652,7 @@ async function buildArtifactRouteTestApp(
 ): Promise<FastifyInstance> {
   return buildWorkbenchRouteTestApp({
     artifactStore: new WorkbenchArtifactStore({ rootDir: artifactRoot, allowedSourceRoots: [screenshotRoot] }),
+    devServer: stubDevServer(),
     runner: {
       async run() {
         return {
@@ -545,19 +668,38 @@ async function buildArtifactRouteTestApp(
   });
 }
 
+function stubDevServer(): NonNullable<ConstructorParameters<typeof UiBrowserAdapter>[0]>['devServer'] {
+  return {
+    resolve: async () => ({
+      kind: 'subprocess',
+      command: 'pnpm',
+      args: ['dev'],
+      cwd: '/tmp',
+      port: 5555,
+      healthPath: '/',
+    }),
+    start: async (_target, _signal, route = '/') => ({
+      baseUrl: 'http://127.0.0.1:5555',
+      route,
+      stop: async () => {},
+    }),
+    stop: async lease => { await lease.stop(); },
+  };
+}
+
 async function buildStatusErrorEmitFailureTestApp(): Promise<FastifyInstance> {
   return buildWorkbenchRouteTestApp({
     eventBus: new ThrowingStatusErrorEventBus(),
   });
 }
 
-async function createSession(app: FastifyInstance) {
+async function createSession(app: FastifyInstance, repoId = TEST_REPO_ID) {
   const sessionRes = await app.inject({
     method: 'POST',
     url: '/api/workbench/sessions',
     ...authInjectOptions(),
     payload: {
-      repoId: TEST_REPO_ID,
+      repoId,
       intent: { prompt: 'Test onboarding', feature: 'Checkout', testTypes: ['UI / Browser'], sources: ['Codebase'] },
     },
   });
