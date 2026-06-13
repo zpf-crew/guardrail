@@ -61,13 +61,6 @@ export function PlanStep({ plan, generating, generateProgress, onBack, onApprove
         description="Nothing is written yet. Approve or edit the plan — and answer a few questions so the generated tests match your product spec."
       />
 
-      <WorkbenchProgressPanel
-        active={generating}
-        title="Generating tests"
-        fallbackMessage="Preparing staged test artifacts from approved plan…"
-        events={generateProgress}
-      />
-
       <div className="grid grid-cols-2 gap-[14px] mb-[14px] items-start">
         <div>
           <BlockHeader label="Proposed actions" />
@@ -149,6 +142,13 @@ export function PlanStep({ plan, generating, generateProgress, onBack, onApprove
           </div>
         </div>
       )}
+
+      <WorkbenchProgressPanel
+        active={generating}
+        title="Generating tests"
+        fallbackMessage="Preparing staged test artifacts from approved plan…"
+        events={generateProgress}
+      />
 
       <div className="flex items-center gap-[10px] flex-wrap p-[16px] bg-[#161a24] border border-[rgba(255,255,255,0.07)] rounded-[12px]">
         <Button variant="ghost" onClick={onBack}><ArrowLeftIcon className="w-[15px] h-[15px] mr-[6px]" />Back</Button>
