@@ -65,7 +65,7 @@ export class WorkbenchService {
       onError: message => this.onError(session.id, job.id, message),
       run: async signal => {
         const currentSession = this.requireSession(session.id);
-        const repository = await this.repositoryProvider.getContext(currentSession.repo.name);
+        const repository = await this.repositoryProvider.getContext(currentSession.repo.name, currentSession.intent);
         const adapter = this.requireUiBrowserAdapter();
         const baseInput = {
           session: currentSession,

@@ -1,4 +1,12 @@
-import type { QCTestCase, RelatedFile, RepoRef } from '../workbench.types.js';
+import type { IntentInput, QCTestCase, RelatedFile, RepoRef } from '../workbench.types.js';
+
+export interface SourceSnippet {
+  path: string;
+  startLine: number;
+  endLine: number;
+  summary: string;
+  text: string;
+}
 
 export interface RepositoryContext {
   repo: RepoRef;
@@ -11,9 +19,9 @@ export interface RepositoryContext {
   relatedFiles: RelatedFile[];
   specDocs: RelatedFile[];
   qcCases: QCTestCase[];
-  sourceSnippets: { path: string; summary: string; text: string }[];
+  sourceSnippets: SourceSnippet[];
 }
 
 export interface RepositoryContextProvider {
-  getContext(repoId: string): Promise<RepositoryContext>;
+  getContext(repoId: string, intent?: IntentInput): Promise<RepositoryContext>;
 }

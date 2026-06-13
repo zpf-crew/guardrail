@@ -3,19 +3,25 @@ import assert from 'node:assert/strict';
 import { LocalGuardrailRepositoryProvider } from './local-guardrail-repository-provider.js';
 
 test('local provider returns Guardrail onboarding context with schema-shaped QC cases', async () => {
-  const provider = new LocalGuardrailRepositoryProvider({ rootDir: '/tmp/guardrail-root' });
-  const context = await provider.getContext('mock');
+  const provider = new LocalGuardrailRepositoryProvider({ rootDir: process.cwd() });
+  const context = await provider.getContext('mock', {
+    prompt: 'improve onboarding UI test',
+    feature: null,
+    testTypes: ['UI / Browser'],
+    sources: ['Codebase'],
+  });
 
   assert.equal(context.repo.name, 'guardrail');
-  assert.equal(context.repo.path, '/tmp/guardrail-root');
-  assert.equal(context.frontend.url, 'http://localhost:5173/onboarding');
-  assert.ok(context.relatedFiles.some(file => file.path.includes('OnboardingPage.tsx')));
+  assert.match(context.repo.path, /guardrail$/);
+  assert.equal(context.frontend.url, 'http://127.0.0.1:5173/onboarding');
+  assert.ok(context.relatedFiles.some(file => file.path === 'frontend/src/pages/OnboardingPage.tsx'));
+  assert.ok(context.sourceSnippets.some(snippet => snippet.path === 'frontend/src/pages/OnboardingPage.tsx'));
   assert.equal(context.qcCases[0]?.feature, 'Onboarding');
   assert.equal(context.qcCases[0]?.automationStatus, 'missing');
 });
 
-test('local provider isolates returned fixture arrays between calls', async () => {
-  const provider = new LocalGuardrailRepositoryProvider({ rootDir: '/tmp/guardrail-root' });
+test('local provider returns fresh scanner results between calls', async () => {
+  const provider = new LocalGuardrailRepositoryProvider({ rootDir: process.cwd() });
   const firstContext = await provider.getContext('mock');
 
   assert.ok(firstContext.relatedFiles[0]);
