@@ -4,11 +4,13 @@ import {
   createWorkbenchSession,
   analyzeSession,
   planSession,
+  generateSession,
   runSession,
+  reviewSession,
 } from '@/data/workbench-api';
 
 export type WorkbenchStatus = 'loading' | 'error' | 'ready';
-export type PendingTransition = null | 'analyze' | 'plan' | 'run';
+export type PendingTransition = null | 'analyze' | 'plan' | 'generate' | 'run' | 'review';
 
 export interface UseWorkbenchResult {
   status: WorkbenchStatus;
@@ -107,9 +109,7 @@ export function useWorkbench(initialIntent?: Partial<IntentInput>): UseWorkbench
     }
   }, [session]);
 
-  const approvePlan = React.useCallback(() => {
-    setCurrentStep(3);
-    const total = session?.generation?.timeline.length ?? 0;
+  const startGenerationAnimation = React.useCallback((total: number) => {
     if (genIntervalRef.current) clearInterval(genIntervalRef.current);
     setGenStep(0);
     if (total === 0) return;
@@ -123,7 +123,41 @@ export function useWorkbench(initialIntent?: Partial<IntentInput>): UseWorkbench
       }
     }, 320);
     genIntervalRef.current = id;
-  }, [session]);
+  }, []);
+
+  const approvePlan = React.useCallback(() => {
+    if (!session) return;
+    setCurrentStep(3);
+    setPending('generate');
+    generateSession(session.id)
+      .then(generation => {
+        setSession(s => (s ? { ...s, generation } : s));
+        startGenerationAnimation(generation.timeline.length);
+      })
+      .catch(e => setError(e instanceof Error ? e.message : 'Generation failed.'))
+      .finally(() => setPending(null));
+  }, [session, startGenerationAnimation]);
+
+  const startRunAnimation = React.useCallback((total: number) => new Promise<void>(resolve => {
+    if (intervalRef.current) clearInterval(intervalRef.current);
+    setRanTests(0);
+    if (total === 0) {
+      resolve();
+      return;
+    }
+
+    let ran = 0;
+    const id = setInterval(() => {
+      ran += 1;
+      setRanTests(ran);
+      if (ran >= total) {
+        clearInterval(id);
+        if (intervalRef.current === id) intervalRef.current = null;
+        resolve();
+      }
+    }, 280);
+    intervalRef.current = id;
+  }), []);
 
   const runTests = React.useCallback(() => {
     if (!session) return;
@@ -133,34 +167,32 @@ export function useWorkbench(initialIntent?: Partial<IntentInput>): UseWorkbench
     setPending('run');
     setRanTests(0);
 
-    if (session.run) {
-      // Results already available (mock): tick the bar by tests-run / total.
-      const total = session.run.matrix.length;
-      let ran = 0;
-      const id = setInterval(() => {
-        ran += 1;
-        setRanTests(ran);
-        if (ran >= total) {
-          clearInterval(id);
-          if (intervalRef.current === id) intervalRef.current = null;
-          setPending(null);
+    runSession(session.id)
+      .then(run => {
+        setSession(s => (s ? { ...s, run } : s));
+        const animation = startRunAnimation(run.matrix.length);
+        setPending('review');
+        return Promise.all([reviewSession(session.id), animation]);
+      })
+      .then(([review]) => {
+        setSession(s => (s ? { ...s, review } : s));
+        setPending(null);
+      })
+      .catch(e => {
+        if (intervalRef.current) {
+          clearInterval(intervalRef.current);
+          intervalRef.current = null;
         }
-      }, 280);
-      intervalRef.current = id;
-    } else {
-      // Real API: POST and await the single TestRunResult (no per-test stream yet).
-      runSession(session.id)
-        .then(run => { setSession(s => (s ? { ...s, run } : s)); setRanTests(run.matrix.length); })
-        .catch(e => setError(e instanceof Error ? e.message : 'Run failed.'))
-        .finally(() => setPending(null));
-    }
-  }, [session]);
+        setPending(null);
+        setError(e instanceof Error ? e.message : 'Run failed.');
+      });
+  }, [session, startRunAnimation]);
 
   const genComplete = session?.generation ? genStep >= session.generation.timeline.length : false;
   const apply = React.useCallback(() => setApplied(true), []);
 
   return {
-    status, error, session, currentStep, pending, ranTests, running: pending === 'run', genStep, genComplete,
+    status, error, session, currentStep, pending, ranTests, running: pending === 'run' || pending === 'review', genStep, genComplete,
     applied, apply,
     setStep: setCurrentStep, updateIntent, analyze, generatePlan, approvePlan, runTests,
   };
