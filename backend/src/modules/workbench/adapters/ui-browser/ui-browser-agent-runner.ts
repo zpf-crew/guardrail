@@ -1,11 +1,15 @@
+import { randomUUID } from 'node:crypto';
+import { mkdir, writeFile } from 'node:fs/promises';
+import os from 'node:os';
+import path from 'node:path';
 import type {
   BehaviorRunConstraints,
   Evidence,
   RunOutcome,
   ScenarioRunResult,
 } from '../../workbench.types.js';
-import type { UiBrowserAgentAction } from '../../validation/workbench-validators.js';
-import { parseGherkinSteps, scenarioTitleFromGherkin } from './gherkin-step-parser.js';
+import type { UiBrowserAgentAction, UiBrowserScenarioPlan } from '../../validation/workbench-validators.js';
+import { parseGherkinSteps, scenarioTitleFromGherkin, type GherkinStep } from './gherkin-step-parser.js';
 import {
   buildAgentIterationContext,
   formatActionForHistory,
@@ -14,6 +18,14 @@ import {
   type AgentIterationContext,
 } from './ui-browser-agent-context.js';
 import {
+  assertSameOriginUrl,
+  isAgentBrowserCommandAction,
+  shouldVerifySameOriginAfterCommand,
+  validateAgentBrowserCommand,
+  type AgentBrowserCommandAction,
+} from './agent-browser-command-policy.js';
+import {
+  agentCommandArgs,
   captureSnapshot,
   executeAgentAction,
   type AgentExecutor,
@@ -30,7 +42,9 @@ export interface RunScenarioArgs {
   gherkinText: string;
   constraints: BehaviorRunConstraints;
   defaultRoute: string;
+  scenarioPlan?: UiBrowserScenarioPlan;
   signal: AbortSignal;
+  onScreenshot?: (evidence: Evidence) => Promise<Evidence>;
   onProgress?: (message: string) => void;
   onThinking?: (message: string) => void;
 }
@@ -45,28 +59,74 @@ export class UiBrowserAgentRunner {
   }
 
   async runScenario(args: RunScenarioArgs): Promise<ScenarioRunResult> {
-    const steps = parseGherkinSteps(args.gherkinText);
+    const steps = args.scenarioPlan ? stepsFromScenarioPlan(args.scenarioPlan) : parseGherkinSteps(args.gherkinText);
     const title = scenarioTitleFromGherkin(args.gherkinText);
     let currentStepIndex = 0;
     let iterationsUsed = 0;
     const startedAt = Date.now();
+    let currentStepActiveMs = 0;
     const completedSteps: Array<{ index: number; note: string }> = [];
     const thenVerdicts: ScenarioRunResult['thenVerdicts'] = [];
     const actionHistory: AgentActionHistoryEntry[] = [];
     const evidence: Evidence[] = [];
+    const trace: UiBrowserTraceEvent[] = [];
+    let primaryActionCompletedForStep = false;
+    let primaryActionCommandForStep: string | null = null;
+    let observationOnlyActionsForCurrentStep = 0;
+
+    trace.push({
+      atMs: 0,
+      type: 'source',
+      gherkinText: args.gherkinText,
+    });
+    if (args.scenarioPlan) {
+      trace.push({
+        atMs: 0,
+        type: 'plan',
+        plan: args.scenarioPlan,
+      });
+    }
+
+    const initialOpen = await this.#execute(['open', new URL(args.defaultRoute || '/', args.baseUrl).toString()], args.signal);
+    trace.push({
+      atMs: Date.now() - startedAt,
+      type: 'command',
+      command: ['open', new URL(args.defaultRoute || '/', args.baseUrl).toString()],
+      exitCode: initialOpen.exitCode,
+      stdout: initialOpen.stdout,
+      stderr: initialOpen.stderr,
+    });
+    if (initialOpen.exitCode !== 0) {
+      return finishScenario({
+        outcome: 'Failed',
+        durationMs: Date.now() - startedAt,
+        evidence,
+        thenVerdicts,
+        reason: `agent-browser initial navigation failed: ${initialOpen.stderr || initialOpen.stdout || `exit ${initialOpen.exitCode}`}`,
+        iterationsUsed,
+        constraintsApplied: args.constraints,
+      }, trace, evidence);
+    }
 
     const fail = async (
       reason: string,
       outcome: RunOutcome = 'Failed',
       screenshotLabel?: string,
     ): Promise<ScenarioRunResult> => {
-      await appendFailureScreenshot(
-        evidence,
+      trace.push({
+        atMs: Date.now() - startedAt,
+        type: 'failure',
+        reason,
+      });
+      const screenshot = await captureScreenshotEvidence(
         this.#execute,
         args.signal,
         screenshotLabel ?? truncateLabel(reason),
       );
-      return {
+      if (screenshot) {
+        evidence.push(await emitScreenshot(screenshot, args.onScreenshot));
+      }
+      return finishScenario({
         outcome,
         durationMs: Date.now() - startedAt,
         evidence,
@@ -74,7 +134,7 @@ export class UiBrowserAgentRunner {
         reason,
         iterationsUsed,
         constraintsApplied: args.constraints,
-      };
+      }, trace, evidence);
     };
 
     while (true) {
@@ -82,16 +142,29 @@ export class UiBrowserAgentRunner {
       if (iterationsUsed >= args.constraints.maxSteps) {
         return fail(`Exceeded max ${args.constraints.maxSteps} agent steps`);
       }
-      if (Date.now() - startedAt >= args.constraints.maxDurationMs) {
-        return fail(`Exceeded max duration (${args.constraints.maxDurationMs}ms)`);
+      if (currentStepActiveMs >= args.constraints.maxStepDurationMs) {
+        return fail(stepTimeoutReason(steps, currentStepIndex, args.constraints.maxStepDurationMs));
       }
 
+      const snapshotStartedAt = Date.now();
       const snapshot = await captureSnapshot(this.#execute, args.signal);
+      currentStepActiveMs += Date.now() - snapshotStartedAt;
+      trace.push({
+        atMs: Date.now() - startedAt,
+        type: 'snapshot',
+        exitCode: snapshot.exitCode,
+        stdout: snapshot.stdout,
+        stderr: snapshot.stderr,
+      });
       if (snapshot.exitCode !== 0) {
         return fail(`agent-browser snapshot failed: ${snapshot.stderr || snapshot.stdout}`);
       }
+      if (currentStepActiveMs >= args.constraints.maxStepDurationMs) {
+        return fail(stepTimeoutReason(steps, currentStepIndex, args.constraints.maxStepDurationMs));
+      }
 
       iterationsUsed += 1;
+      const currentStep = steps[currentStepIndex];
       const context = buildAgentIterationContext({
         scenarioTitle: title,
         gherkinSteps: steps,
@@ -111,7 +184,83 @@ export class UiBrowserAgentRunner {
       try {
         action = await this.#decideNext(context);
       } catch (error) {
-        return fail(`Agent decision failed: ${error instanceof Error ? error.message : String(error)}`);
+        const reason = `Agent decision failed: ${error instanceof Error ? error.message : String(error)}`;
+        trace.push({
+          atMs: Date.now() - startedAt,
+          type: 'decision-error',
+          iteration: iterationsUsed,
+          currentStepIndex,
+          reason,
+        });
+        return fail(reason);
+      }
+      trace.push({
+        atMs: Date.now() - startedAt,
+        type: 'decision',
+        iteration: iterationsUsed,
+        currentStepIndex,
+        action,
+      });
+
+      if (isAgentBrowserCommandAction(action)) {
+        try {
+          validateAgentBrowserCommand(action);
+        } catch (error) {
+          const reason = `agent-browser command rejected: ${error instanceof Error ? error.message : String(error)}`;
+          trace.push({
+            atMs: Date.now() - startedAt,
+            type: 'command-rejected',
+            iteration: iterationsUsed,
+            currentStepIndex,
+            action,
+            reason,
+          });
+          return fail(reason);
+        }
+      }
+
+      if (shouldAutoCompleteActionStep(currentStep?.effectiveKind, action, primaryActionCompletedForStep)) {
+        const note = `Completed after successful browser action; skipped extra ${action.command} evidence gathering for this ${currentStep?.effectiveKind} step.`;
+        args.onProgress?.(formatActionForProgress({ kind: 'stepComplete', stepIndex: currentStepIndex, note }, steps, currentStepIndex));
+        actionHistory.push({
+          iteration: iterationsUsed,
+          action: `stepComplete ${currentStepIndex}`,
+          result: 'ok',
+          detail: note,
+        });
+        completedSteps.push({ index: currentStepIndex, note });
+        currentStepIndex = Math.min(currentStepIndex + 1, Math.max(steps.length - 1, 0));
+        currentStepActiveMs = 0;
+        primaryActionCompletedForStep = false;
+        primaryActionCommandForStep = null;
+        observationOnlyActionsForCurrentStep = 0;
+        continue;
+      }
+
+      if (shouldAutoCompleteDuplicatePrimaryAction(currentStep?.effectiveKind, action, primaryActionCommandForStep)) {
+        const note = `Completed after successful ${primaryActionCommandForStep} action; skipped duplicate ${primaryActionCommandForStep} for this ${currentStep?.effectiveKind} step.`;
+        args.onProgress?.(formatActionForProgress({ kind: 'stepComplete', stepIndex: currentStepIndex, note }, steps, currentStepIndex));
+        actionHistory.push({
+          iteration: iterationsUsed,
+          action: `stepComplete ${currentStepIndex}`,
+          result: 'ok',
+          detail: note,
+        });
+        completedSteps.push({ index: currentStepIndex, note });
+        currentStepIndex = Math.min(currentStepIndex + 1, Math.max(steps.length - 1, 0));
+        currentStepActiveMs = 0;
+        primaryActionCompletedForStep = false;
+        primaryActionCommandForStep = null;
+        observationOnlyActionsForCurrentStep = 0;
+        continue;
+      }
+
+      if (shouldFailRepeatedThenObservation(currentStep?.effectiveKind, action, observationOnlyActionsForCurrentStep)) {
+        return fail(
+          repeatedThenObservationReason(steps, currentStepIndex),
+          'Failed',
+          currentStep ? `Failed check — ${currentStep.text}` : undefined,
+        );
       }
 
       args.onProgress?.(formatActionForProgress(action, steps, currentStepIndex));
@@ -124,7 +273,7 @@ export class UiBrowserAgentRunner {
         if (pendingThen.length > 0) {
           return fail('scenarioComplete called before all Then steps satisfied');
         }
-        return {
+        return finishScenario({
           outcome: 'Passed',
           durationMs: Date.now() - startedAt,
           evidence,
@@ -132,7 +281,7 @@ export class UiBrowserAgentRunner {
           reason: null,
           iterationsUsed,
           constraintsApplied: args.constraints,
-        };
+        }, trace, evidence);
       }
 
       if (action.kind === 'stepComplete') {
@@ -141,6 +290,10 @@ export class UiBrowserAgentRunner {
         }
         completedSteps.push({ index: action.stepIndex, note: action.note });
         currentStepIndex = Math.min(currentStepIndex + 1, Math.max(steps.length - 1, 0));
+        currentStepActiveMs = 0;
+        primaryActionCompletedForStep = false;
+        primaryActionCommandForStep = null;
+        observationOnlyActionsForCurrentStep = 0;
         continue;
       }
 
@@ -159,6 +312,10 @@ export class UiBrowserAgentRunner {
           return fail(action.reason, 'Failed', `Failed check — ${step.text}`);
         }
         currentStepIndex = Math.min(action.stepIndex + 1, Math.max(steps.length - 1, 0));
+        currentStepActiveMs = 0;
+        primaryActionCompletedForStep = false;
+        primaryActionCommandForStep = null;
+        observationOnlyActionsForCurrentStep = 0;
         continue;
       }
 
@@ -166,49 +323,356 @@ export class UiBrowserAgentRunner {
         return fail(action.reason);
       }
 
-      const result = await executeAgentAction(args.baseUrl, action, this.#execute, args.signal);
+      const browserAction = action as AgentBrowserCommandAction;
+      let result: Awaited<ReturnType<typeof executeAgentAction>>;
+      let commandArgs: string[] | null = null;
+      try {
+        commandArgs = agentCommandArgs(args.baseUrl, action);
+        const ref = refToScrollIntoViewBeforeAction(browserAction);
+        if (ref) {
+          const scrollStartedAt = Date.now();
+          const scrollResult = await this.#execute(['scrollintoview', ref], args.signal);
+          currentStepActiveMs += Date.now() - scrollStartedAt;
+          trace.push({
+            atMs: Date.now() - startedAt,
+            type: 'command',
+            iteration: iterationsUsed,
+            currentStepIndex,
+            action,
+            command: ['scrollintoview', ref],
+            exitCode: scrollResult.exitCode,
+            stdout: scrollResult.stdout,
+            stderr: scrollResult.stderr,
+          });
+          if (scrollResult.exitCode !== 0) {
+            return fail(`agent-browser scrollintoview failed before ${formatActionForHistory(action)}: ${scrollResult.stderr || scrollResult.stdout || `exit ${scrollResult.exitCode}`}`);
+          }
+          if (currentStepActiveMs >= args.constraints.maxStepDurationMs) {
+            return fail(stepTimeoutReason(steps, currentStepIndex, args.constraints.maxStepDurationMs));
+          }
+        }
+        const commandStartedAt = Date.now();
+        result = await executeAgentAction(args.baseUrl, action, this.#execute, args.signal);
+        currentStepActiveMs += Date.now() - commandStartedAt;
+      } catch (error) {
+        const reason = `agent-browser command rejected: ${error instanceof Error ? error.message : String(error)}`;
+        trace.push({
+          atMs: Date.now() - startedAt,
+          type: 'command-rejected',
+          iteration: iterationsUsed,
+          currentStepIndex,
+          action,
+          reason,
+        });
+        return fail(reason);
+      }
+      if (result) {
+        trace.push({
+          atMs: Date.now() - startedAt,
+          type: 'command',
+          iteration: iterationsUsed,
+          currentStepIndex,
+          action,
+          command: commandArgs ?? [],
+          exitCode: result.exitCode,
+          stdout: result.stdout,
+          stderr: result.stderr,
+        });
+      }
       if (result && result.exitCode !== 0) {
+        const detail = truncateDetail(result.stderr || result.stdout || `exit ${result.exitCode}`);
+        args.onProgress?.(`Browser action failed — ${formatActionForHistory(action)}: ${detail}`);
         actionHistory.push({
           iteration: iterationsUsed,
           action: formatActionForHistory(action),
           result: 'failed',
-          detail: result.stderr || result.stdout,
+          detail,
         });
         continue;
       }
+      if (currentStepActiveMs >= args.constraints.maxStepDurationMs) {
+        return fail(stepTimeoutReason(steps, currentStepIndex, args.constraints.maxStepDurationMs));
+      }
+
+      if (result) {
+        const originCheckStartedAt = Date.now();
+        const originError = await verifySameOriginAfterCommand(args.baseUrl, browserAction, this.#execute, args.signal);
+        currentStepActiveMs += Date.now() - originCheckStartedAt;
+        trace.push({
+          atMs: Date.now() - startedAt,
+          type: 'origin-check',
+          iteration: iterationsUsed,
+          currentStepIndex,
+          action,
+          ok: !originError,
+          ...(originError ? { reason: originError } : {}),
+        });
+        if (originError) return fail(originError);
+        if (currentStepActiveMs >= args.constraints.maxStepDurationMs) {
+          return fail(stepTimeoutReason(steps, currentStepIndex, args.constraints.maxStepDurationMs));
+        }
+      }
+      if (result && isPrimaryActionCommand(browserAction)) {
+        primaryActionCompletedForStep = true;
+        primaryActionCommandForStep = browserAction.command;
+      }
+      if (result && isObservationOnlyCommand(browserAction)) {
+        observationOnlyActionsForCurrentStep += 1;
+      }
+
+      const successDetail = result && shouldKeepCommandOutput(action)
+        ? truncateDetail(result.stdout || result.stderr || `exit ${result.exitCode}`)
+        : undefined;
 
       actionHistory.push({
         iteration: iterationsUsed,
         action: formatActionForHistory(action),
         result: 'ok',
+        ...(successDetail ? { detail: successDetail } : {}),
       });
 
-      if (action.kind === 'screenshot' && result) {
-        evidence.push(screenshotEvidence(action.label, screenshotPathFromStdout(result.stdout)));
+      if (browserAction.command === 'screenshot' && result) {
+        const screenshot = screenshotEvidence(browserAction.reason, screenshotPathFromStdout(result.stdout));
+        evidence.push(await emitScreenshot(screenshot, args.onScreenshot));
       }
     }
   }
 }
 
-async function appendFailureScreenshot(
+type UiBrowserTraceEvent =
+  | {
+    atMs: number;
+    type: 'source';
+    gherkinText: string;
+  }
+  | {
+    atMs: number;
+    type: 'plan';
+    plan: UiBrowserScenarioPlan;
+  }
+  | {
+    atMs: number;
+    type: 'snapshot';
+    exitCode: number;
+    stdout: string;
+    stderr: string;
+  }
+  | {
+    atMs: number;
+    type: 'decision';
+    iteration: number;
+    currentStepIndex: number;
+    action: UiBrowserAgentAction;
+  }
+  | {
+    atMs: number;
+    type: 'decision-error' | 'command-rejected';
+    iteration: number;
+    currentStepIndex: number;
+    action?: UiBrowserAgentAction;
+    reason: string;
+  }
+  | {
+    atMs: number;
+    type: 'command';
+    iteration?: number;
+    currentStepIndex?: number;
+    action?: UiBrowserAgentAction;
+    command: string[];
+    exitCode: number;
+    stdout: string;
+    stderr: string;
+  }
+  | {
+    atMs: number;
+    type: 'origin-check';
+    iteration: number;
+    currentStepIndex: number;
+    action: UiBrowserAgentAction;
+    ok: boolean;
+    reason?: string;
+  }
+  | {
+    atMs: number;
+    type: 'failure';
+    reason: string;
+  };
+
+async function finishScenario(
+  result: ScenarioRunResult,
+  trace: UiBrowserTraceEvent[],
   evidence: Evidence[],
+): Promise<ScenarioRunResult> {
+  const traceEvidence = await writeUiBrowserTraceEvidence({
+    outcome: result.outcome,
+    reason: result.reason,
+    durationMs: result.durationMs,
+    iterationsUsed: result.iterationsUsed,
+    constraintsApplied: result.constraintsApplied,
+    thenVerdicts: result.thenVerdicts,
+    events: trace,
+  });
+  if (traceEvidence) evidence.push(traceEvidence);
+  return {
+    ...result,
+    evidence,
+  };
+}
+
+async function writeUiBrowserTraceEvidence(payload: unknown): Promise<Evidence | null> {
+  try {
+    const dir = path.join(os.tmpdir(), 'guardrail-ui-browser-traces');
+    await mkdir(dir, { recursive: true });
+    const filePath = path.join(dir, `${randomUUID()}.json`);
+    await writeFile(filePath, `${JSON.stringify(payload, null, 2)}\n`, 'utf8');
+    return { kind: 'trace', label: 'UI Browser raw trace', href: filePath };
+  } catch {
+    return null;
+  }
+}
+
+async function captureScreenshotEvidence(
   execute: AgentExecutor,
   signal: AbortSignal,
   label: string,
-): Promise<void> {
+): Promise<Evidence | null> {
   try {
     const result = await execute(['screenshot'], signal);
-    if (result.exitCode !== 0) return;
+    if (result.exitCode !== 0) return null;
     const href = screenshotPathFromStdout(result.stdout);
-    if (!href) return;
-    evidence.push(screenshotEvidence(label, href));
+    if (!href) return null;
+    return screenshotEvidence(label, href);
   } catch {
     // Best-effort evidence on failure.
+    return null;
   }
+}
+
+async function emitScreenshot(
+  evidence: Evidence,
+  onScreenshot: RunScenarioArgs['onScreenshot'],
+): Promise<Evidence> {
+  return onScreenshot ? onScreenshot(evidence) : evidence;
 }
 
 function truncateLabel(value: string, max = 72): string {
   const trimmed = value.trim();
   if (trimmed.length <= max) return `Failure — ${trimmed}`;
   return `Failure — ${trimmed.slice(0, max - 1)}…`;
+}
+
+function stepTimeoutReason(
+  steps: ReturnType<typeof parseGherkinSteps>,
+  stepIndex: number,
+  maxStepDurationMs: number,
+): string {
+  const step = steps[stepIndex];
+  if (!step) return `Exceeded max step duration (${maxStepDurationMs}ms)`;
+  return `Exceeded max step duration (${maxStepDurationMs}ms) on step ${stepIndex + 1}/${steps.length}: ${step.effectiveKind} ${step.text}`;
+}
+
+function stepsFromScenarioPlan(plan: UiBrowserScenarioPlan): GherkinStep[] {
+  return plan.steps.map((step, index) => {
+    const effectiveKind = step.kind === 'assert' ? 'Then' : step.kind === 'setup' ? 'Given' : 'When';
+    const text = step.successCriteria
+      ? `${step.instruction} (${step.successCriteria})`
+      : step.instruction;
+    return {
+      index,
+      kind: effectiveKind,
+      effectiveKind,
+      text,
+    };
+  });
+}
+
+function truncateDetail(value: string, max = 180): string {
+  const clean = value.replace(/\s+/g, ' ').trim();
+  return clean.length <= max ? clean : `${clean.slice(0, max - 1)}…`;
+}
+
+function shouldKeepCommandOutput(action: UiBrowserAgentAction): boolean {
+  return action.kind === 'agentBrowserCommand'
+    && ['get', 'is', 'find'].includes(action.command);
+}
+
+function shouldAutoCompleteActionStep(
+  effectiveKind: string | undefined,
+  action: UiBrowserAgentAction,
+  primaryActionCompletedForStep: boolean,
+): action is UiBrowserAgentAction & AgentBrowserCommandAction {
+  return primaryActionCompletedForStep
+    && (effectiveKind === 'Given' || effectiveKind === 'When')
+    && isAgentBrowserCommandAction(action)
+    && isObservationOnlyCommand(action);
+}
+
+function shouldAutoCompleteDuplicatePrimaryAction(
+  effectiveKind: string | undefined,
+  action: UiBrowserAgentAction,
+  primaryActionCommandForStep: string | null,
+): action is UiBrowserAgentAction & AgentBrowserCommandAction {
+  return (effectiveKind === 'Given' || effectiveKind === 'When')
+    && primaryActionCommandForStep !== null
+    && isAgentBrowserCommandAction(action)
+    && isPrimaryActionCommand(action)
+    && action.command === primaryActionCommandForStep;
+}
+
+function shouldFailRepeatedThenObservation(
+  effectiveKind: string | undefined,
+  action: UiBrowserAgentAction,
+  observationOnlyActionsForCurrentStep: number,
+): action is UiBrowserAgentAction & AgentBrowserCommandAction {
+  return effectiveKind === 'Then'
+    && observationOnlyActionsForCurrentStep >= 1
+    && isAgentBrowserCommandAction(action)
+    && isObservationOnlyCommand(action);
+}
+
+function repeatedThenObservationReason(
+  steps: ReturnType<typeof parseGherkinSteps>,
+  stepIndex: number,
+): string {
+  const step = steps[stepIndex];
+  if (!step) return 'Then step was observed repeatedly without an assertion.';
+  return `Then step was observed repeatedly without an assertion on step ${stepIndex + 1}/${steps.length}: ${step.effectiveKind} ${step.text}`;
+}
+
+function isPrimaryActionCommand(action: AgentBrowserCommandAction): boolean {
+  if (['click', 'dblclick', 'fill', 'type', 'press', 'check', 'uncheck', 'select', 'keyboard'].includes(action.command)) {
+    return true;
+  }
+  return action.command === 'find' && action.args.some(arg => ['click', 'dblclick', 'fill', 'type', 'check', 'uncheck'].includes(arg));
+}
+
+function refToScrollIntoViewBeforeAction(action: AgentBrowserCommandAction): string | null {
+  if (!['click', 'dblclick', 'fill', 'type', 'check', 'uncheck', 'select'].includes(action.command)) {
+    return null;
+  }
+  const ref = action.args[0];
+  return ref && /^@e\d+$/.test(ref) ? ref : null;
+}
+
+function isObservationOnlyCommand(action: AgentBrowserCommandAction): boolean {
+  return ['snapshot', 'screenshot', 'get', 'is'].includes(action.command);
+}
+
+async function verifySameOriginAfterCommand(
+  baseUrl: string,
+  action: AgentBrowserCommandAction,
+  execute: AgentExecutor,
+  signal: AbortSignal,
+): Promise<string | null> {
+  if (!shouldVerifySameOriginAfterCommand(action)) return null;
+  const result = await execute(['get', 'url'], signal);
+  if (result.exitCode !== 0) {
+    return `agent-browser origin check failed: ${result.stderr || result.stdout || `exit ${result.exitCode}`}`;
+  }
+  try {
+    assertSameOriginUrl(baseUrl, result.stdout);
+    return null;
+  } catch (error) {
+    return error instanceof Error ? error.message : String(error);
+  }
 }

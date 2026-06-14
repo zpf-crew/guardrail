@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { formatActionForProgress } from './ui-browser-agent-context.js';
+import { formatActionForHistory, formatActionForProgress } from './ui-browser-agent-context.js';
 import type { GherkinStep } from './gherkin-step-parser.js';
 
 const steps: GherkinStep[] = [
@@ -15,10 +15,6 @@ test('formatActionForProgress uses human-readable Gherkin step labels', () => {
     'Done — Step 1/3 — Given: the user is on the home page',
   );
   assert.equal(
-    formatActionForProgress({ kind: 'click', ref: '@e3' }, steps, 1),
-    'Interacting — Step 2/3 — When: the user clicks Shop Now',
-  );
-  assert.equal(
     formatActionForProgress({
       kind: 'assertThen',
       stepIndex: 2,
@@ -27,8 +23,37 @@ test('formatActionForProgress uses human-readable Gherkin step labels', () => {
     }, steps, 2),
     'Verified — Step 3/3 — Then: the products page is displayed',
   );
+});
+
+test('formatActionForProgress describes agent-browser commands', () => {
   assert.equal(
-    formatActionForProgress({ kind: 'screenshot', label: 'Home loaded' }, steps, 0),
-    'Capturing screenshot — Home loaded',
+    formatActionForProgress({
+      kind: 'agentBrowserCommand',
+      command: 'find',
+      args: ['role', 'button', 'click', 'Add to Cart'],
+      reason: 'Click Add to Cart',
+    }, steps, 1),
+    'agent-browser find role button click Add to Cart — Step 2/3 — When: the user clicks Shop Now',
+  );
+});
+
+test('formatActionForProgress redacts typed values from browser commands', () => {
+  assert.equal(
+    formatActionForProgress({
+      kind: 'agentBrowserCommand',
+      command: 'fill',
+      args: ['@e2', 'secret search'],
+      reason: 'Fill search field',
+    }, steps, 1),
+    'agent-browser fill @e2 [redacted] — Step 2/3 — When: the user clicks Shop Now',
+  );
+  assert.equal(
+    formatActionForHistory({
+      kind: 'agentBrowserCommand',
+      command: 'keyboard',
+      args: ['inserttext', 'hidden value'],
+      reason: 'Insert text',
+    }),
+    'keyboard inserttext [redacted]',
   );
 });

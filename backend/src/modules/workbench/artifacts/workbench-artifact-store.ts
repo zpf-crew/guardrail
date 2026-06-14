@@ -34,7 +34,7 @@ export class WorkbenchArtifactStore {
   }
 
   async registerEvidence(input: RegisterEvidenceInput): Promise<Evidence> {
-    if (input.evidence.kind !== 'screenshot') return input.evidence;
+    if (!isLocalFileEvidence(input.evidence)) return input.evidence;
 
     const sourcePath = extractLocalPath(input.evidence.href);
     if (!sourcePath) return { ...input.evidence, href: undefined };
@@ -92,17 +92,31 @@ function extractLocalPath(value: string | undefined): string | undefined {
 
 function extensionFor(filePath: string): string {
   const ext = path.extname(filePath).toLowerCase();
+  if (ext === '.json' || ext === '.txt' || ext === '.log' || ext === '.webm') return ext;
   return ext === '.jpg' || ext === '.jpeg' || ext === '.webp' ? ext : '.png';
 }
 
 function contentTypeFor(ext: string): string {
+  if (ext === '.json') return 'application/json; charset=utf-8';
+  if (ext === '.txt' || ext === '.log') return 'text/plain; charset=utf-8';
+  if (ext === '.webm') return 'video/webm';
   if (ext === '.jpg' || ext === '.jpeg') return 'image/jpeg';
   if (ext === '.webp') return 'image/webp';
   return 'image/png';
 }
 
 function defaultAllowedSourceRoots(): string[] {
-  return [os.tmpdir(), path.join(os.homedir(), '.agent-browser', 'tmp', 'screenshots')];
+  return [
+    os.tmpdir(),
+    path.join(os.homedir(), '.agent-browser', 'tmp', 'screenshots'),
+  ];
+}
+
+function isLocalFileEvidence(evidence: Evidence): boolean {
+  return evidence.kind === 'screenshot'
+    || evidence.kind === 'trace'
+    || evidence.kind === 'device-log'
+    || evidence.kind === 'video';
 }
 
 function isSafePathSegment(value: string): boolean {

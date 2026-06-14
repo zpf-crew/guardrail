@@ -21,7 +21,7 @@ const isolation: IsolationResult = {
   userJourneys: ['Open CheckoutPage page'],
   classifications: [
     { behavior: 'Apply coupon at checkout', status: 'Missing', suggestedTypes: ['UI / Browser'], risk: 'High', explanation: 'No browser test.' },
-    { behavior: 'Show payment errors', status: 'Weak', suggestedTypes: ['UI / Browser'], risk: 'Medium', explanation: 'Assertions are shallow.' },
+    { behavior: 'Show form validation errors', status: 'Weak', suggestedTypes: ['UI / Browser'], risk: 'Medium', explanation: 'Assertions are shallow.' },
   ],
 };
 
@@ -31,12 +31,14 @@ test('buildTestPlan derives actions risk and files from isolation', () => {
   assert.equal(plan.proposedActions.length, 2);
   assert.equal(plan.proposedActions[0]?.action, 'add');
   assert.deepEqual(plan.proposedActions[0]?.items, ['Apply coupon at checkout']);
-  assert.deepEqual(plan.proposedActions[1]?.items, ['Show payment errors']);
+  assert.deepEqual(plan.proposedActions[1]?.items, ['Show form validation errors']);
   assert.equal(plan.risk.browserAutomationRequired, true);
   assert.equal(plan.risk.productionCodeChanges, 'none');
   assert.ok(plan.filesToChange[0]?.includes('checkout'));
   assert.deepEqual(plan.questions, []);
   assert.equal(plan.runConstraints?.length, 2);
+  const defaultConstraint = plan.runConstraints?.find(item => item.behavior === 'Show form validation errors');
+  assert.equal(defaultConstraint?.maxStepDurationMs, 60_000);
 });
 
 test('buildTestPlan merges optional model questions', () => {
@@ -48,4 +50,18 @@ test('buildTestPlan merges optional model questions', () => {
 
   assert.equal(plan.questions.length, 1);
   assert.equal(plan.questions[0]?.id, 'q1');
+});
+
+test('buildTestPlan merges optional run constraint overrides', () => {
+  const plan = buildTestPlan(intent, isolation, [], [{
+    behavior: 'Apply coupon at checkout',
+    maxStepDurationMs: 45_000,
+    maxSteps: 20,
+    reason: 'Coupon service can require a longer visible wait',
+  }]);
+
+  const coupon = plan.runConstraints?.find(item => item.behavior === 'Apply coupon at checkout');
+  assert.equal(coupon?.maxStepDurationMs, 45_000);
+  assert.equal(coupon?.maxSteps, 20);
+  assert.match(coupon?.reason ?? '', /Coupon service/);
 });

@@ -15,7 +15,7 @@ const context: AgentIterationContext = {
   thenVerdicts: [],
   pageSnapshot: '- button "Shop Now" @e3',
   actionHistory: [],
-  constraints: { behavior: 'Shop now', maxDurationMs: 60_000, maxSteps: 15 },
+  constraints: { behavior: 'Shop now', maxStepDurationMs: 20_000, maxSteps: 15 },
   elapsedMs: 1000,
   iterationsUsed: 1,
 };
@@ -33,7 +33,12 @@ test('normalizeAgentActionInput unwraps nested action objects', () => {
   const result = normalizeAgentActionInput({
     action: { kind: 'click', ref: '@e2' },
   }, context);
-  assert.deepEqual(result, { kind: 'click', ref: '@e2' });
+  assert.deepEqual(result, {
+    kind: 'agentBrowserCommand',
+    command: 'click',
+    args: ['@e2'],
+    reason: 'Click @e2',
+  });
 });
 
 test('normalizeAgentActionInput coerces snake_case step_index', () => {
@@ -51,5 +56,75 @@ test('normalizeAgentActionInput coerces snake_case step_index', () => {
 
 test('normalizeAgentActionInput adds @ prefix to bare element refs', () => {
   const result = normalizeAgentActionInput({ kind: 'click', ref: 'e4' }, context);
-  assert.deepEqual(result, { kind: 'click', ref: '@e4' });
+  assert.deepEqual(result, {
+    kind: 'agentBrowserCommand',
+    command: 'click',
+    args: ['@e4'],
+    reason: 'Click @e4',
+  });
+});
+
+test('normalizeAgentActionInput defaults blank press key to Enter', () => {
+  const result = normalizeAgentActionInput({ kind: 'press', key: ' ' }, context);
+  assert.deepEqual(result, {
+    kind: 'agentBrowserCommand',
+    command: 'press',
+    args: ['Enter'],
+    reason: 'Press keyboard key',
+  });
+});
+
+test('normalizeAgentActionInput defaults invalid scroll direction to down', () => {
+  const result = normalizeAgentActionInput({ kind: 'scroll', direction: 'bottom', pixels: 499.6 }, context);
+  assert.deepEqual(result, {
+    kind: 'agentBrowserCommand',
+    command: 'scroll',
+    args: ['down', '500'],
+    reason: 'Scroll page',
+  });
+});
+
+test('normalizeAgentActionInput preserves agentBrowserCommand args as strings', () => {
+  const result = normalizeAgentActionInput({
+    kind: 'agent_browser_command',
+    command: 'scroll',
+    args: ['down', 500],
+    reason: 'Reveal product card buttons',
+  }, context);
+  assert.deepEqual(result, {
+    kind: 'agentBrowserCommand',
+    command: 'scroll',
+    args: ['down', '500'],
+    reason: 'Reveal product card buttons',
+  });
+});
+
+test('normalizeAgentActionInput converts legacy click action into command envelope', () => {
+  const result = normalizeAgentActionInput({ kind: 'click', ref: 'e4' }, context);
+  assert.deepEqual(result, {
+    kind: 'agentBrowserCommand',
+    command: 'click',
+    args: ['@e4'],
+    reason: 'Click @e4',
+  });
+});
+
+test('normalizeAgentActionInput converts legacy screenshot action into command envelope', () => {
+  const result = normalizeAgentActionInput({ kind: 'screenshot', label: 'Home loaded' }, context);
+  assert.deepEqual(result, {
+    kind: 'agentBrowserCommand',
+    command: 'screenshot',
+    args: [],
+    reason: 'Home loaded',
+  });
+});
+
+test('normalizeAgentActionInput converts legacy wait action to load flag syntax', () => {
+  const result = normalizeAgentActionInput({ kind: 'wait', load: 'networkidle' }, context);
+  assert.deepEqual(result, {
+    kind: 'agentBrowserCommand',
+    command: 'wait',
+    args: ['--load', 'networkidle'],
+    reason: 'Wait for page readiness',
+  });
 });

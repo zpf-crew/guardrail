@@ -54,26 +54,20 @@ function stepPositionLabel(steps: GherkinStep[], stepIndex: number): string {
   return `Step ${stepIndex + 1}/${steps.length} — ${step.effectiveKind}: ${step.text}`;
 }
 
+function commandLine(command: string, args: string[]): string {
+  return ['agent-browser', command, ...displayArgs(command, args)].join(' ');
+}
+
 export function formatActionForProgress(
   action: UiBrowserAgentAction,
   steps: GherkinStep[],
   currentStepIndex: number,
 ): string {
   switch (action.kind) {
-    case 'open':
-      return 'Navigating to page…';
-    case 'wait':
-      return 'Waiting for page to finish loading…';
-    case 'click':
+    case 'agentBrowserCommand':
       return steps[currentStepIndex]
-        ? `Interacting — ${stepPositionLabel(steps, currentStepIndex)}`
-        : `Clicking ${action.ref}…`;
-    case 'fill':
-      return steps[currentStepIndex]
-        ? `Entering text — ${stepPositionLabel(steps, currentStepIndex)}`
-        : `Filling ${action.ref}…`;
-    case 'screenshot':
-      return `Capturing screenshot — ${action.label}`;
+        ? `${commandLine(action.command, action.args)} — ${stepPositionLabel(steps, currentStepIndex)}`
+        : `${commandLine(action.command, action.args)}…`;
     case 'stepComplete':
       return `Done — ${stepPositionLabel(steps, action.stepIndex)}`;
     case 'assertThen': {
@@ -91,14 +85,30 @@ export function formatActionForProgress(
 
 export function formatActionForHistory(action: UiBrowserAgentAction): string {
   switch (action.kind) {
-    case 'open': return `open ${action.path}`;
-    case 'wait': return `wait ${action.load}`;
-    case 'click': return `click ${action.ref}`;
-    case 'fill': return `fill ${action.ref}`;
-    case 'screenshot': return `screenshot ${action.label}`;
+    case 'agentBrowserCommand': return `${action.command} ${displayArgs(action.command, action.args).join(' ')}`.trim();
     case 'stepComplete': return `stepComplete ${action.stepIndex}`;
     case 'assertThen': return `assertThen ${action.stepIndex} ${action.satisfied}`;
     case 'stepFailed': return `stepFailed ${action.stepIndex}`;
     case 'scenarioComplete': return 'scenarioComplete';
   }
+}
+
+function displayArgs(command: string, args: string[]): string[] {
+  if ((command === 'fill' || command === 'type') && args.length > 1) {
+    return [args[0]!, '[redacted]'];
+  }
+  if (command === 'keyboard' && args.length > 1) {
+    return [args[0]!, '[redacted]'];
+  }
+  if (command === 'find') {
+    const actionIndex = findActionIndex(args);
+    if (actionIndex >= 0 && ['fill', 'type'].includes(args[actionIndex]!) && args.length > actionIndex + 1) {
+      return [...args.slice(0, actionIndex + 1), '[redacted]'];
+    }
+  }
+  return args;
+}
+
+function findActionIndex(args: string[]): number {
+  return args.findIndex(arg => ['click', 'dblclick', 'hover', 'focus', 'fill', 'type', 'check', 'uncheck'].includes(arg));
 }

@@ -5,6 +5,6 @@ export const WORKBENCH_STEP_TIMEOUT_MS: Record<WorkflowStepId, number> = {
   isolation: 90_000,
   plan: 90_000,
   generate: 120_000,
-  run: 300_000,
+  run: 3_600_000,
   review: 60_000,
 };

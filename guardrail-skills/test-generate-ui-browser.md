@@ -40,6 +40,7 @@ Do **not** generate Playwright, Cypress, Vitest, jsdom, or React Testing Library
 - Set `action` from scope: `Add` for Missing, `Update` for Weak/Suspicious.
 - Write Gherkin steps reviewers can map to browser actions (open page, click, fill, assert visible text).
 - Use repository snippets for realistic labels, routes, and button text.
+- Do not create required `Then` steps for transient toasts, snackbars, banners, or success notifications. These can disappear before the agent observes them. For state-changing flows, assert durable user-visible state instead, such as cart count, cart contents, route changes, saved item state, table rows, headings, or persisted form values.
 - Do not write production code.
 - When `resolvedPlanAnswers` is non-empty, encode the selected product behavior in scenario steps and `reason` fields.
 - Do not re-ask questions already answered in `resolvedPlanAnswers`.

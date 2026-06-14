@@ -3,8 +3,10 @@ import type { ModelProfile } from '../../../models/model.types.js';
 import type { SkillContract } from '../skills/skill-contract-loader.js';
 import type { AgentIterationContext } from '../adapters/ui-browser/ui-browser-agent-context.js';
 import {
+  validateWorkbenchStepResult,
   validateUiBrowserAgentAction,
   type UiBrowserAgentAction,
+  type UiBrowserScenarioPlan,
 } from '../validation/workbench-validators.js';
 import { normalizeAgentActionInput } from './normalize-ui-browser-agent-action.js';
 
@@ -16,6 +18,13 @@ interface DecideNextArgs {
   profile: ModelProfile;
   skill: SkillContract;
   context: AgentIterationContext;
+  signal: AbortSignal;
+}
+
+interface PlanScenarioArgs {
+  profile: ModelProfile;
+  skill: SkillContract;
+  context: unknown;
   signal: AbortSignal;
 }
 
@@ -40,7 +49,7 @@ export class AgentModelRunner {
           schemaName: 'UiBrowserAgentAction',
           context: args.context,
           validationError: lastError,
-          retryHint: 'Return one valid UiBrowserAgentAction JSON object with all required fields for the chosen kind.',
+          retryHint: 'Return only one valid UiBrowserAgentAction JSON object. Do not include analysis, prose, markdown, or code fences.',
         }, null, 2)
         : JSON.stringify({ schemaName: 'UiBrowserAgentAction', context: args.context }, null, 2);
 
@@ -64,12 +73,50 @@ export class AgentModelRunner {
 
     throw new Error(lastError ?? 'Agent decision failed.');
   }
+
+  async planScenario(args: PlanScenarioArgs): Promise<UiBrowserScenarioPlan> {
+    if (!this.#modelConnect) {
+      throw new Error('LLM is not configured for UI browser scenario planning.');
+    }
+
+    const client = this.#modelConnect.getClient(args.profile);
+    let lastError: string | null = null;
+
+    for (let attempt = 0; attempt < 2; attempt += 1) {
+      const userContent = lastError
+        ? JSON.stringify({
+          schemaName: 'UiBrowserScenarioPlan',
+          context: args.context,
+          validationError: lastError,
+          retryHint: 'Return only one valid UiBrowserScenarioPlan JSON object. Do not include analysis, prose, markdown, or code fences.',
+        }, null, 2)
+        : JSON.stringify({ schemaName: 'UiBrowserScenarioPlan', context: args.context }, null, 2);
+
+      const response = await client.chat(
+        [
+          { role: 'system', content: args.skill.content },
+          { role: 'user', content: userContent },
+        ],
+        { temperature: 0, maxTokens: 1800, signal: args.signal },
+      );
+
+      try {
+        const parsed = parseJsonObject(response.content);
+        return validateWorkbenchStepResult('UiBrowserScenarioPlan', parsed);
+      } catch (error) {
+        lastError = error instanceof Error ? error.message : String(error);
+        if (attempt === 1) throw error;
+      }
+    }
+
+    throw new Error(lastError ?? 'Scenario planning failed.');
+  }
 }
 
 function parseJsonObject(content: string): unknown {
   const trimmed = content.trim();
   const fenced = trimmed.match(/^```(?:json)?\s*([\s\S]*?)\s*```$/i);
-  const json = fenced ? fenced[1] : trimmed;
+  const json = fenced ? fenced[1] : extractFirstJsonObject(trimmed);
   try {
     return JSON.parse(json);
   } catch (error) {
@@ -77,4 +124,38 @@ function parseJsonObject(content: string): unknown {
       `Model returned invalid JSON: ${error instanceof Error ? error.message : String(error)}`,
     );
   }
+}
+
+function extractFirstJsonObject(value: string): string {
+  if (value.startsWith('{')) return value;
+
+  const start = value.indexOf('{');
+  if (start < 0) return value;
+
+  let depth = 0;
+  let inString = false;
+  let escaped = false;
+  for (let index = start; index < value.length; index += 1) {
+    const char = value[index];
+    if (escaped) {
+      escaped = false;
+      continue;
+    }
+    if (char === '\\') {
+      escaped = true;
+      continue;
+    }
+    if (char === '"') {
+      inString = !inString;
+      continue;
+    }
+    if (inString) continue;
+    if (char === '{') depth += 1;
+    if (char === '}') {
+      depth -= 1;
+      if (depth === 0) return value.slice(start, index + 1);
+    }
+  }
+
+  return value;
 }

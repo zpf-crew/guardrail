@@ -307,25 +307,25 @@ export function useWorkbench(initialIntent?: Partial<IntentInput>, options?: Use
   }, [session]);
   const analyzeProgress = React.useMemo(
     () => analyzeEvents.filter((event): event is AnalyzeProgressEvent =>
-      event.type === 'progress' || event.type === 'thinking' || event.type === 'error' || event.type === 'status',
+      event.type === 'progress' || event.type === 'error' || event.type === 'status',
     ),
     [analyzeEvents],
   );
   const planProgress = React.useMemo(
     () => planEvents.filter((event): event is WorkbenchProgressEvent =>
-      event.type === 'progress' || event.type === 'thinking' || event.type === 'error' || event.type === 'status',
+      event.type === 'progress' || event.type === 'error' || event.type === 'status',
     ),
     [planEvents],
   );
   const generateProgress = React.useMemo(
     () => generateEvents.filter((event): event is WorkbenchProgressEvent =>
-      event.type === 'progress' || event.type === 'thinking' || event.type === 'error' || event.type === 'status',
+      event.type === 'progress' || event.type === 'error' || event.type === 'status',
     ),
     [generateEvents],
   );
   const runProgress = React.useMemo(
     () => runEvents.filter((event): event is RunProgressEvent =>
-      event.type === 'progress' || event.type === 'thinking' || event.type === 'error' || event.type === 'status',
+      event.type === 'progress' || event.type === 'error' || event.type === 'status',
     ),
     [runEvents],
   );

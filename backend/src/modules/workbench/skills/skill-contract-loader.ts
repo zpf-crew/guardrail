@@ -9,6 +9,7 @@ const supportedSkillNames = new Set([
   'test-generate-ui-browser',
   'test-generate-unit',
   'test-run-unit',
+  'test-plan-ui-browser-scenario',
   'test-run-ui-browser-agent',
   'test-review',
   'test-review-unit',

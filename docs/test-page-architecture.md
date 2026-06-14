@@ -473,7 +473,7 @@ The architecture is designed for incremental expansion:
 | New test type | Implement `TestTypeAdapter`, register in `WorkbenchService` adapters array |
 | New repository source | Implement `RepositoryContextProvider` (e.g. GitHub clone) |
 | New workbench step | Add to `WorkflowStepId`, route, service dispatch, frontend step component |
-| Agentic UI run budgets | Tune per-behavior `runConstraints` in Plan (default 60s / 15 steps) |
+| Agentic UI run budgets | Tune per-behavior `runConstraints` in Plan (default 60s per Gherkin step / 15 agent actions) |
 | Persistent sessions | Swap `WorkbenchJobStore` for a database-backed implementation without changing routes |
 
 ---

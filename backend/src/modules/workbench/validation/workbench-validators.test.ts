@@ -27,9 +27,16 @@ test('validates test plan questions slice', () => {
       question: 'Should coupon tests mock the payment API?',
       options: ['Yes — mock API', 'No — use staging'],
     }],
+    runConstraintOverrides: [{
+      behavior: 'Apply coupon at checkout',
+      maxStepDurationMs: 45_000,
+      maxSteps: 20,
+      reason: 'Coupon validation may take longer than a normal page interaction',
+    }],
   });
 
   assert.equal(result.questions[0]?.id, 'coupon-api');
+  assert.equal(result.runConstraintOverrides?.[0]?.maxStepDurationMs, 45_000);
 });
 
 test('validates isolation result shape', () => {
@@ -97,6 +104,11 @@ test('validateUiBrowserAgentAction accepts click ref action', () => {
   const result = validateUiBrowserAgentAction({ kind: 'click', ref: '@e4' });
   assert.equal(result.kind, 'click');
   assert.equal(result.ref, '@e4');
+test('validateUiBrowserAgentAction rejects legacy manual browser actions', () => {
+  assert.throws(
+    () => validateUiBrowserAgentAction({ kind: 'click', ref: '@e4' }),
+    /UiBrowserAgentAction validation failed/,
+  );
 });
 
 test('validateUiBrowserAgentAction accepts assertThen', () => {
@@ -109,5 +121,19 @@ test('validateUiBrowserAgentAction accepts assertThen', () => {
   assert.equal(result.kind, 'assertThen');
   if (result.kind === 'assertThen') {
     assert.equal(result.satisfied, false);
+  }
+});
+
+test('validateUiBrowserAgentAction accepts agentBrowserCommand', () => {
+  const result = validateUiBrowserAgentAction({
+    kind: 'agentBrowserCommand',
+    command: 'find',
+    args: ['role', 'button', 'click', 'Add to Cart'],
+    reason: 'Click the product-card Add to Cart button by role and name',
+  });
+  assert.equal(result.kind, 'agentBrowserCommand');
+  if (result.kind === 'agentBrowserCommand') {
+    assert.equal(result.command, 'find');
+    assert.deepEqual(result.args, ['role', 'button', 'click', 'Add to Cart']);
   }
 });
