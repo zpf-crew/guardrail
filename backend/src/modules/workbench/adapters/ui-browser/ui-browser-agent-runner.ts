@@ -215,6 +215,19 @@ export class UiBrowserAgentRunner {
         action,
       });
 
+      const contractFailure = actionContractFailure(context, action);
+      if (contractFailure) {
+        trace.push({
+          atMs: Date.now() - startedAt,
+          type: 'command-rejected',
+          iteration: iterationsUsed,
+          currentStepIndex,
+          action,
+          reason: contractFailure,
+        });
+        return fail(contractFailure);
+      }
+
       if (isAgentBrowserCommandAction(action)) {
         try {
           validateAgentBrowserCommand(action);
@@ -241,12 +254,14 @@ export class UiBrowserAgentRunner {
           result: 'ok',
           detail: note,
         });
+        const nextStepIndex = Math.min(currentStepIndex + 1, Math.max(steps.length - 1, 0));
+        const observationCarriesToNextThen = steps[nextStepIndex]?.effectiveKind === 'Then';
         completedSteps.push({ index: currentStepIndex, note });
-        currentStepIndex = Math.min(currentStepIndex + 1, Math.max(steps.length - 1, 0));
+        currentStepIndex = nextStepIndex;
         currentStepActiveMs = 0;
         primaryActionCompletedForStep = false;
         primaryActionCommandForStep = null;
-        observationOnlyActionsForCurrentStep = 0;
+        observationOnlyActionsForCurrentStep = observationCarriesToNextThen ? 1 : 0;
         continue;
       }
 
@@ -266,14 +281,6 @@ export class UiBrowserAgentRunner {
         primaryActionCommandForStep = null;
         observationOnlyActionsForCurrentStep = 0;
         continue;
-      }
-
-      if (shouldFailRepeatedThenObservation(currentStep?.effectiveKind, action, observationOnlyActionsForCurrentStep)) {
-        return fail(
-          repeatedThenObservationReason(steps, currentStepIndex),
-          'Failed',
-          currentStep ? `Failed check — ${currentStep.text}` : undefined,
-        );
       }
 
       if (
@@ -331,6 +338,17 @@ export class UiBrowserAgentRunner {
         });
         if (!action.satisfied) {
           return fail(action.reason, 'Failed', `Failed check — ${step.text}`);
+        }
+        if (allThenStepsSatisfied(steps, thenVerdicts)) {
+          return finishScenario({
+            outcome: 'Passed',
+            durationMs: Date.now() - startedAt,
+            evidence,
+            thenVerdicts,
+            reason: null,
+            iterationsUsed,
+            constraintsApplied: args.constraints,
+          }, trace, evidence);
         }
         currentStepIndex = Math.min(action.stepIndex + 1, Math.max(steps.length - 1, 0));
         currentStepActiveMs = 0;
@@ -634,6 +652,17 @@ function shouldKeepCommandOutput(action: UiBrowserAgentAction): boolean {
     && ['get', 'is', 'find'].includes(action.command);
 }
 
+function allThenStepsSatisfied(
+  steps: ReturnType<typeof parseGherkinSteps>,
+  thenVerdicts: ScenarioRunResult['thenVerdicts'],
+): boolean {
+  const thenIndexes = steps
+    .map((step, index) => step.effectiveKind === 'Then' ? index : null)
+    .filter((index): index is number => index !== null);
+  return thenIndexes.length > 0
+    && thenIndexes.every(index => thenVerdicts.some(verdict => verdict.stepIndex === index && verdict.satisfied));
+}
+
 function shouldAutoCompleteActionStep(
   effectiveKind: string | undefined,
   action: UiBrowserAgentAction,
@@ -657,29 +686,25 @@ function shouldAutoCompleteDuplicatePrimaryAction(
     && action.command === primaryActionCommandForStep;
 }
 
-function shouldFailRepeatedThenObservation(
-  effectiveKind: string | undefined,
-  action: UiBrowserAgentAction,
-  observationOnlyActionsForCurrentStep: number,
-): action is UiBrowserAgentAction & AgentBrowserCommandAction {
-  return effectiveKind === 'Then'
-    && observationOnlyActionsForCurrentStep >= 1
-    && isAgentBrowserCommandAction(action)
-    && isObservationOnlyCommand(action);
-}
-
-function repeatedThenObservationReason(
-  steps: ReturnType<typeof parseGherkinSteps>,
-  stepIndex: number,
-): string {
-  const step = steps[stepIndex];
-  if (!step) return 'Then step was observed repeatedly without an assertion.';
-  return `Then step was observed repeatedly without an assertion on step ${stepIndex + 1}/${steps.length}: ${step.effectiveKind} ${step.text}`;
-}
-
 function isMutatingCommand(action: AgentBrowserCommandAction): boolean {
   return isPrimaryActionCommand(action)
     || ['open', 'go', 'reload', 'back', 'forward'].includes(action.command);
+}
+
+function actionContractFailure(context: AgentIterationContext, action: UiBrowserAgentAction): string | null {
+  if (!context.allowedActionKinds.includes(action.kind)) {
+    if (context.currentStep.verdictRequiredNow) {
+      return `Verdict required now for Then step after observation; return assertThen or stepFailed, not ${formatActionForHistory(action)}.`;
+    }
+    return `Action kind ${action.kind} is not allowed for current step; allowed kinds: ${context.allowedActionKinds.join(', ')}.`;
+  }
+  if (isAgentBrowserCommandAction(action) && !context.allowedCommands.includes(action.command)) {
+    if (context.currentStep.verdictRequiredNow) {
+      return `Verdict required now for Then step after observation; return assertThen or stepFailed, not ${formatActionForHistory(action)}.`;
+    }
+    return `agent-browser command ${action.command} is not allowed for current step; allowed commands: ${context.allowedCommands.join(', ') || 'none'}.`;
+  }
+  return null;
 }
 
 function isPrimaryActionCommand(action: AgentBrowserCommandAction): boolean {
