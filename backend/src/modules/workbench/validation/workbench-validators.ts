@@ -73,11 +73,36 @@ const isolationSchema = z.object({
   classifications: z.array(classificationSchema),
 });
 
+const behaviorRunConstraintsSchema = z.object({
+  behavior: z.string(),
+  maxDurationMs: z.number().int().positive(),
+  maxSteps: z.number().int().positive(),
+  reason: z.string().optional(),
+});
+
+const uiBrowserAgentActionSchema = z.discriminatedUnion('kind', [
+  z.object({ kind: z.literal('open'), path: z.string() }),
+  z.object({ kind: z.literal('wait'), load: z.enum(['networkidle', 'domcontentloaded']) }),
+  z.object({ kind: z.literal('click'), ref: z.string().regex(/^@e\d+$/) }),
+  z.object({ kind: z.literal('fill'), ref: z.string().regex(/^@e\d+$/), value: z.string() }),
+  z.object({ kind: z.literal('screenshot'), label: z.string() }),
+  z.object({ kind: z.literal('stepComplete'), stepIndex: z.number().int().nonnegative(), note: z.string() }),
+  z.object({
+    kind: z.literal('assertThen'),
+    stepIndex: z.number().int().nonnegative(),
+    satisfied: z.boolean(),
+    reason: z.string(),
+  }),
+  z.object({ kind: z.literal('stepFailed'), stepIndex: z.number().int().nonnegative(), reason: z.string() }),
+  z.object({ kind: z.literal('scenarioComplete') }),
+]);
+
 const planSchema = z.object({
   proposedActions: z.array(z.object({
     action: z.enum(['add', 'update', 'delete', 'run']),
     label: z.string(),
     count: z.number().nullable(),
+    items: z.array(z.string()).optional(),
   })),
   risk: z.object({
     productionCodeChanges: z.enum(['none', 'expected']),
@@ -93,6 +118,7 @@ const planSchema = z.object({
     options: z.array(z.string()),
     answerIndex: z.number().optional(),
   })),
+  runConstraints: z.array(behaviorRunConstraintsSchema).optional(),
 });
 
 const planQuestionSchema = z.object({
@@ -269,6 +295,16 @@ interface WorkbenchStepResultByName {
 
 export type WorkbenchSchemaName = keyof typeof schemas;
 export type UiBrowserRunPlan = z.infer<typeof uiBrowserRunPlanSchema>;
+export type UiBrowserAgentAction = z.infer<typeof uiBrowserAgentActionSchema>;
+export type BehaviorRunConstraints = z.infer<typeof behaviorRunConstraintsSchema>;
+
+export function validateUiBrowserAgentAction(value: unknown): UiBrowserAgentAction {
+  const result = uiBrowserAgentActionSchema.safeParse(value);
+  if (!result.success) {
+    throw new Error(`UiBrowserAgentAction validation failed: ${formatIssues(result.error.issues)}`);
+  }
+  return result.data;
+}
 
 export function validateWorkbenchStepResult<TName extends WorkbenchSchemaName>(
   schemaName: TName,

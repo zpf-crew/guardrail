@@ -1,6 +1,10 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { validateWorkbenchStepResult, validateUiBrowserRunPlan } from './workbench-validators.js';
+import {
+  validateWorkbenchStepResult,
+  validateUiBrowserRunPlan,
+  validateUiBrowserAgentAction,
+} from './workbench-validators.js';
 
 test('validates isolation classifications shape', () => {
   const result = validateWorkbenchStepResult('IsolationClassifications', {
@@ -70,4 +74,20 @@ test('validates ui browser run plan', () => {
   });
 
   assert.equal(result.actions.length, 5);
+});
+
+test('validateUiBrowserAgentAction accepts click ref action', () => {
+  const result = validateUiBrowserAgentAction({ kind: 'click', ref: '@e4' });
+  assert.equal(result.kind, 'click');
+  assert.equal(result.ref, '@e4');
+});
+
+test('validateUiBrowserAgentAction accepts assertThen', () => {
+  const result = validateUiBrowserAgentAction({
+    kind: 'assertThen',
+    stepIndex: 2,
+    satisfied: false,
+    reason: 'Products page not visible',
+  });
+  assert.equal(result.satisfied, false);
 });
