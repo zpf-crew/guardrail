@@ -55,7 +55,7 @@ function stepPositionLabel(steps: GherkinStep[], stepIndex: number): string {
 }
 
 function commandLine(command: string, args: string[]): string {
-  return ['agent-browser', command, ...args].join(' ');
+  return ['agent-browser', command, ...displayArgs(command, args)].join(' ');
 }
 
 export function formatActionForProgress(
@@ -85,10 +85,30 @@ export function formatActionForProgress(
 
 export function formatActionForHistory(action: UiBrowserAgentAction): string {
   switch (action.kind) {
-    case 'agentBrowserCommand': return `${action.command} ${action.args.join(' ')}`.trim();
+    case 'agentBrowserCommand': return `${action.command} ${displayArgs(action.command, action.args).join(' ')}`.trim();
     case 'stepComplete': return `stepComplete ${action.stepIndex}`;
     case 'assertThen': return `assertThen ${action.stepIndex} ${action.satisfied}`;
     case 'stepFailed': return `stepFailed ${action.stepIndex}`;
     case 'scenarioComplete': return 'scenarioComplete';
   }
+}
+
+function displayArgs(command: string, args: string[]): string[] {
+  if ((command === 'fill' || command === 'type') && args.length > 1) {
+    return [args[0]!, '[redacted]'];
+  }
+  if (command === 'keyboard' && args.length > 1) {
+    return [args[0]!, '[redacted]'];
+  }
+  if (command === 'find') {
+    const actionIndex = findActionIndex(args);
+    if (actionIndex >= 0 && ['fill', 'type'].includes(args[actionIndex]!) && args.length > actionIndex + 1) {
+      return [...args.slice(0, actionIndex + 1), '[redacted]'];
+    }
+  }
+  return args;
+}
+
+function findActionIndex(args: string[]): number {
+  return args.findIndex(arg => ['click', 'dblclick', 'hover', 'focus', 'fill', 'type', 'check', 'uncheck'].includes(arg));
 }

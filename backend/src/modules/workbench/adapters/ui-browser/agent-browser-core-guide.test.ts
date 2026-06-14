@@ -30,6 +30,10 @@ test('loadAgentBrowserCoreGuide returns trimmed command guide when command succe
     }),
   });
   assert.match(result, /Core Commands:/);
-  assert.match(result, /open <url>/);
+  assert.match(result, /"command": "open"/);
+  assert.match(result, /"args": \["--load", "networkidle"\]/);
   assert.doesNotMatch(result, /auth save/);
+  assert.doesNotMatch(result, /--new-tab/);
+  assert.doesNotMatch(result, /upload/);
+  assert.doesNotMatch(result, /--fn/);
 });

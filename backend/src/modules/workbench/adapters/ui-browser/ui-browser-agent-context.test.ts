@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { formatActionForProgress } from './ui-browser-agent-context.js';
+import { formatActionForHistory, formatActionForProgress } from './ui-browser-agent-context.js';
 import type { GherkinStep } from './gherkin-step-parser.js';
 
 const steps: GherkinStep[] = [
@@ -34,5 +34,26 @@ test('formatActionForProgress describes agent-browser commands', () => {
       reason: 'Click Add to Cart',
     }, steps, 1),
     'agent-browser find role button click Add to Cart — Step 2/3 — When: the user clicks Shop Now',
+  );
+});
+
+test('formatActionForProgress redacts typed values from browser commands', () => {
+  assert.equal(
+    formatActionForProgress({
+      kind: 'agentBrowserCommand',
+      command: 'fill',
+      args: ['@e2', 'secret search'],
+      reason: 'Fill search field',
+    }, steps, 1),
+    'agent-browser fill @e2 [redacted] — Step 2/3 — When: the user clicks Shop Now',
+  );
+  assert.equal(
+    formatActionForHistory({
+      kind: 'agentBrowserCommand',
+      command: 'keyboard',
+      args: ['inserttext', 'hidden value'],
+      reason: 'Insert text',
+    }),
+    'keyboard inserttext [redacted]',
   );
 });

@@ -28,7 +28,7 @@ JSON context with:
 - Work through steps in order. Only call `assertThen` when `gherkinSteps[currentStepIndex].effectiveKind` is `Then`, and use that step's `index`.
 - For `Given` / `When` steps: return `agentBrowserCommand` actions to navigate, wait, click, fill, press keys, scroll, and screenshot until ready, then `stepComplete` with `currentStepIndex`.
 - If a step says to search, submit, press enter, or trigger results after filling an input, return an `agentBrowserCommand` with command `fill` on the input and then an `agentBrowserCommand` with command `press` and args `["Enter"]` unless a visible submit/search button is clearly the intended control.
-- If a click should navigate or change route/page state, return an `agentBrowserCommand` with command `click` for the visible control and then an `agentBrowserCommand` with command `wait` before inspecting the next snapshot.
+- If a click should navigate or change route/page state, return an `agentBrowserCommand` with command `click` for the visible control and then an `agentBrowserCommand` with command `wait` and args `["--load", "networkidle"]` before inspecting the next snapshot.
 - If a step targets a product card button/icon but the visible refs only include header/nav controls, do **not** click the header cart/wishlist icon. Return an `agentBrowserCommand` with command `scroll` and args `["down", "500"]` to bring product cards and their controls into the snapshot, then click the product-card control.
 - If the screenshot shows the target section only partly at the bottom of the viewport, return an `agentBrowserCommand` with command `scroll` before trying product-card actions.
 - Do not repeat screenshots on the same step. After an `agentBrowserCommand` with command `screenshot`, either call `stepComplete`, call `assertThen`, or perform the one missing browser action needed to progress.
@@ -57,10 +57,11 @@ Use `agentBrowserCommand` for browser work:
 { "kind": "agentBrowserCommand", "command": "open", "args": ["/"], "reason": "Open the home page" }
 { "kind": "agentBrowserCommand", "command": "snapshot", "args": ["-i"], "reason": "Inspect interactive controls" }
 { "kind": "agentBrowserCommand", "command": "click", "args": ["@e4"], "reason": "Click visible product-card Add to Cart button" }
-{ "kind": "agentBrowserCommand", "command": "find", "args": ["role", "button", "click", "Add to Cart"], "reason": "Click Add to Cart by role/name" }
+{ "kind": "agentBrowserCommand", "command": "find", "args": ["role", "button", "click", "--name", "Add to Cart"], "reason": "Click Add to Cart by role/name" }
 { "kind": "agentBrowserCommand", "command": "fill", "args": ["@e2", "shirt"], "reason": "Enter search text" }
 { "kind": "agentBrowserCommand", "command": "press", "args": ["Enter"], "reason": "Submit the search field" }
 { "kind": "agentBrowserCommand", "command": "scroll", "args": ["down", "500"], "reason": "Reveal product-card controls below the fold" }
+{ "kind": "agentBrowserCommand", "command": "wait", "args": ["--load", "networkidle"], "reason": "Wait for navigation to settle" }
 { "kind": "agentBrowserCommand", "command": "get", "args": ["url"], "reason": "Check current route after navigation" }
 { "kind": "agentBrowserCommand", "command": "is", "args": ["visible", "@e8"], "reason": "Confirm target control is visible" }
 { "kind": "agentBrowserCommand", "command": "screenshot", "args": [], "reason": "Capture evidence after state change" }
@@ -82,8 +83,9 @@ Use `find` when the snapshot is large but the target has a clear role/name, labe
 Use `get url`, `get text`, `get value`, and `is visible/enabled/checked` for cheap state checks before making a verdict.
 Use `scroll down 500` when the target section is partly visible at the bottom or the product-card controls are below the fold.
 Use `press Enter` after filling search fields unless a visible submit/search button is the intended control.
-Use `wait networkidle` or `wait domcontentloaded` after navigation-causing clicks.
+Use `wait --load networkidle` or `wait --load domcontentloaded` after navigation-causing clicks.
 Use `screenshot` once after a meaningful state change and before important `Then` verdicts.
+Do not use raw CSS selectors, custom screenshot paths, `click --new-tab`, `wait --fn`, or unsupported command flags.
 
 Blocked commands: `eval`, `batch`, `download`, `upload`, `network`, `auth`, `connect`, `close`, `install`, `upgrade`, `doctor`, `dashboard`, `stream`, `record`, `trace`, `profiler`, `pdf`, `clipboard`, `confirm`, `deny`, and `chat`.
 Do not navigate outside the managed dev-server origin.

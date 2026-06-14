@@ -118,3 +118,13 @@ test('normalizeAgentActionInput converts legacy screenshot action into command e
     reason: 'Home loaded',
   });
 });
+
+test('normalizeAgentActionInput converts legacy wait action to load flag syntax', () => {
+  const result = normalizeAgentActionInput({ kind: 'wait', load: 'networkidle' }, context);
+  assert.deepEqual(result, {
+    kind: 'agentBrowserCommand',
+    command: 'wait',
+    args: ['--load', 'networkidle'],
+    reason: 'Wait for page readiness',
+  });
+});

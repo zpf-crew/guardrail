@@ -1,8 +1,10 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
+  assertSameOriginUrl,
   agentBrowserCommandArgs,
   isExecutableAgentBrowserCommand,
+  shouldVerifySameOriginAfterCommand,
   validateAgentBrowserCommand,
 } from './agent-browser-command-policy.js';
 
@@ -85,6 +87,56 @@ test('validateAgentBrowserCommand rejects unsafe or unsupported commands', () =>
       reason: 'Write custom screenshot path',
     }),
     /screenshot does not accept custom paths/,
+  );
+});
+
+test('validateAgentBrowserCommand rejects unsafe flags and wait functions', () => {
+  assert.throws(
+    () => validateAgentBrowserCommand({
+      kind: 'agentBrowserCommand',
+      command: 'click',
+      args: ['@e1', '--new-tab'],
+      reason: 'Open outside app',
+    }),
+    /click flag "--new-tab" is not allowed/,
+  );
+  assert.throws(
+    () => validateAgentBrowserCommand({
+      kind: 'agentBrowserCommand',
+      command: 'wait',
+      args: ['--fn', 'window.ready === true'],
+      reason: 'Wait for JS condition',
+    }),
+    /wait --fn is not allowed/,
+  );
+  assert.deepEqual(
+    agentBrowserCommandArgs('http://127.0.0.1:5173', {
+      kind: 'agentBrowserCommand',
+      command: 'wait',
+      args: ['--load', 'networkidle'],
+      reason: 'Wait after navigation',
+    }),
+    ['wait', '--load', 'networkidle'],
+  );
+});
+
+test('same-origin helpers identify state-changing commands and reject external URLs', () => {
+  assert.equal(shouldVerifySameOriginAfterCommand({
+    kind: 'agentBrowserCommand',
+    command: 'click',
+    args: ['@e1'],
+    reason: 'Click link',
+  }), true);
+  assert.equal(shouldVerifySameOriginAfterCommand({
+    kind: 'agentBrowserCommand',
+    command: 'get',
+    args: ['url'],
+    reason: 'Read URL',
+  }), false);
+  assert.doesNotThrow(() => assertSameOriginUrl('http://127.0.0.1:5173', 'http://127.0.0.1:5173/products'));
+  assert.throws(
+    () => assertSameOriginUrl('http://127.0.0.1:5173', 'https://example.com/'),
+    /External navigation is not allowed/,
   );
 });
 

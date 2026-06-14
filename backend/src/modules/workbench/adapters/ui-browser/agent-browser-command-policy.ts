@@ -30,6 +30,34 @@ const SIMPLE_COMMANDS = new Set([
 ]);
 
 const STRUCTURED_COMMANDS = new Set(['keyboard', 'get', 'is', 'find']);
+const REF_COMMANDS = new Set([
+  'click',
+  'dblclick',
+  'hover',
+  'focus',
+  'fill',
+  'type',
+  'check',
+  'uncheck',
+  'select',
+  'scrollintoview',
+]);
+const NAVIGATION_CHECK_COMMANDS = new Set([
+  'open',
+  'click',
+  'dblclick',
+  'press',
+  'fill',
+  'type',
+  'check',
+  'uncheck',
+  'select',
+  'keyboard',
+  'find',
+  'back',
+  'forward',
+  'reload',
+]);
 
 const BLOCKED_COMMANDS = new Set([
   'eval',
@@ -120,6 +148,19 @@ export function agentBrowserCommandArgs(baseUrl: string, action: AgentBrowserCom
   return [validated.command, ...validated.args];
 }
 
+export function shouldVerifySameOriginAfterCommand(action: AgentBrowserCommandAction): boolean {
+  const validated = validateAgentBrowserCommand(action);
+  return NAVIGATION_CHECK_COMMANDS.has(validated.command);
+}
+
+export function assertSameOriginUrl(baseUrl: string, currentUrl: string): void {
+  const base = new URL(baseUrl);
+  const current = new URL(currentUrl.trim());
+  if (current.origin !== base.origin) {
+    throw new Error(`External navigation is not allowed: ${current.toString()}`);
+  }
+}
+
 function normalizeCommand(command: unknown): string {
   return typeof command === 'string' ? command.trim().toLowerCase() : '';
 }
@@ -144,7 +185,7 @@ function validateCommandArgs(command: string, args: string[]): void {
     return;
   }
   if (command === 'wait') {
-    if (args.length < 1 || args.length > 2) throw new Error('wait requires one or two arguments.');
+    validateWaitArgs(args);
     return;
   }
   if (command === 'back' || command === 'forward' || command === 'reload') {
@@ -169,6 +210,9 @@ function validateCommandArgs(command: string, args: string[]): void {
   }
   if (args.length < 1) {
     throw new Error(`${command} requires at least one argument.`);
+  }
+  if (REF_COMMANDS.has(command)) {
+    validateNoFlags(command, args);
   }
 }
 
@@ -215,7 +259,38 @@ function validateFindArgs(args: string[]): void {
   if (args.length < 3 || !args[1] || !args[2]) {
     throw new Error('find requires locator, value, and action arguments.');
   }
+  const allowedFlags = new Set(['--name', '--exact']);
+  for (const arg of args.slice(3)) {
+    if (arg.startsWith('-') && !allowedFlags.has(arg)) {
+      throw new Error(`find flag "${arg}" is not allowed.`);
+    }
+  }
   args[0] = locator;
+}
+
+function validateWaitArgs(args: string[]): void {
+  if (args.length < 1 || args.length > 2) {
+    throw new Error('wait requires one or two arguments.');
+  }
+  if (args[0] === '--fn') {
+    throw new Error('wait --fn is not allowed.');
+  }
+  if (args[0] === '--load') {
+    if (!['networkidle', 'domcontentloaded'].includes(args[1] ?? '')) {
+      throw new Error('wait --load requires networkidle or domcontentloaded.');
+    }
+    return;
+  }
+  if (args[0]?.startsWith('--') && !['--text', '--url'].includes(args[0])) {
+    throw new Error(`wait flag "${args[0]}" is not allowed.`);
+  }
+}
+
+function validateNoFlags(command: string, args: string[]): void {
+  const flag = args.find(arg => arg.startsWith('-'));
+  if (flag) {
+    throw new Error(`${command} flag "${flag}" is not allowed.`);
+  }
 }
 
 function resolveOpenTarget(baseUrl: string, rawTarget: string): string {

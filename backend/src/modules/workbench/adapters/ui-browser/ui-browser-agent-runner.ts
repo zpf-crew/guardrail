@@ -14,6 +14,13 @@ import {
   type AgentIterationContext,
 } from './ui-browser-agent-context.js';
 import {
+  assertSameOriginUrl,
+  isAgentBrowserCommandAction,
+  shouldVerifySameOriginAfterCommand,
+  validateAgentBrowserCommand,
+  type AgentBrowserCommandAction,
+} from './agent-browser-command-policy.js';
+import {
   captureSnapshot,
   executeAgentAction,
   type AgentExecutor,
@@ -56,6 +63,19 @@ export class UiBrowserAgentRunner {
     const thenVerdicts: ScenarioRunResult['thenVerdicts'] = [];
     const actionHistory: AgentActionHistoryEntry[] = [];
     const evidence: Evidence[] = [];
+
+    const initialOpen = await this.#execute(['open', new URL(args.defaultRoute || '/', args.baseUrl).toString()], args.signal);
+    if (initialOpen.exitCode !== 0) {
+      return {
+        outcome: 'Failed',
+        durationMs: Date.now() - startedAt,
+        evidence,
+        thenVerdicts,
+        reason: `agent-browser initial navigation failed: ${initialOpen.stderr || initialOpen.stdout || `exit ${initialOpen.exitCode}`}`,
+        iterationsUsed,
+        constraintsApplied: args.constraints,
+      };
+    }
 
     const fail = async (
       reason: string,
@@ -116,6 +136,14 @@ export class UiBrowserAgentRunner {
         action = await this.#decideNext(context);
       } catch (error) {
         return fail(`Agent decision failed: ${error instanceof Error ? error.message : String(error)}`);
+      }
+
+      if (isAgentBrowserCommandAction(action)) {
+        try {
+          validateAgentBrowserCommand(action);
+        } catch (error) {
+          return fail(`agent-browser command rejected: ${error instanceof Error ? error.message : String(error)}`);
+        }
       }
 
       args.onProgress?.(formatActionForProgress(action, steps, currentStepIndex));
@@ -185,8 +213,8 @@ export class UiBrowserAgentRunner {
         return fail(`agent-browser command rejected: ${error instanceof Error ? error.message : String(error)}`);
       }
       if (result && result.exitCode !== 0) {
-        const detail = result.stderr || result.stdout || `exit ${result.exitCode}`;
-        args.onProgress?.(`Browser action failed — ${formatActionForHistory(action)}: ${truncateDetail(detail)}`);
+        const detail = truncateDetail(result.stderr || result.stdout || `exit ${result.exitCode}`);
+        args.onProgress?.(`Browser action failed — ${formatActionForHistory(action)}: ${detail}`);
         actionHistory.push({
           iteration: iterationsUsed,
           action: formatActionForHistory(action),
@@ -194,6 +222,11 @@ export class UiBrowserAgentRunner {
           detail,
         });
         continue;
+      }
+
+      if (result && isAgentBrowserCommandAction(action)) {
+        const originError = await verifySameOriginAfterCommand(args.baseUrl, action, this.#execute, args.signal);
+        if (originError) return fail(originError);
       }
 
       const successDetail = result && shouldKeepCommandOutput(action)
@@ -263,4 +296,23 @@ function truncateDetail(value: string, max = 180): string {
 function shouldKeepCommandOutput(action: UiBrowserAgentAction): boolean {
   return action.kind === 'agentBrowserCommand'
     && ['get', 'is', 'find'].includes(action.command);
+}
+
+async function verifySameOriginAfterCommand(
+  baseUrl: string,
+  action: AgentBrowserCommandAction,
+  execute: AgentExecutor,
+  signal: AbortSignal,
+): Promise<string | null> {
+  if (!shouldVerifySameOriginAfterCommand(action)) return null;
+  const result = await execute(['get', 'url'], signal);
+  if (result.exitCode !== 0) {
+    return `agent-browser origin check failed: ${result.stderr || result.stdout || `exit ${result.exitCode}`}`;
+  }
+  try {
+    assertSameOriginUrl(baseUrl, result.stdout);
+    return null;
+  } catch (error) {
+    return error instanceof Error ? error.message : String(error);
+  }
 }

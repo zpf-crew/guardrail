@@ -84,7 +84,7 @@ function legacyCommand(kind: string, normalized: Record<string, unknown>, contex
       return {
         kind: 'agentBrowserCommand',
         command: 'wait',
-        args: [normalized.load === 'domcontentloaded' ? 'domcontentloaded' : 'networkidle'],
+        args: ['--load', normalized.load === 'domcontentloaded' ? 'domcontentloaded' : 'networkidle'],
         reason: commandReason(normalized, 'Wait for page readiness'),
       };
     case 'click': {

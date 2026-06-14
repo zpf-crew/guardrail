@@ -45,7 +45,7 @@ test('decideNext accepts agentBrowserCommand JSON', async () => {
   const runner = new AgentModelRunner({
     modelConnect: fakeModelConnect({
       content:
-        '{"kind":"agentBrowserCommand","command":"find","args":["role","button","click","Add to Cart"],"reason":"Click Add to Cart product button"}',
+        '{"kind":"agentBrowserCommand","command":"find","args":["role","button","click","--name","Add to Cart"],"reason":"Click Add to Cart product button"}',
     }),
   });
 
@@ -73,7 +73,7 @@ test('decideNext accepts agentBrowserCommand JSON', async () => {
   assert.deepEqual(action, {
     kind: 'agentBrowserCommand',
     command: 'find',
-    args: ['role', 'button', 'click', 'Add to Cart'],
+    args: ['role', 'button', 'click', '--name', 'Add to Cart'],
     reason: 'Click Add to Cart product button',
   });
 });
