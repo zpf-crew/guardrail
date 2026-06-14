@@ -122,3 +122,19 @@ test('buildAgentIterationContext allows scenario completion when all Then steps 
   assert.deepEqual(context.allowedActionKinds, ['assertThen', 'stepFailed', 'scenarioComplete']);
   assert.deepEqual(context.allowedCommands, []);
 });
+
+test('ui browser run skill describes verdict-only Then turns without screenshot loops', async () => {
+  const { readFile } = await import('node:fs/promises');
+  const skill = await readFile(new URL('../../../../../../guardrail-skills/test-run-ui-browser-agent.md', import.meta.url), 'utf8');
+
+  assert.match(skill, /verdictRequiredNow/);
+  assert.match(skill, /allowedActionKinds/);
+  assert.match(skill, /allowedCommands/);
+  assert.match(skill, /If `currentStep\.verdictRequiredNow` is true/);
+  assert.match(skill, /Screenshots are runner-owned evidence\./);
+  const skillWithoutRunnerEvidence = skill.replace(/Screenshots are runner-owned evidence\./g, '');
+  assert.doesNotMatch(skillWithoutRunnerEvidence, /\bscreenshots?\b/i);
+  assert.doesNotMatch(skill, /command `screenshot`/);
+  assert.doesNotMatch(skill, /"command": "screenshot"/);
+  assert.doesNotMatch(skill, /\bscreenshot\b.*allowed output/i);
+});
