@@ -37,3 +37,19 @@ test('missing supported skill files name the skill in the error', async () => {
     /Skill contract not found for test-review/,
   );
 });
+
+test('loads UI Browser flow planning skill contracts', async () => {
+  const skillsDir = await mkdtemp(path.join(os.tmpdir(), 'guardrail-skills-'));
+  await writeFile(path.join(skillsDir, 'test-plan-ui-browser-flows.md'), '# Gherkin To User Flow\n\nReturn JSON only.\n');
+  await writeFile(path.join(skillsDir, 'test-plan-ui-browser-execution.md'), '# User Flow To Execution\n\nReturn JSON only.\n');
+
+  const loader = new SkillContractLoader({ skillsDir });
+
+  const flowSkill = await loader.load('test-plan-ui-browser-flows');
+  const executionSkill = await loader.load('test-plan-ui-browser-execution');
+
+  assert.equal(flowSkill.name, 'test-plan-ui-browser-flows');
+  assert.match(flowSkill.content, /Gherkin To User Flow/);
+  assert.equal(executionSkill.name, 'test-plan-ui-browser-execution');
+  assert.match(executionSkill.content, /User Flow To Execution/);
+});
