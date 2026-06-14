@@ -14,6 +14,11 @@ export const GUARDRAIL_UI_TEST_DESIGN = {
     'Map scenario steps to click, fill, assertText, screenshot actions',
     'Capture screenshot evidence for the review step',
   ],
+  runBudgets: {
+    defaultMaxStepDurationMs: 60_000,
+    defaultMaxSteps: 15,
+    overrideField: 'runConstraintOverrides',
+  },
   selectors: 'Prefer role/name and visible text; use repository snippets for labels',
   notUsed: [
     'Playwright',

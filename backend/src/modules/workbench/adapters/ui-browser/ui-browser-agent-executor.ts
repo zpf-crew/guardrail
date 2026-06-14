@@ -14,6 +14,14 @@ export interface AgentExecuteResult {
 
 export type AgentExecutor = (args: string[], signal: AbortSignal) => Promise<AgentExecuteResult>;
 
+export function agentBrowserSessionArgs(sessionName: string, args: string[]): string[] {
+  return ['--session', sessionName, ...args];
+}
+
+export function sessionAgentExecutor(sessionName: string): AgentExecutor {
+  return (args, signal) => defaultAgentExecutor(agentBrowserSessionArgs(sessionName, args), signal);
+}
+
 export function agentCommandArgs(baseUrl: string, action: UiBrowserAgentAction): string[] | null {
   if (!isAgentBrowserCommandAction(action)) return null;
   return agentBrowserCommandArgs(baseUrl, action);

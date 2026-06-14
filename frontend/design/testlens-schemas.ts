@@ -498,7 +498,7 @@ export interface PlanAction {
 
 export interface BehaviorRunConstraints {
   behavior: string;
-  maxDurationMs: number;
+  maxStepDurationMs: number;
   maxSteps: number;
   reason?: string;
 }

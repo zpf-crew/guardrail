@@ -38,11 +38,11 @@ function constraintForBehavior(
 }
 
 function formatConstraint(constraint: BehaviorRunConstraints): string {
-  const seconds = Math.round(constraint.maxDurationMs / 1000);
+  const seconds = Math.round(constraint.maxStepDurationMs / 1000);
   const duration = seconds >= 60 ? `${Math.round(seconds / 60)}m` : `${seconds}s`;
-  const isDefault = constraint.maxDurationMs === 60_000 && constraint.maxSteps === 15;
-  if (isDefault && !constraint.reason) return `${duration} / ${constraint.maxSteps} steps`;
-  return `${duration} / ${constraint.maxSteps} steps${constraint.reason ? ` — ${constraint.reason}` : ''}`;
+  const isDefault = constraint.maxStepDurationMs === 60_000 && constraint.maxSteps === 15;
+  if (isDefault && !constraint.reason) return `${duration} per step / ${constraint.maxSteps} actions`;
+  return `${duration} per step / ${constraint.maxSteps} actions${constraint.reason ? ` — ${constraint.reason}` : ''}`;
 }
 
 import { WorkbenchProgressPanel } from '../workbench-progress-panel';

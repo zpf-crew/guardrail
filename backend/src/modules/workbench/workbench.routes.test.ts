@@ -658,7 +658,7 @@ async function buildArtifactRouteTestApp(
           thenVerdicts: [],
           reason: null,
           iterationsUsed: 2,
-          constraintsApplied: { behavior: 'Test', maxDurationMs: 60_000, maxSteps: 15 },
+          constraintsApplied: { behavior: 'Test', maxStepDurationMs: 20_000, maxSteps: 15 },
         };
       },
     },

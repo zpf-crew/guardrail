@@ -1,3 +1,7 @@
+import { randomUUID } from 'node:crypto';
+import { mkdir, readFile, writeFile } from 'node:fs/promises';
+import os from 'node:os';
+import path from 'node:path';
 import type { AdapterInput, TestTypeAdapter } from '../test-type-adapter.js';
 import type {
   GenerationResult,
@@ -19,7 +23,7 @@ import { filterPlanQuestions } from '../../plan/plan-questions-filter.js';
 import { buildGenerationResult } from '../../generation/generation-result-builder.js';
 import { buildReviewContext } from '../../review/review-context.js';
 import { buildReviewSummary } from '../../review/review-summary-builder.js';
-import { validateWorkbenchStepResult } from '../../validation/workbench-validators.js';
+import { validateWorkbenchStepResult, type UiBrowserScenarioPlan } from '../../validation/workbench-validators.js';
 import { DevServerOrchestrator, type DevServerLease } from '../../dev-server/dev-server-orchestrator.js';
 import {
   resolveDevServerTarget,
@@ -27,9 +31,10 @@ import {
 } from '../../dev-server/dev-server-resolver.js';
 import { lookupRunConstraints } from '../../plan/run-constraints.js';
 import { AgentModelRunner } from '../../model/agent-model-runner.js';
-import { scenarioTextFromChange } from './ui-browser-scenario.js';
+import { scenarioTextFromChange, splitScenarioTexts } from './ui-browser-scenario.js';
+import { assertScenarioPlanGrounded } from './ui-browser-scenario-plan.js';
 import { UiBrowserAgentRunner, type RunScenarioArgs } from './ui-browser-agent-runner.js';
-import { defaultAgentExecutor } from './ui-browser-agent-executor.js';
+import { defaultAgentExecutor, sessionAgentExecutor } from './ui-browser-agent-executor.js';
 import {
   buildAgentBrowserRunSkillContent,
   loadAgentBrowserCoreGuide,
@@ -81,6 +86,44 @@ function uiCommandFor(targetUrl: string | null): string {
 
 function durationLabel(durationMs: number): string {
   return `${(durationMs / 1000).toFixed(1)}s`;
+}
+
+async function buildUiBrowserRunTraceEvidence(
+  evidence: ScenarioRunResult['evidence'],
+): Promise<ScenarioRunResult['evidence'][number] | null> {
+  const traces = evidence.filter(item => item.kind === 'trace' && item.href && path.isAbsolute(item.href));
+  if (traces.length === 0) return null;
+
+  const files = await Promise.all(traces.map(async item => {
+    try {
+      const content = await readFile(item.href!, 'utf8');
+      return {
+        label: item.label,
+        href: item.href,
+        content: JSON.parse(content) as unknown,
+      };
+    } catch {
+      return {
+        label: item.label,
+        href: item.href,
+        content: null,
+      };
+    }
+  }));
+
+  try {
+    const dir = path.join(os.tmpdir(), 'guardrail-ui-browser-run-traces');
+    await mkdir(dir, { recursive: true });
+    const filePath = path.join(dir, `${randomUUID()}.json`);
+    await writeFile(
+      filePath,
+      `${JSON.stringify({ kind: 'ui-browser-run-trace', traces: files }, null, 2)}\n`,
+      'utf8',
+    );
+    return { kind: 'trace', label: 'UI Browser raw run trace', href: filePath };
+  } catch {
+    return null;
+  }
 }
 
 function isAbortLike(error: unknown): boolean {
@@ -417,6 +460,10 @@ export class UiBrowserAdapter implements TestTypeAdapter {
     const allEvidence: ScenarioRunResult['evidence'] = [];
     let totalDuration = 0;
     let worstOutcome: RunOutcome = 'Passed';
+    const scenarios = uiChanges.flatMap(change => {
+      const texts = splitScenarioTexts(scenarioTextFromChange(change));
+      return texts.map((scenarioText, scenarioIndex) => ({ change, scenarioText, scenarioIndex, scenarioCount: texts.length }));
+    });
 
     try {
       const target = await this.#devServer.resolve(clonePath, sessionId);
@@ -433,15 +480,18 @@ export class UiBrowserAdapter implements TestTypeAdapter {
         percent: 77,
       });
 
-      for (const [changeIndex, change] of uiChanges.entries()) {
+      for (const [scenarioRunIndex, scenario] of scenarios.entries()) {
         input.signal.throwIfAborted();
-        const scenarioText = scenarioTextFromChange(change);
+        const { change, scenarioText } = scenario;
         const constraints = lookupRunConstraints(input.session.plan?.runConstraints, change.title);
-        const agentRunner = this.#agentRunner ?? this.#createAgentRunner(input);
+        const sessionName = uiBrowserSessionName(input.session.id, scenarioRunIndex);
+        const agentRunner = this.#agentRunner ?? this.#createAgentRunner(input, sessionName);
+        const scenarioPlan = this.#agentRunner ? undefined : await this.#planScenario(input, scenarioText, scenarioRunIndex, scenarios.length);
         const liveScreenshotHrefs = new Set<string>();
         const scenarioResult = await agentRunner.runScenario({
           baseUrl: lease.baseUrl,
           gherkinText: scenarioText,
+          ...(scenarioPlan ? { scenarioPlan } : {}),
           constraints,
           defaultRoute,
           signal: input.signal,
@@ -451,15 +501,10 @@ export class UiBrowserAdapter implements TestTypeAdapter {
             if (emitted.artifact.href) liveScreenshotHrefs.add(emitted.artifact.href);
             return emitted.artifact;
           },
-          onThinking: message => input.emit({
-            type: 'progress',
-            message: `[Scenario ${changeIndex + 1}/${uiChanges.length}] ${message}`,
-            percent: Math.min(90, 78 + Math.round(((changeIndex + 0.5) / uiChanges.length) * 10)),
-          }),
           onProgress: message => input.emit({
             type: 'progress',
-            message: `[Scenario ${changeIndex + 1}/${uiChanges.length}] ${message}`,
-            percent: Math.min(90, 78 + Math.round(((changeIndex + 0.5) / uiChanges.length) * 10)),
+            message: `[Scenario ${scenarioRunIndex + 1}/${scenarios.length}] ${message}`,
+            percent: Math.min(90, 78 + Math.round(((scenarioRunIndex + 0.5) / scenarios.length) * 10)),
           }),
         });
 
@@ -481,7 +526,7 @@ export class UiBrowserAdapter implements TestTypeAdapter {
         worstOutcome = worstRunOutcome(worstOutcome, scenarioResult.outcome);
         allEvidence.push(...changeEvidence);
         matrix.push({
-          title: change.title,
+          title: scenario.scenarioCount > 1 ? `${change.title} (${scenario.scenarioIndex + 1}/${scenario.scenarioCount})` : change.title,
           type: 'UI / Browser',
           status: scenarioResult.outcome,
           duration: durationLabel(scenarioResult.durationMs),
@@ -491,6 +536,9 @@ export class UiBrowserAdapter implements TestTypeAdapter {
           file: change.file,
         });
       }
+
+      const runTrace = await buildUiBrowserRunTraceEvidence(allEvidence);
+      if (runTrace) allEvidence.push(runTrace);
 
       return {
         result: {
@@ -509,10 +557,11 @@ export class UiBrowserAdapter implements TestTypeAdapter {
         percent: 80,
       });
       const errorMessage = error instanceof Error ? error.message : String(error);
-      const remainingChanges = uiChanges.slice(matrix.length);
-      for (const change of remainingChanges) {
+      const remainingScenarios = scenarios.slice(matrix.length);
+      for (const scenario of remainingScenarios) {
+        const { change } = scenario;
         matrix.push({
-          title: change.title,
+          title: scenario.scenarioCount > 1 ? `${change.title} (${scenario.scenarioIndex + 1}/${scenario.scenarioCount})` : change.title,
           type: 'UI / Browser',
           status: 'Failed',
           duration: null,
@@ -521,6 +570,8 @@ export class UiBrowserAdapter implements TestTypeAdapter {
           file: change.file,
         });
       }
+      const runTrace = await buildUiBrowserRunTraceEvidence(allEvidence);
+      if (runTrace) allEvidence.push(runTrace);
       return {
         result: {
           outcome: 'Failed',
@@ -558,7 +609,47 @@ export class UiBrowserAdapter implements TestTypeAdapter {
     };
   }
 
-  #createAgentRunner(input: AdapterInput): AgentRunnerLike {
+  async #planScenario(
+    input: AdapterInput,
+    scenarioText: string,
+    scenarioRunIndex: number,
+    scenarioCount: number,
+  ): Promise<UiBrowserScenarioPlan | undefined> {
+    const agentModel = new AgentModelRunner({ modelConnect: input.modelConnect });
+    try {
+      const skill = await input.skills.load('test-plan-ui-browser-scenario');
+      await input.emit({
+        type: 'progress',
+        message: `[Scenario ${scenarioRunIndex + 1}/${scenarioCount}] Creating concise execution plan…`,
+        percent: Math.min(90, 78 + Math.round(((scenarioRunIndex + 0.25) / scenarioCount) * 10)),
+      });
+      const scenarioPlan = await agentModel.planScenario({
+        profile: 'coder',
+        skill,
+        context: {
+          gherkinText: scenarioText,
+          guidance: [
+            'Create a short human-QC plan before browser execution.',
+            'Prefer durable state assertions over transient toast/notification checks.',
+            'If a control may be below the fold, say to find it by scrolling if needed.',
+          ],
+        },
+        signal: input.signal,
+      });
+      assertScenarioPlanGrounded(scenarioPlan, scenarioText);
+      return scenarioPlan;
+    } catch (error) {
+      rethrowIfAbort(error, input.signal);
+      await input.emit({
+        type: 'progress',
+        message: `[Scenario ${scenarioRunIndex + 1}/${scenarioCount}] Scenario planning unavailable; running original Gherkin. ${error instanceof Error ? error.message : String(error)}`,
+        percent: Math.min(90, 78 + Math.round(((scenarioRunIndex + 0.25) / scenarioCount) * 10)),
+      });
+      return undefined;
+    }
+  }
+
+  #createAgentRunner(input: AdapterInput, sessionName?: string): AgentRunnerLike {
     const agentModel = new AgentModelRunner({ modelConnect: input.modelConnect });
     return new UiBrowserAgentRunner({
       decideNext: async context => {
@@ -571,7 +662,11 @@ export class UiBrowserAdapter implements TestTypeAdapter {
           signal: input.signal,
         });
       },
-      execute: defaultAgentExecutor,
+      execute: sessionName ? sessionAgentExecutor(sessionName) : defaultAgentExecutor,
     });
   }
+}
+
+function uiBrowserSessionName(sessionId: string, scenarioRunIndex: number): string {
+  return `guardrail-${sessionId}-${scenarioRunIndex + 1}`;
 }

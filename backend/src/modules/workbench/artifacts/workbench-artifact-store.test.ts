@@ -50,6 +50,31 @@ test('artifact store extracts a path from agent-browser screenshot stdout', asyn
   assert.match(evidence.href ?? '', /^\/api\/workbench\/session-2\/artifacts\/.+\.png$/);
 });
 
+test('artifact store copies local trace JSON and returns browser URL', async () => {
+  const root = await mkdtemp(path.join(os.tmpdir(), 'guardrail-artifacts-'));
+  const sourceDir = await mkdtemp(path.join(os.tmpdir(), 'guardrail-trace-source-'));
+  const source = path.join(sourceDir, 'ui-browser-trace.json');
+  await writeFile(source, JSON.stringify({ events: [] }));
+
+  const store = new WorkbenchArtifactStore({ rootDir: root });
+  const evidence = await store.registerEvidence({
+    sessionId: 'session-trace',
+    jobId: 'job-trace',
+    evidence: { kind: 'trace', label: 'UI Browser raw trace', href: source },
+  });
+
+  assert.equal(evidence.kind, 'trace');
+  assert.equal(evidence.label, 'UI Browser raw trace');
+  assert.match(evidence.href ?? '', /^\/api\/workbench\/session-trace\/artifacts\/.+\.json$/);
+
+  const artifactId = evidence.href?.split('/').at(-1);
+  assert.ok(artifactId);
+  const artifact = store.getArtifact('session-trace', artifactId);
+  assert.ok(artifact);
+  assert.equal(artifact.contentType, 'application/json; charset=utf-8');
+  assert.equal(await readFile(artifact.filePath, 'utf8'), '{"events":[]}');
+});
+
 test('artifact store keeps metadata when local file cannot be copied', async () => {
   const root = await mkdtemp(path.join(os.tmpdir(), 'guardrail-artifacts-'));
   const allowedRoot = await mkdtemp(path.join(os.tmpdir(), 'guardrail-allowed-source-'));

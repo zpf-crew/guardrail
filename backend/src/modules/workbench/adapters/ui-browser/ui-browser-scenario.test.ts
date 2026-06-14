@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import {
   scenarioTextFromChange,
   scenarioTextFromGeneration,
+  splitScenarioTexts,
 } from './ui-browser-scenario.js';
 import type { GeneratedChange, GenerationResult } from '../../workbench.types.js';
 
@@ -51,4 +52,27 @@ test('scenarioTextFromChange extracts diff lines from a single change', () => {
 
   assert.match(scenarioTextFromChange(change), /Scenario: Apply coupon at checkout/);
   assert.match(scenarioTextFromChange(change), /opens \/checkout/);
+});
+
+test('splitScenarioTexts keeps feature header and separates scenario blocks', () => {
+  const scenarios = splitScenarioTexts([
+    'Feature: Search',
+    '  Scenario: Header search',
+    '    Given the homepage is loaded',
+    '    When I search for headphone',
+    '    Then results are shown',
+    '',
+    '  Scenario: Footer search',
+    '    Given the homepage is loaded',
+    '    When I search from footer',
+    '    Then results are shown',
+  ].join('\n'));
+
+  assert.equal(scenarios.length, 2);
+  assert.match(scenarios[0] ?? '', /Feature: Search/);
+  assert.match(scenarios[0] ?? '', /Scenario: Header search/);
+  assert.doesNotMatch(scenarios[0] ?? '', /Footer search/);
+  assert.match(scenarios[1] ?? '', /Feature: Search/);
+  assert.match(scenarios[1] ?? '', /Scenario: Footer search/);
+  assert.doesNotMatch(scenarios[1] ?? '', /Header search/);
 });

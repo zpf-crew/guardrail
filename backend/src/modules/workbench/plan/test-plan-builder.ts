@@ -1,5 +1,9 @@
 import type { IntentInput, IsolationResult, TestPlan } from '../workbench.types.js';
-import { buildDefaultRunConstraints, inferHeavyRunConstraints } from './run-constraints.js';
+import {
+  buildDefaultRunConstraints,
+  inferHeavyRunConstraints,
+  mergeRunConstraintOverrides,
+} from './run-constraints.js';
 
 function slugFeature(value: string): string {
   return value.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '') || 'feature';
@@ -16,6 +20,7 @@ export function buildTestPlan(
   intent: IntentInput,
   isolation: IsolationResult,
   questions: TestPlan['questions'] = [],
+  runConstraintOverrides: TestPlan['runConstraints'] = [],
 ): TestPlan {
   const missing = isolation.classifications.filter(item => item.status === 'Missing');
   const weak = isolation.classifications.filter(item => item.status === 'Weak');
@@ -68,7 +73,10 @@ export function buildTestPlan(
   const wantsMobile = intent.testTypes.includes('Mobile');
 
   const behaviors = proposedActions.flatMap(action => action.items ?? []);
-  const runConstraints = inferHeavyRunConstraints(buildDefaultRunConstraints(behaviors));
+  const runConstraints = mergeRunConstraintOverrides(
+    inferHeavyRunConstraints(buildDefaultRunConstraints(behaviors)),
+    runConstraintOverrides,
+  );
 
   return {
     proposedActions,

@@ -1,5 +1,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import { mkdtemp, writeFile } from 'node:fs/promises';
+import os from 'node:os';
+import path from 'node:path';
 import { UiBrowserAdapter } from './ui-browser.adapter.js';
 import { LocalGuardrailRepositoryProvider } from '../../repositories/local-guardrail-repository-provider.js';
 import type { AdapterInput } from '../test-type-adapter.js';
@@ -297,6 +300,30 @@ test('ui browser adapter uses normalized screenshot evidence returned from emit'
   assert.equal(run.matrix[0]?.evidenceItems?.[0]?.href, normalizedHref);
 });
 
+test('ui browser adapter adds a run-level raw trace artifact when scenarios emit traces', async () => {
+  const traceDir = await mkdtemp(path.join(os.tmpdir(), 'guardrail-ui-trace-test-'));
+  const tracePath = path.join(traceDir, 'scenario-trace.json');
+  await writeFile(tracePath, JSON.stringify({ events: [{ type: 'snapshot', stdout: '@e1' }] }));
+
+  const adapter = createAdapter({
+    agentRunner: {
+      runScenario: async () => defaultAgentScenarioResult({
+        evidence: [{ kind: 'trace', label: 'UI Browser raw trace', href: tracePath }],
+      }),
+    },
+  });
+  const input = await buildInput({ structuredModel: generationStructuredModel() });
+  const generation = await adapter.generate({ ...input, plan, approval: { decision: 'approve', answers: {} } });
+
+  const run = await adapter.run({ ...input, generation });
+
+  const traces = run.ui.evidence.filter(item => item.kind === 'trace');
+  assert.ok(traces.some(item => item.label === 'UI Browser raw trace'));
+  const runTrace = traces.find(item => item.label === 'UI Browser raw run trace');
+  assert.ok(runTrace);
+  assert.match(runTrace.href ?? '', /guardrail-ui-browser-run-traces\/.+\.json$/);
+});
+
 test('ui browser adapter generate returns no-op changes when ui tests are skipped', async () => {
   const adapter = createAdapter();
   const input = await buildInput();
@@ -504,6 +531,40 @@ test('run executes one agent-browser session per generated UI change', async () 
   assert.equal(run.matrix[0]?.status, 'Passed');
   assert.equal(run.matrix[1]?.status, 'Passed');
   assert.equal(run.ui.outcome, 'Passed');
+  assert.equal(run.ui.durationMs, 200);
+});
+
+test('run splits multiple Gherkin scenarios from one generated UI change', async () => {
+  const scenarioTexts: string[] = [];
+  const adapter = createAdapter({
+    agentRunner: {
+      runScenario: async ({ gherkinText }) => {
+        scenarioTexts.push(gherkinText);
+        return defaultAgentScenarioResult({ durationMs: 100 });
+      },
+    },
+  });
+  const input = await buildInput({ structuredModel: generationStructuredModel() });
+  const generation = stubGeneration();
+  generation.changes[0]!.diff = [
+    { kind: 'add', text: 'Feature: Search' },
+    { kind: 'add', text: '  Scenario: Header search' },
+    { kind: 'add', text: '    Given the homepage is loaded' },
+    { kind: 'add', text: '    Then results are shown' },
+    { kind: 'add', text: '  Scenario: Footer search' },
+    { kind: 'add', text: '    Given the homepage is loaded' },
+    { kind: 'add', text: '    Then results are shown' },
+  ];
+
+  const run = await adapter.run({ ...input, generation });
+
+  assert.equal(scenarioTexts.length, 2);
+  assert.match(scenarioTexts[0] ?? '', /Scenario: Header search/);
+  assert.doesNotMatch(scenarioTexts[0] ?? '', /Footer search/);
+  assert.match(scenarioTexts[1] ?? '', /Scenario: Footer search/);
+  assert.equal(run.matrix.length, 2);
+  assert.equal(run.matrix[0]?.title, 'Complete onboarding with selected repository (1/2)');
+  assert.equal(run.matrix[1]?.title, 'Complete onboarding with selected repository (2/2)');
   assert.equal(run.ui.durationMs, 200);
 });
 

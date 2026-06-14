@@ -25,13 +25,38 @@ test('loadAgentBrowserCoreGuide returns trimmed command guide when command succe
   const result = await loadAgentBrowserCoreGuide({
     run: async () => ({
       exitCode: 0,
-      stdout: 'Intro\nCore Commands:\n  open <url>\n  click <sel>\nAuth Vault:\n  auth save <name>',
+      stdout: [
+        '---',
+        'name: core',
+        '---',
+        '# agent-browser core',
+        '',
+        'Intro text that is less important for the runner.',
+        '',
+        '## The core loop',
+        'Use the snapshot loop:',
+        'agent-browser open <url>',
+        'agent-browser snapshot -i',
+        'agent-browser click @e3',
+        '',
+        '## Waiting (read this)',
+        'agent-browser wait --load networkidle',
+        'agent-browser click @e1 --new-tab',
+        'agent-browser upload @e5 file.pdf',
+        'agent-browser wait --fn "window.ready"',
+        '',
+        '## Auth Vault',
+        'Auth Vault:',
+        'agent-browser auth save <name>',
+      ].join('\n'),
       stderr: '',
     }),
   });
-  assert.match(result, /Core Commands:/);
-  assert.match(result, /"command": "open"/);
-  assert.match(result, /"args": \["--load", "networkidle"\]/);
+  assert.match(result, /## The core loop/);
+  assert.match(result, /agent-browser open <url>/);
+  assert.match(result, /agent-browser snapshot -i/);
+  assert.match(result, /agent-browser wait --load networkidle/);
+  assert.doesNotMatch(result, /Auth Vault/);
   assert.doesNotMatch(result, /auth save/);
   assert.doesNotMatch(result, /--new-tab/);
   assert.doesNotMatch(result, /upload/);

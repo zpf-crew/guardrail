@@ -100,6 +100,19 @@ const uiBrowserAgentActionSchema = z.discriminatedUnion('kind', [
   z.object({ kind: z.literal('scenarioComplete') }),
 ]);
 
+const uiBrowserScenarioPlanStepSchema = z.object({
+  id: z.string().min(1),
+  kind: z.enum(['setup', 'action', 'assert']),
+  sourceStepIndexes: z.array(z.number().int().nonnegative()).default([]),
+  instruction: z.string().min(1),
+  successCriteria: z.string().min(1).optional(),
+});
+
+const uiBrowserScenarioPlanSchema = z.object({
+  title: z.string().min(1),
+  steps: z.array(uiBrowserScenarioPlanStepSchema).min(1).max(12),
+});
+
 const planSchema = z.object({
   proposedActions: z.array(z.object({
     action: z.enum(['add', 'update', 'delete', 'run']),
@@ -266,6 +279,7 @@ const schemas = {
   TestRunResult: runSchema,
   ReviewSummary: reviewSchema,
   ReviewRecommendation: reviewRecommendationSchema,
+  UiBrowserScenarioPlan: uiBrowserScenarioPlanSchema,
 } as const;
 
 interface WorkbenchStepResultByName {
@@ -281,10 +295,12 @@ interface WorkbenchStepResultByName {
   TestRunResult: TestRunResult;
   ReviewSummary: ReviewSummary;
   ReviewRecommendation: { recommendation: string };
+  UiBrowserScenarioPlan: UiBrowserScenarioPlan;
 }
 
 export type WorkbenchSchemaName = keyof typeof schemas;
 export type UiBrowserAgentAction = z.infer<typeof uiBrowserAgentActionSchema>;
+export type UiBrowserScenarioPlan = z.infer<typeof uiBrowserScenarioPlanSchema>;
 export type BehaviorRunConstraints = z.infer<typeof behaviorRunConstraintsSchema>;
 
 export function validateUiBrowserAgentAction(value: unknown): UiBrowserAgentAction {

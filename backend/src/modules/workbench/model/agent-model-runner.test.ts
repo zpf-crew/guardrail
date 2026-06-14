@@ -10,6 +10,15 @@ function fakeModelConnect(response: { content: string }) {
   } as never;
 }
 
+function fakeSequenceModelConnect(responses: Array<{ content: string }>) {
+  let index = 0;
+  return {
+    getClient: () => ({
+      chat: async () => responses[Math.min(index++, responses.length - 1)]!,
+    }),
+  } as never;
+}
+
 test('decideNext validates model JSON into UiBrowserAgentAction', async () => {
   const runner = new AgentModelRunner({
     modelConnect: fakeModelConnect({ content: '{"kind":"click","ref":"@e2"}' }),
@@ -78,6 +87,78 @@ test('decideNext accepts agentBrowserCommand JSON', async () => {
   });
 });
 
+test('decideNext extracts JSON object from prose model output', async () => {
+  const runner = new AgentModelRunner({
+    modelConnect: fakeModelConnect({
+      content:
+        'Looking at the snapshot, the search input is visible. {"kind":"agentBrowserCommand","command":"fill","args":["@e2","headphone"],"reason":"Enter search text"}',
+    }),
+  });
+
+  const action = await runner.decideNext({
+    profile: 'coder',
+    skill: { name: 'test-run-ui-browser-agent', content: '# skill' },
+    context: {
+      scenarioTitle: 'Search',
+      gherkinSteps: [
+        { index: 0, kind: 'When', effectiveKind: 'When', text: 'the user searches for headphone' },
+      ],
+      currentStepIndex: 0,
+      completedSteps: [],
+      thenVerdicts: [],
+      pageSnapshot: '- searchbox "Search" @e2',
+      actionHistory: [],
+      constraints: { behavior: 'Search', maxStepDurationMs: 60_000, maxSteps: 15 },
+      elapsedMs: 0,
+      iterationsUsed: 1,
+    },
+    signal: new AbortController().signal,
+  });
+
+  assert.deepEqual(action, {
+    kind: 'agentBrowserCommand',
+    command: 'fill',
+    args: ['@e2', 'headphone'],
+    reason: 'Enter search text',
+  });
+});
+
+test('decideNext retries prose-only output with stricter JSON instruction', async () => {
+  const runner = new AgentModelRunner({
+    modelConnect: fakeSequenceModelConnect([
+      { content: 'Looking at the snapshot, I should click the Add to Cart button.' },
+      { content: '{"kind":"agentBrowserCommand","command":"click","args":["@e8"],"reason":"Click Add to Cart"}' },
+    ]),
+  });
+
+  const action = await runner.decideNext({
+    profile: 'coder',
+    skill: { name: 'test-run-ui-browser-agent', content: '# skill' },
+    context: {
+      scenarioTitle: 'Add to cart',
+      gherkinSteps: [
+        { index: 0, kind: 'When', effectiveKind: 'When', text: 'the user adds a product to cart' },
+      ],
+      currentStepIndex: 0,
+      completedSteps: [],
+      thenVerdicts: [],
+      pageSnapshot: '- button "Add to Cart" @e8',
+      actionHistory: [],
+      constraints: { behavior: 'Add to cart', maxStepDurationMs: 60_000, maxSteps: 15 },
+      elapsedMs: 0,
+      iterationsUsed: 1,
+    },
+    signal: new AbortController().signal,
+  });
+
+  assert.deepEqual(action, {
+    kind: 'agentBrowserCommand',
+    command: 'click',
+    args: ['@e8'],
+    reason: 'Click Add to Cart',
+  });
+});
+
 test('decideNext normalizes stepComplete missing required fields', async () => {
   let calls = 0;
   const runner = new AgentModelRunner({
@@ -113,4 +194,47 @@ test('decideNext normalizes stepComplete missing required fields', async () => {
   assert.equal(action.stepIndex, 0);
   assert.ok(action.note);
   assert.equal(calls, 1);
+});
+
+test('planScenario validates concise UI browser scenario plan JSON', async () => {
+  const runner = new AgentModelRunner({
+    modelConnect: fakeModelConnect({
+      content: JSON.stringify({
+        title: 'Add to cart',
+        steps: [
+          {
+            id: 'step-1',
+            kind: 'setup',
+            sourceStepIndexes: [0],
+            instruction: 'Open the home page',
+            successCriteria: 'The home page is loaded',
+          },
+          {
+            id: 'step-2',
+            kind: 'action',
+            sourceStepIndexes: [1],
+            instruction: 'Find the first Add to Cart button, scrolling if needed, and click it',
+            successCriteria: 'The click completes',
+          },
+          {
+            id: 'step-3',
+            kind: 'assert',
+            sourceStepIndexes: [3],
+            instruction: 'Verify the cart count increased',
+            successCriteria: 'A durable cart count shows 1 item',
+          },
+        ],
+      }),
+    }),
+  });
+
+  const plan = await runner.planScenario({
+    profile: 'coder',
+    skill: { name: 'test-plan-ui-browser-scenario', content: '# skill' },
+    context: { gherkinText: 'Scenario: Add to cart' },
+    signal: new AbortController().signal,
+  });
+
+  assert.equal(plan.title, 'Add to cart');
+  assert.deepEqual(plan.steps.map(step => step.kind), ['setup', 'action', 'assert']);
 });

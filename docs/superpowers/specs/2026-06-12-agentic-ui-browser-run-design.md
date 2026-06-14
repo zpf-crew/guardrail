@@ -17,7 +17,7 @@ Make Guardrail UI Browser **Run** behave like a user testing the app:
 1. Keep approved **Gherkin** scenarios as the human-reviewable test contract (Generate step unchanged).
 2. At Run time, drive an **agent loop**: snapshot the page, decide the next action from what is visible, act via `@eN` refs, repeat.
 3. Evaluate each **`Then`** step explicitly with satisfied/failed + reason + evidence (Option C verdict model).
-4. Allow **per-behavior run budgets** proposed in Plan (default 60s / 15 steps; overrides e.g. 5m for heavy flows).
+4. Allow **per-behavior run budgets** proposed in Plan (default 60s per Gherkin step / 15 agent actions; overrides e.g. 120s per step for heavy flows).
 
 ## 3. Product Principles
 
@@ -34,8 +34,8 @@ Make Guardrail UI Browser **Run** behave like a user testing the app:
 | Test contract | Keep approved Gherkin scenarios from Generate |
 | Pass/fail | Each `Then` gets `satisfied` + `reason`; scenario passes only if all `Then`s pass |
 | Page interaction | Snapshot-ref loop: `snapshot -i` → model picks `@eN` → execute |
-| Bounds | Both step budget and time budget per behavior |
-| Defaults | `maxDurationMs: 60_000`, `maxSteps: 15` |
+| Bounds | Both agent action budget and per-Gherkin-step time budget per behavior |
+| Defaults | `maxStepDurationMs: 60_000`, `maxSteps: 15` |
 | Plan overrides | Per behavior; thinker proposes for heavy flows; user approves in Plan |
 | Approach | Step-driven agent loop (not free-form scenario agent, not snapshot-then-batch-plan) |
 
@@ -162,7 +162,7 @@ The runner snapshots **before** each model decision. Stale refs are recovered on
   "actionHistory": [
     { "iteration": 1, "action": "open /", "result": "ok" }
   ],
-  "constraints": { "maxDurationMs": 60000, "maxSteps": 15 },
+  "constraints": { "maxStepDurationMs": 60000, "maxSteps": 15 },
   "elapsedMs": 4200,
   "iterationsUsed": 3
 }
@@ -173,7 +173,7 @@ The runner snapshots **before** each model decision. Stale refs are recovered on
 ```ts
 interface BehaviorRunConstraints {
   behavior: string;        // matches isolation classification / change.title
-  maxDurationMs: number;   // default 60_000
+  maxStepDurationMs: number; // default 60_000
   maxSteps: number;        // default 15
   reason?: string;         // shown in Plan when non-default
 }
@@ -189,8 +189,8 @@ interface BehaviorRunConstraints {
 
 Under each behavior title in proposed actions:
 
-- Default: show nothing or `60s / 15 steps`
-- Override: `5m / 25 steps — polls payment status`
+- Default: show nothing or `60s per step / 15 actions`
+- Override: `60s per step / 25 actions — polls payment status`
 
 ## 9. Run Output and SSE
 
@@ -247,7 +247,7 @@ v1 does not add expandable per-`Then` rows; future enhancement.
 | `agent-browser` command fails | Retry with fresh snapshot; fail if budget exhausted |
 | Invalid model JSON | Retry once; then fail |
 | Step budget exceeded | `Failed: exceeded max N agent steps` |
-| Time budget exceeded | `Failed: exceeded max duration` |
+| Step time budget exceeded | `Failed: exceeded max step duration` |
 | `assertThen satisfied: false` | Immediate fail with agent reason |
 | `stepFailed` | Immediate fail with reason |
 | User abort | `AbortError`; partial evidence kept |
