@@ -147,6 +147,7 @@ const generatedChangeSchema = z.object({
   risk: riskSchema,
   reason: z.string(),
   diff: z.array(diffLineSchema),
+  content: z.string().optional(),
   status: z.enum(['staged', 'applied', 'reverted']),
 });
 
@@ -252,6 +253,14 @@ const reviewSchema = z.object({
   recommendation: z.string(),
 });
 
+const unitRunPlanSchema = z.object({
+  packageRoot: z.string(),
+  generatedTestPath: z.string(),
+  focused: z.boolean(),
+  setupNotes: z.array(z.string()),
+  expectedRunner: z.enum(['node:test', 'vitest', 'jest', 'unknown']),
+});
+
 const schemas = {
   IsolationResult: isolationSchema,
   IsolationClassifications: isolationClassificationsSchema,
@@ -262,6 +271,7 @@ const schemas = {
   TestRunResult: runSchema,
   ReviewSummary: reviewSchema,
   ReviewRecommendation: reviewRecommendationSchema,
+  UnitRunPlan: unitRunPlanSchema,
 } as const;
 
 interface WorkbenchStepResultByName {
@@ -274,16 +284,26 @@ interface WorkbenchStepResultByName {
   TestRunResult: TestRunResult;
   ReviewSummary: ReviewSummary;
   ReviewRecommendation: { recommendation: string };
+  UnitRunPlan: z.infer<typeof unitRunPlanSchema>;
 }
 
 export type WorkbenchSchemaName = keyof typeof schemas;
 export type UiBrowserAgentAction = z.infer<typeof uiBrowserAgentActionSchema>;
 export type BehaviorRunConstraints = z.infer<typeof behaviorRunConstraintsSchema>;
+export type UnitRunPlan = z.infer<typeof unitRunPlanSchema>;
 
 export function validateUiBrowserAgentAction(value: unknown): UiBrowserAgentAction {
   const result = uiBrowserAgentActionSchema.safeParse(value);
   if (!result.success) {
     throw new Error(`UiBrowserAgentAction validation failed: ${formatIssues(result.error.issues)}`);
+  }
+  return result.data;
+}
+
+export function validateUnitRunPlan(value: unknown): UnitRunPlan {
+  const result = unitRunPlanSchema.safeParse(value);
+  if (!result.success) {
+    throw new Error(`UnitRunPlan validation failed: ${formatIssues(result.error.issues)}`);
   }
   return result.data;
 }

@@ -206,6 +206,7 @@ export interface GeneratedChange {
   risk: RiskLevel;
   reason: string;
   diff: DiffLine[];
+  content?: string;
   status: 'staged' | 'applied' | 'reverted';
 }
 

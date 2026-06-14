@@ -3,10 +3,15 @@ import path from 'node:path';
 
 const supportedSkillNames = new Set([
   'test-isolation-files',
+  'test-isolation-unit',
   'test-plan',
+  'test-plan-unit',
   'test-generate-ui-browser',
+  'test-generate-unit',
+  'test-run-unit',
   'test-run-ui-browser-agent',
   'test-review',
+  'test-review-unit',
 ]);
 
 export interface SkillContract {

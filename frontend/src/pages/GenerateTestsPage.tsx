@@ -267,10 +267,15 @@ function GenerateTestsWorkbench({
               changes={session.generation?.changes ?? []}
               activeTestType={activeTestType}
               applied={wb.applied}
+              applying={wb.applying}
               progress={wb.runProgress}
               evidence={runEvidence}
               onBack={() => wb.setStep(4)}
-              onApply={() => { wb.apply(); toast('Changes applied to working tree', 'success'); }}
+              onApply={() => {
+                void wb.apply()
+                  .then(() => toast('Changes applied to working tree', 'success'))
+                  .catch(() => undefined);
+              }}
               onCreatePR={() => toast('PR created', 'success')}
               onExport={() => { exportTestPlan(session); toast('Test plan downloaded', 'success'); }}
             />

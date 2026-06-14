@@ -279,3 +279,9 @@ export async function runSession(id: string, onEvent?: (event: JobEvent) => void
 export async function reviewSession(id: string, onEvent?: (event: JobEvent) => void): Promise<ReviewSummary> {
   return runJob<ReviewSummary>(id, 'review', onEvent);
 }
+
+/** Apply generated changes to the selected repository working tree after review. */
+export async function applyWorkbenchSession(id: string): Promise<WorkbenchSession> {
+  const session = await post<WorkbenchSession>(`/api/workbench/${id}/apply`, {});
+  return normalizeWorkbenchSession(session);
+}

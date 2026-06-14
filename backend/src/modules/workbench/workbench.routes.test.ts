@@ -8,6 +8,7 @@ import path from 'node:path';
 import type { Pool } from 'pg';
 import { buildApp } from '../../app.js';
 import { SESSION_COOKIE } from '../auth/session.service.js';
+import type { TestTypeAdapter } from './adapters/test-type-adapter.js';
 import { UiBrowserAdapter } from './adapters/ui-browser/ui-browser.adapter.js';
 import { WorkbenchArtifactStore } from './artifacts/workbench-artifact-store.js';
 import { WorkbenchJobEventBus } from './jobs/job-events.js';
@@ -34,6 +35,7 @@ type Snapshot = {
     isolation?: {
       target: { feature: string };
       sourceFiles: Array<{ path: string }>;
+      classifications: Array<{ behavior: string }>;
     };
     run?: {
       ui: {
@@ -195,6 +197,46 @@ test('workbench routes create session, start analyze job, and expose job events'
   assert.ok(snapshotRes.json().events.length >= 1);
 });
 
+test('workbench routes select unit adapter for Unit intent', async () => {
+  const unitAdapter: TestTypeAdapter = {
+    testType: 'Unit',
+    analyze: async input => ({
+      target: { feature: 'Checkout', repo: input.session.repo },
+      sourceFiles: [],
+      existingTestFiles: [],
+      specDocs: [],
+      qcCases: [],
+      currentCoverage: { line: 0, branch: 0 },
+      currentStatus: { failed: 0, suspicious: 0, missing: 1 },
+      userJourneys: [],
+      classifications: [{
+        behavior: 'Unit adapter selected',
+        status: 'Missing',
+        suggestedTypes: ['Unit'],
+        risk: 'Medium',
+        explanation: 'Unit adapter handled the analyze job.',
+      }],
+    }),
+    plan: async () => { throw new Error('not used'); },
+    generate: async () => { throw new Error('not used'); },
+    run: async () => { throw new Error('not used'); },
+    review: async () => { throw new Error('not used'); },
+  };
+  const app = await buildWorkbenchRouteTestApp({ adapters: [unitAdapter] });
+
+  const session = await createSession(app, TEST_REPO_ID, ['Unit']);
+  const jobRes = await app.inject({
+    method: 'POST',
+    url: `/api/workbench/${session.id}/analyze/jobs`,
+    ...authInjectOptions(),
+  });
+  assert.equal(jobRes.statusCode, 200);
+  const snapshot = await waitForJob(app, session.id, jobRes.json().jobId, ['succeeded']);
+
+  assert.equal(snapshot.session.isolation?.classifications[0]?.behavior, 'Unit adapter selected');
+  await app.close();
+});
+
 test('workbench routes return 404 for missing session and job', async () => {
   const app = await buildRouteTestApp();
   const session = await createSession(app);
@@ -260,8 +302,11 @@ test('workbench run job emits screenshot event with served artifact URL', async 
     ...authInjectOptions(),
   })).json();
   const analyzeSnapshot = await waitForJob(app, session.id, analyzeJob.jobId, ['succeeded']);
-  assert.equal(analyzeSnapshot.session.isolation?.target.feature, 'Checkout');
-  assert.ok((analyzeSnapshot.session.isolation?.classifications.length ?? 0) > 0);
+  const isolation = analyzeSnapshot.session.isolation as NonNullable<typeof analyzeSnapshot.session.isolation> & {
+    classifications: unknown[];
+  };
+  assert.equal(isolation.target.feature, 'Checkout');
+  assert.ok(isolation.classifications.length > 0);
 
   const planJob = (await app.inject({
     method: 'POST',
@@ -596,6 +641,7 @@ async function buildWorkbenchRouteTestApp(options: {
   eventBus?: WorkbenchJobEventBus;
   testHooks?: WorkbenchServiceTestHooks;
   repositoryProvider?: RepositoryContextProvider;
+  adapters?: TestTypeAdapter[];
   db?: Pool;
   rootDir?: string;
 } = {}): Promise<FastifyInstance> {
@@ -629,7 +675,7 @@ async function buildWorkbenchRouteTestApp(options: {
     options.eventBus ?? new WorkbenchJobEventBus(),
     options.artifactStore ?? new WorkbenchArtifactStore(),
     repositoryProvider,
-    [new UiBrowserAdapter(uiBrowserOptions)],
+    options.adapters ?? [new UiBrowserAdapter(uiBrowserOptions)],
     options.testHooks ?? { structuredModel: createFakeStructuredModel() },
   );
 
@@ -690,14 +736,14 @@ async function buildStatusErrorEmitFailureTestApp(): Promise<FastifyInstance> {
   });
 }
 
-async function createSession(app: FastifyInstance, repoId = TEST_REPO_ID) {
+async function createSession(app: FastifyInstance, repoId = TEST_REPO_ID, testTypes: string[] = ['UI / Browser']) {
   const sessionRes = await app.inject({
     method: 'POST',
     url: '/api/workbench/sessions',
     ...authInjectOptions(),
     payload: {
       repoId,
-      intent: { prompt: 'Test onboarding', feature: 'Checkout', testTypes: ['UI / Browser'], sources: ['Codebase'] },
+      intent: { prompt: 'Test onboarding', feature: 'Checkout', testTypes, sources: ['Codebase'] },
     },
   });
   assert.equal(sessionRes.statusCode, 200);

@@ -55,6 +55,7 @@ test('returns hybrid context from clone scan and onboarding dashboard', async ()
       currentBranch: 'main',
       commitSha: 'abc123',
       status: 'cloned',
+      lastClonedAt: null,
     }),
     getDashboard: async () => dashboardFixture(root),
   });
@@ -103,6 +104,7 @@ test('proceeds with empty onboarding when dashboard missing', async () => {
       currentBranch: 'main',
       commitSha: null,
       status: 'cloned',
+      lastClonedAt: null,
     }),
     getDashboard: async () => null,
   });
@@ -123,7 +125,7 @@ test('maps dashboard missing test cases into qcCases for workbench context', asy
     getRepo: async () => ({
       id: 'repo-qc', githubRepoId: 1, fullName: 'acme/app', name: 'app', private: false,
       defaultBranch: 'main', cloneUrl: 'https://github.com/acme/app.git', htmlUrl: 'https://github.com/acme/app',
-      clonePath: root, currentBranch: 'main', commitSha: 'abc', status: 'cloned',
+      clonePath: root, currentBranch: 'main', commitSha: 'abc', status: 'cloned', lastClonedAt: null,
     }),
     getDashboard: async () => dashboardFixture(root, {
       testCases: [{

@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import {
   validateWorkbenchStepResult,
   validateUiBrowserAgentAction,
+  validateUnitRunPlan,
 } from './workbench-validators.js';
 
 test('validates isolation classifications shape', () => {
@@ -58,6 +59,38 @@ test('rejects invalid generation result shape', () => {
     () => validateWorkbenchStepResult('GenerationResult', { changes: 'not an array' }),
     /GenerationResult validation failed/,
   );
+});
+
+test('validates generated unit change content', () => {
+  const result = validateWorkbenchStepResult('GenerationChanges', {
+    changes: [{
+      id: 'coupon-unit',
+      action: 'Add',
+      testType: 'Unit',
+      title: 'Validate coupon expiry',
+      file: 'src/coupon/coupon.test.ts',
+      feature: 'Coupon',
+      risk: 'High',
+      reason: 'Missing unit coverage for expiry branch.',
+      diff: [{ kind: 'add', text: "test('expiry', () => {})" }],
+      content: "import test from 'node:test';\n",
+      status: 'staged',
+    }],
+  });
+
+  assert.equal(result.changes[0]?.content, "import test from 'node:test';\n");
+});
+
+test('validates unit run plan shape', () => {
+  const result = validateUnitRunPlan({
+    packageRoot: 'backend',
+    generatedTestPath: 'src/coupon/coupon.test.ts',
+    focused: true,
+    setupNotes: ['Use existing node:test style'],
+    expectedRunner: 'node:test',
+  });
+
+  assert.equal(result.expectedRunner, 'node:test');
 });
 
 test('validateUiBrowserAgentAction accepts click ref action', () => {

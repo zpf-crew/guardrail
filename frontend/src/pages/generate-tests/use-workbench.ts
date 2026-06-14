@@ -10,6 +10,7 @@ import {
   generateSession,
   runSession,
   reviewSession,
+  applyWorkbenchSession,
 } from '@/data/workbench-api';
 import type { JobEvent } from '@/data/workbench-api';
 
@@ -35,6 +36,7 @@ export interface UseWorkbenchResult {
   genComplete: boolean;
   /** True once the user has applied the change set (terminal). */
   applied: boolean;
+  applying: boolean;
   /** Raw events emitted by the latest analyze job. */
   analyzeEvents: JobEvent[];
   /** Analyze events suitable for progress display. */
@@ -49,7 +51,7 @@ export interface UseWorkbenchResult {
   runProgress: RunProgressEvent[];
   /** Evidence artifacts emitted by the latest run job. */
   runEvidence: Evidence[];
-  apply: () => void;
+  apply: () => Promise<void>;
   clearError: () => void;
   setStep: (i: number) => void;
   updateIntent: (patch: Partial<IntentInput>) => void;
@@ -81,6 +83,7 @@ export function useWorkbench(initialIntent?: Partial<IntentInput>, options?: Use
   // Number of generation timeline items completed (drives the S4 animation).
   const [genStep, setGenStep] = React.useState(0);
   const [applied, setApplied] = React.useState(false);
+  const [applying, setApplying] = React.useState(false);
   const [runEvents, setRunEvents] = React.useState<JobEvent[]>([]);
   const [analyzeEvents, setAnalyzeEvents] = React.useState<JobEvent[]>([]);
   const [planEvents, setPlanEvents] = React.useState<JobEvent[]>([]);
@@ -287,7 +290,21 @@ export function useWorkbench(initialIntent?: Partial<IntentInput>, options?: Use
   }, [session, startRunAnimation]);
 
   const genComplete = session?.generation ? genStep >= session.generation.timeline.length : false;
-  const apply = React.useCallback(() => setApplied(true), []);
+  const apply = React.useCallback(async () => {
+    if (!session) return;
+    setError(null);
+    setApplying(true);
+    try {
+      const updated = await applyWorkbenchSession(session.id);
+      setSession(updated);
+      setApplied(true);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Apply failed.');
+      throw e;
+    } finally {
+      setApplying(false);
+    }
+  }, [session]);
   const analyzeProgress = React.useMemo(
     () => analyzeEvents.filter((event): event is AnalyzeProgressEvent =>
       event.type === 'progress' || event.type === 'thinking' || event.type === 'error' || event.type === 'status',
@@ -329,7 +346,7 @@ export function useWorkbench(initialIntent?: Partial<IntentInput>, options?: Use
 
   return {
     status, error, session, currentStep, pending, ranTests, running: pending === 'run' || pending === 'review', genStep, genComplete,
-    applied, analyzeEvents, analyzeProgress, planProgress, generateProgress, runEvents, runProgress, runEvidence, apply, clearError,
+    applied, applying, analyzeEvents, analyzeProgress, planProgress, generateProgress, runEvents, runProgress, runEvidence, apply, clearError,
     setStep: setCurrentStep, updateIntent, analyze, generatePlan, approvePlan, runTests,
   };
 }

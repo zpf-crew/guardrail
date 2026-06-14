@@ -3,6 +3,7 @@ import { modelConnect } from '../model-connect/index.js';
 import { StructuredModelRunner } from './model/structured-model-runner.js';
 import { SkillContractLoader, type SkillContract } from './skills/skill-contract-loader.js';
 import type { TestTypeAdapter } from './adapters/test-type-adapter.js';
+import { materializeGeneratedChanges } from './generation/generated-change-writer.js';
 import type { RegisteredArtifact, WorkbenchArtifactStore } from './artifacts/workbench-artifact-store.js';
 import type { WorkbenchJobEventBus } from './jobs/job-events.js';
 import type { WorkbenchJobQueue } from './jobs/job-queue.js';
@@ -17,6 +18,7 @@ import type {
   RepoRef,
   ReviewSummary,
   TestPlan,
+  TestType,
   TestRunResult,
   WorkbenchJob,
   WorkbenchJobEvent,
@@ -111,7 +113,7 @@ export class WorkbenchService {
         if (step === 'isolation') {
           await emitProgress('Repository scan complete. Starting behavior classification…', 82);
         }
-        const adapter = this.requireUiBrowserAdapter();
+        const adapter = this.requireAdapterForSession(currentSession);
         const repoRoot = basename(process.cwd()) === 'backend' ? join(process.cwd(), '..') : process.cwd();
         const skills = (this.testHooks?.skills
           ?? new SkillContractLoader({ skillsDir: join(repoRoot, 'guardrail-skills') })) as SkillContractLoader;
@@ -150,6 +152,29 @@ export class WorkbenchService {
   getArtifact(sessionId: string, artifactId: string): RegisteredArtifact | undefined {
     this.requireSession(sessionId);
     return this.artifactStore.getArtifact(sessionId, artifactId);
+  }
+
+  async applySessionChanges(
+    sessionId: string,
+    userId: string,
+    options: { allowFailing?: boolean } = {},
+  ): Promise<WorkbenchSession> {
+    const session = this.getSession(sessionId, userId);
+    if (!session.generation) throw new Error('Cannot apply before generation exists.');
+    if (!session.run) throw new Error('Cannot apply before run exists.');
+
+    const failedRows = session.run.matrix.filter(row => row.status === 'Failed' || row.status === 'Flaky');
+    if (failedRows.length > 0 && !options.allowFailing) {
+      throw new Error('Cannot apply generated changes while run has failed or flaky tests.');
+    }
+
+    await materializeGeneratedChanges(session.repo.path, session.generation.changes);
+    const appliedGeneration: GenerationResult = {
+      ...session.generation,
+      changes: session.generation.changes.map(change => ({ ...change, status: 'applied' })),
+    };
+    this.store.setStepResult(session.id, 'generate', appliedGeneration);
+    return this.getSession(session.id, userId);
   }
 
   subscribe(
@@ -295,11 +320,16 @@ export class WorkbenchService {
     return job;
   }
 
-  private requireUiBrowserAdapter(): TestTypeAdapter {
-    const adapter = this.adapters.find(item => item.testType === 'UI / Browser');
-    if (!adapter) throw new Error('UI / Browser workbench adapter is not configured.');
+  private requireAdapterForSession(session: WorkbenchSession): TestTypeAdapter {
+    const primary = primaryTestType(session.intent.testTypes);
+    const adapter = this.adapters.find(item => item.testType === primary);
+    if (!adapter) throw new Error(`Workbench adapter is not configured for test type: ${primary}`);
     return adapter;
   }
+}
+
+function primaryTestType(testTypes: TestType[]): TestType {
+  return testTypes[0] ?? 'UI / Browser';
 }
 
 function eventKey(sessionId: string, jobId: string): string {
