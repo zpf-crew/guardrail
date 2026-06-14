@@ -16,22 +16,31 @@ function titlesMatch(changeTitle: string, behavior: string): boolean {
 
 function isMeaningfulButtonLabel(label: string): boolean {
   const trimmed = label.trim();
-  return trimmed.length > 0;
+  if (!trimmed || trimmed.length > 60) return false;
+  if (trimmed.includes('\n')) return false;
+  if (/[{}]|=>|\bconst\b|\bfunction\b|\breturn\b|\.\.\.|className|variant\s*=|\bprops\b/.test(trimmed)) {
+    return false;
+  }
+  return /^[\p{L}\p{N}\s.,'!?+\-:/&]+$/u.test(trimmed);
 }
 
 function extractButtonLabelFromSnippetText(text: string): string | undefined {
-  const patterns = [
-    /<button[^>]*>([\s\S]*?)<\/button>/i,
-    /aria-label=["']([^"']+)["']/i,
-    /<label[^>]*>([\s\S]*?)<\/label>/i,
-  ];
+  const aria = text.match(/aria-label=["']([^"']+)["']/i);
+  if (aria?.[1] && isMeaningfulButtonLabel(aria[1])) return aria[1].trim();
 
-  for (const pattern of patterns) {
-    const match = text.match(pattern);
-    if (!match?.[1]) continue;
-    const label = match[1].replace(/<[^>]+>/g, '').trim();
-    if (isMeaningfulButtonLabel(label)) return label;
+  const closeMatch = text.match(/<\/button>/i);
+  if (closeMatch?.index != null) {
+    const beforeClose = text.slice(0, closeMatch.index);
+    const lastGt = beforeClose.lastIndexOf('>');
+    if (lastGt >= 0) {
+      const label = beforeClose.slice(lastGt + 1).replace(/<[^>]+>/g, '').trim();
+      if (isMeaningfulButtonLabel(label)) return label;
+    }
   }
+
+  const buttonComponent = text.match(/<Button[^>]*>\s*([^<\n]{1,60}?)\s*<\/Button>/);
+  const componentLabel = buttonComponent?.[1]?.replace(/<[^>]+>/g, '').trim();
+  if (componentLabel && isMeaningfulButtonLabel(componentLabel)) return componentLabel;
 
   return undefined;
 }

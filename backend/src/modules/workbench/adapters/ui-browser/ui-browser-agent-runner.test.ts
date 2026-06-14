@@ -58,6 +58,9 @@ test('agent runner fails fast on assertThen satisfied false', async () => {
     decideNext: async () => scripted[call++]!,
     execute: async args => {
       if (args[0] === 'snapshot') return { exitCode: 0, stdout: '@e1', stderr: '' };
+      if (args[0] === 'screenshot') {
+        return { exitCode: 0, stdout: 'Screenshot saved to /tmp/failure.png', stderr: '' };
+      }
       return { exitCode: 0, stdout: 'ok', stderr: '' };
     },
   });
@@ -72,4 +75,6 @@ test('agent runner fails fast on assertThen satisfied false', async () => {
 
   assert.equal(result.outcome, 'Failed');
   assert.match(result.reason ?? '', /Still on home page/);
+  assert.equal(result.evidence.length, 1);
+  assert.equal(result.evidence[0]?.kind, 'screenshot');
 });

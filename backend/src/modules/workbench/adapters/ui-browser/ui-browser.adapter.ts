@@ -438,6 +438,11 @@ export class UiBrowserAdapter implements TestTypeAdapter {
           constraints,
           defaultRoute,
           signal: input.signal,
+          onThinking: message => input.emit({
+            type: 'progress',
+            message: `[Scenario ${changeIndex + 1}/${uiChanges.length}] ${message}`,
+            percent: Math.min(90, 78 + Math.round(((changeIndex + 0.5) / uiChanges.length) * 10)),
+          }),
           onProgress: message => input.emit({
             type: 'progress',
             message: `[Scenario ${changeIndex + 1}/${uiChanges.length}] ${message}`,

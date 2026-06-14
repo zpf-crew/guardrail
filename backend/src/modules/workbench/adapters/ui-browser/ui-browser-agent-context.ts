@@ -48,6 +48,47 @@ export function buildAgentIterationContext(input: {
   };
 }
 
+function stepPositionLabel(steps: GherkinStep[], stepIndex: number): string {
+  const step = steps[stepIndex];
+  if (!step) return `Step ${stepIndex + 1}`;
+  return `Step ${stepIndex + 1}/${steps.length} — ${step.effectiveKind}: ${step.text}`;
+}
+
+export function formatActionForProgress(
+  action: UiBrowserAgentAction,
+  steps: GherkinStep[],
+  currentStepIndex: number,
+): string {
+  switch (action.kind) {
+    case 'open':
+      return 'Navigating to page…';
+    case 'wait':
+      return 'Waiting for page to finish loading…';
+    case 'click':
+      return steps[currentStepIndex]
+        ? `Interacting — ${stepPositionLabel(steps, currentStepIndex)}`
+        : `Clicking ${action.ref}…`;
+    case 'fill':
+      return steps[currentStepIndex]
+        ? `Entering text — ${stepPositionLabel(steps, currentStepIndex)}`
+        : `Filling ${action.ref}…`;
+    case 'screenshot':
+      return `Capturing screenshot — ${action.label}`;
+    case 'stepComplete':
+      return `Done — ${stepPositionLabel(steps, action.stepIndex)}`;
+    case 'assertThen': {
+      const label = stepPositionLabel(steps, action.stepIndex);
+      return action.satisfied
+        ? `Verified — ${label}`
+        : `Check failed — ${label}`;
+    }
+    case 'stepFailed':
+      return `Step failed — ${action.reason}`;
+    case 'scenarioComplete':
+      return 'Scenario complete — all checks passed';
+  }
+}
+
 export function formatActionForHistory(action: UiBrowserAgentAction): string {
   switch (action.kind) {
     case 'open': return `open ${action.path}`;

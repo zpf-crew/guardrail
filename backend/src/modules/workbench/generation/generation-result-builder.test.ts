@@ -99,3 +99,46 @@ test('resolveGenerationChanges uses source snippet button labels in fallback Whe
   assert.match(fallbackDiff, /When the user clicks Apply coupon/);
 });
 
+test('resolveGenerationChanges rejects component source code as button label', () => {
+  const repository = {
+    sourceSnippets: [{
+      path: 'src/components/Button.tsx',
+      startLine: 1,
+      endLine: 40,
+      summary: 'Button component',
+      text: `const Button = ({
+  children,
+  variant = 'primary',
+}) => {
+  return (
+    <button className={baseStyles}>
+      {loading && (<svg/>)}
+      {children}
+    </button>
+  );
+}`,
+    }],
+  };
+
+  const resolved = resolveGenerationChanges(intent, isolation, plan, [], repository);
+  const diff = resolved[0]?.diff.map(line => line.text).join('\n') ?? '';
+  assert.match(diff, /When the user completes the primary flow/);
+  assert.doesNotMatch(diff, /variant = 'primary'/);
+});
+
+test('resolveGenerationChanges does not treat onClick arrow as button inner text', () => {
+  const repository = {
+    sourceSnippets: [{
+      path: 'src/pages/HomePage.tsx',
+      startLine: 1,
+      endLine: 3,
+      summary: 'Home page',
+      text: "<button onClick={() => navigate('/products')}>Shop Now</button>",
+    }],
+  };
+
+  const resolved = resolveGenerationChanges(intent, isolation, plan, [], repository);
+  const diff = resolved[0]?.diff.map(line => line.text).join('\n') ?? '';
+  assert.match(diff, /When the user clicks Shop Now/);
+});
+

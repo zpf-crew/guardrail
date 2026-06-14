@@ -9,6 +9,7 @@ import { parseGherkinSteps, scenarioTitleFromGherkin } from './gherkin-step-pars
 import {
   buildAgentIterationContext,
   formatActionForHistory,
+  formatActionForProgress,
   type AgentActionHistoryEntry,
   type AgentIterationContext,
 } from './ui-browser-agent-context.js';
@@ -54,15 +55,27 @@ export class UiBrowserAgentRunner {
     const actionHistory: AgentActionHistoryEntry[] = [];
     const evidence: Evidence[] = [];
 
-    const fail = (reason: string, outcome: RunOutcome = 'Failed'): ScenarioRunResult => ({
-      outcome,
-      durationMs: Date.now() - startedAt,
-      evidence,
-      thenVerdicts,
-      reason,
-      iterationsUsed,
-      constraintsApplied: args.constraints,
-    });
+    const fail = async (
+      reason: string,
+      outcome: RunOutcome = 'Failed',
+      screenshotLabel?: string,
+    ): Promise<ScenarioRunResult> => {
+      await appendFailureScreenshot(
+        evidence,
+        this.#execute,
+        args.signal,
+        screenshotLabel ?? truncateLabel(reason),
+      );
+      return {
+        outcome,
+        durationMs: Date.now() - startedAt,
+        evidence,
+        thenVerdicts,
+        reason,
+        iterationsUsed,
+        constraintsApplied: args.constraints,
+      };
+    };
 
     while (true) {
       args.signal.throwIfAborted();
@@ -92,6 +105,8 @@ export class UiBrowserAgentRunner {
         iterationsUsed,
       });
 
+      args.onThinking?.('Reading page and planning next action…');
+
       let action: UiBrowserAgentAction;
       try {
         action = await this.#decideNext(context);
@@ -99,7 +114,7 @@ export class UiBrowserAgentRunner {
         return fail(`Agent decision failed: ${error instanceof Error ? error.message : String(error)}`);
       }
 
-      args.onProgress?.(`Iteration ${iterationsUsed}: ${formatActionForHistory(action)}`);
+      args.onProgress?.(formatActionForProgress(action, steps, currentStepIndex));
 
       if (action.kind === 'scenarioComplete') {
         const pendingThen = steps.filter(
@@ -141,7 +156,7 @@ export class UiBrowserAgentRunner {
           reason: action.reason,
         });
         if (!action.satisfied) {
-          return fail(action.reason);
+          return fail(action.reason, 'Failed', `Failed check — ${step.text}`);
         }
         currentStepIndex = Math.min(action.stepIndex + 1, Math.max(steps.length - 1, 0));
         continue;
@@ -173,4 +188,27 @@ export class UiBrowserAgentRunner {
       }
     }
   }
+}
+
+async function appendFailureScreenshot(
+  evidence: Evidence[],
+  execute: AgentExecutor,
+  signal: AbortSignal,
+  label: string,
+): Promise<void> {
+  try {
+    const result = await execute(['screenshot'], signal);
+    if (result.exitCode !== 0) return;
+    const href = screenshotPathFromStdout(result.stdout);
+    if (!href) return;
+    evidence.push(screenshotEvidence(label, href));
+  } catch {
+    // Best-effort evidence on failure.
+  }
+}
+
+function truncateLabel(value: string, max = 72): string {
+  const trimmed = value.trim();
+  if (trimmed.length <= max) return `Failure — ${trimmed}`;
+  return `Failure — ${trimmed.slice(0, max - 1)}…`;
 }
