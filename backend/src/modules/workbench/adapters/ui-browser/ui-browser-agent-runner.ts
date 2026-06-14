@@ -188,6 +188,7 @@ export class UiBrowserAgentRunner {
         constraints: args.constraints,
         startedAt,
         iterationsUsed,
+        observationOnlyActionsForCurrentStep,
       });
 
       args.onThinking?.('Reading page and planning next action…');

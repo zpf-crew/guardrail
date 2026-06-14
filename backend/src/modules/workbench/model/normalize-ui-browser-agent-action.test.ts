@@ -11,6 +11,14 @@ const context: AgentIterationContext = {
     { index: 2, kind: 'Then', effectiveKind: 'Then', text: 'the products page is displayed' },
   ],
   currentStepIndex: 0,
+  currentStep: {
+    index: 0,
+    kind: 'Given',
+    effectiveKind: 'Given',
+    text: 'the user is on the home page',
+    observationOnlyActionsUsed: 0,
+    verdictRequiredNow: false,
+  },
   completedSteps: [],
   thenVerdicts: [],
   pageSnapshot: '- button "Shop Now" @e3',
@@ -18,6 +26,8 @@ const context: AgentIterationContext = {
   constraints: { behavior: 'Shop now', maxStepDurationMs: 20_000, maxSteps: 15 },
   elapsedMs: 1000,
   iterationsUsed: 1,
+  allowedActionKinds: ['agentBrowserCommand', 'stepComplete', 'stepFailed'],
+  allowedCommands: ['open', 'snapshot', 'click', 'find', 'fill', 'press', 'scroll', 'scrollintoview', 'get', 'is', 'wait'],
 };
 
 test('normalizeAgentActionInput fills missing stepComplete fields from context', () => {
