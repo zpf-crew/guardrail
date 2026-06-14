@@ -238,3 +238,69 @@ test('planScenario validates concise UI browser scenario plan JSON', async () =>
   assert.equal(plan.title, 'Add to cart');
   assert.deepEqual(plan.steps.map(step => step.kind), ['setup', 'action', 'assert']);
 });
+
+test('plans UI Browser user flows', async () => {
+  const runner = new AgentModelRunner({ modelConnect: fakeModelConnect({
+    content: JSON.stringify({
+      behaviorTitle: 'Add product to cart from homepage',
+      acceptedFlows: [
+        {
+          id: 'flow-1',
+          title: 'Add one product to cart',
+          sourceScenarioIndexes: [0],
+          userGoal: 'A shopper adds a product to the cart.',
+          durableOutcome: 'The cart count shows one item.',
+          priority: 'high',
+        },
+      ],
+      droppedScenarios: [],
+    }),
+  }) });
+
+  const result = await runner.planUiBrowserFlows({
+    profile: 'coder',
+    skill: { name: 'test-plan-ui-browser-flows', content: 'Return JSON only.' },
+    context: { schemaName: 'UiBrowserUserFlowPlan' },
+    signal: new AbortController().signal,
+  });
+
+  assert.equal(result.acceptedFlows[0].id, 'flow-1');
+});
+
+test('plans UI Browser execution steps', async () => {
+  const runner = new AgentModelRunner({ modelConnect: fakeModelConnect({
+    content: JSON.stringify({
+      flowId: 'flow-1',
+      title: 'Add one product to cart',
+      steps: [
+        {
+          id: 'step-1',
+          kind: 'setup',
+          instruction: 'Open the homepage.',
+          successCriteria: 'The homepage is loaded.',
+        },
+        {
+          id: 'step-2',
+          kind: 'action',
+          instruction: 'Click Add to Cart.',
+          successCriteria: 'The click completes.',
+        },
+        {
+          id: 'step-3',
+          kind: 'assert',
+          instruction: 'Verify the cart contains one item.',
+          successCriteria: 'The cart shows one item.',
+        },
+      ],
+    }),
+  }) });
+
+  const result = await runner.planUiBrowserExecution({
+    profile: 'coder',
+    skill: { name: 'test-plan-ui-browser-execution', content: 'Return JSON only.' },
+    context: { schemaName: 'UiBrowserExecutionPlan' },
+    signal: new AbortController().signal,
+  });
+
+  assert.equal(result.steps[2].kind, 'assert');
+});

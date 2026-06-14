@@ -6,7 +6,9 @@ import {
   validateWorkbenchStepResult,
   validateUiBrowserAgentAction,
   type UiBrowserAgentAction,
+  type UiBrowserExecutionPlan,
   type UiBrowserScenarioPlan,
+  type UiBrowserUserFlowPlan,
 } from '../validation/workbench-validators.js';
 import { normalizeAgentActionInput } from './normalize-ui-browser-agent-action.js';
 
@@ -110,6 +112,55 @@ export class AgentModelRunner {
     }
 
     throw new Error(lastError ?? 'Scenario planning failed.');
+  }
+
+  async #runValidatedPlan<T>(
+    args: PlanScenarioArgs,
+    schemaName: 'UiBrowserUserFlowPlan' | 'UiBrowserExecutionPlan',
+  ): Promise<T> {
+    if (!this.#modelConnect) {
+      throw new Error('LLM is not configured for UI browser planning.');
+    }
+
+    const client = this.#modelConnect.getClient(args.profile);
+    let lastError: string | null = null;
+
+    for (let attempt = 0; attempt < 2; attempt += 1) {
+      const userContent = lastError
+        ? JSON.stringify({
+          schemaName,
+          context: args.context,
+          validationError: lastError,
+          retryHint: `Return only one valid ${schemaName} JSON object. Do not include analysis, prose, markdown, or code fences.`,
+        }, null, 2)
+        : JSON.stringify({ schemaName, context: args.context }, null, 2);
+
+      const response = await client.chat(
+        [
+          { role: 'system', content: args.skill.content },
+          { role: 'user', content: userContent },
+        ],
+        { temperature: 0, maxTokens: 2200, signal: args.signal },
+      );
+
+      try {
+        const parsed = parseJsonObject(response.content);
+        return validateWorkbenchStepResult(schemaName, parsed) as T;
+      } catch (error) {
+        lastError = error instanceof Error ? error.message : String(error);
+        if (attempt === 1) throw error;
+      }
+    }
+
+    throw new Error(lastError ?? `${schemaName} planning failed.`);
+  }
+
+  async planUiBrowserFlows(args: PlanScenarioArgs): Promise<UiBrowserUserFlowPlan> {
+    return this.#runValidatedPlan<UiBrowserUserFlowPlan>(args, 'UiBrowserUserFlowPlan');
+  }
+
+  async planUiBrowserExecution(args: PlanScenarioArgs): Promise<UiBrowserExecutionPlan> {
+    return this.#runValidatedPlan<UiBrowserExecutionPlan>(args, 'UiBrowserExecutionPlan');
   }
 }
 
