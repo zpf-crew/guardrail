@@ -30,6 +30,10 @@ import { AgentModelRunner } from '../../model/agent-model-runner.js';
 import { scenarioTextFromChange } from './ui-browser-scenario.js';
 import { UiBrowserAgentRunner, type RunScenarioArgs } from './ui-browser-agent-runner.js';
 import { defaultAgentExecutor } from './ui-browser-agent-executor.js';
+import {
+  buildAgentBrowserRunSkillContent,
+  loadAgentBrowserCoreGuide,
+} from './agent-browser-core-guide.js';
 
 interface AgentRunnerLike {
   runScenario(args: RunScenarioArgs): Promise<ScenarioRunResult>;
@@ -208,6 +212,7 @@ export class UiBrowserAdapter implements TestTypeAdapter {
     }
 
     let questions: TestPlan['questions'] = [];
+    let runConstraintOverrides: TestPlan['runConstraints'] = [];
     try {
       await input.emit({ type: 'progress', message: 'Checking for product behavior conflicts that need your input…', percent: 38 });
       const modelResult = await input.structuredModel.runStep({
@@ -218,6 +223,7 @@ export class UiBrowserAdapter implements TestTypeAdapter {
         signal: input.signal,
       });
       questions = filterPlanQuestions(modelResult.questions, input.isolation, input.repository);
+      runConstraintOverrides = modelResult.runConstraintOverrides ?? [];
       if (modelResult.questions.length > questions.length) {
         await input.emit({
           type: 'progress',
@@ -233,7 +239,7 @@ export class UiBrowserAdapter implements TestTypeAdapter {
       });
     }
 
-    const result = buildTestPlan(input.session.intent, input.isolation, questions);
+    const result = buildTestPlan(input.session.intent, input.isolation, questions, runConstraintOverrides);
     await input.emit({
       type: 'progress',
       message: questions.length > 0
@@ -432,12 +438,19 @@ export class UiBrowserAdapter implements TestTypeAdapter {
         const scenarioText = scenarioTextFromChange(change);
         const constraints = lookupRunConstraints(input.session.plan?.runConstraints, change.title);
         const agentRunner = this.#agentRunner ?? this.#createAgentRunner(input);
+        const liveScreenshotHrefs = new Set<string>();
         const scenarioResult = await agentRunner.runScenario({
           baseUrl: lease.baseUrl,
           gherkinText: scenarioText,
           constraints,
           defaultRoute,
           signal: input.signal,
+          onScreenshot: async artifact => {
+            const emitted = await input.emit({ type: 'screenshot', artifact });
+            if (emitted.type !== 'screenshot') return artifact;
+            if (emitted.artifact.href) liveScreenshotHrefs.add(emitted.artifact.href);
+            return emitted.artifact;
+          },
           onThinking: message => input.emit({
             type: 'progress',
             message: `[Scenario ${changeIndex + 1}/${uiChanges.length}] ${message}`,
@@ -453,8 +466,12 @@ export class UiBrowserAdapter implements TestTypeAdapter {
         const changeEvidence: ScenarioRunResult['evidence'] = [];
         for (const item of scenarioResult.evidence) {
           if (item.kind === 'screenshot') {
-            const emitted = await input.emit({ type: 'screenshot', artifact: item });
-            if (emitted.type === 'screenshot') changeEvidence.push(emitted.artifact);
+            if (item.href && (liveScreenshotHrefs.has(item.href) || item.href.startsWith('/api/workbench/'))) {
+              changeEvidence.push(item);
+            } else {
+              const emitted = await input.emit({ type: 'screenshot', artifact: item });
+              if (emitted.type === 'screenshot') changeEvidence.push(emitted.artifact);
+            }
           } else {
             changeEvidence.push(item);
           }
@@ -546,9 +563,10 @@ export class UiBrowserAdapter implements TestTypeAdapter {
     return new UiBrowserAgentRunner({
       decideNext: async context => {
         const skill = await input.skills.load('test-run-ui-browser-agent');
+        const coreGuide = await loadAgentBrowserCoreGuide();
         return agentModel.decideNext({
           profile: 'coder',
-          skill,
+          skill: buildAgentBrowserRunSkillContent(skill, coreGuide),
           context,
           signal: input.signal,
         });

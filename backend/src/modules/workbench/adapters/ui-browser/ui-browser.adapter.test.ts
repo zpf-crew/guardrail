@@ -40,7 +40,7 @@ function defaultAgentScenarioResult(overrides: Partial<ScenarioRunResult> = {}):
     thenVerdicts: [],
     reason: null,
     iterationsUsed: 1,
-    constraintsApplied: { behavior: 'Test', maxDurationMs: 60_000, maxSteps: 15 },
+    constraintsApplied: { behavior: 'Test', maxStepDurationMs: 20_000, maxSteps: 15 },
     ...overrides,
   };
 }
@@ -266,17 +266,22 @@ test('ui browser adapter uses structured model outputs for analyze plan generate
 
 test('ui browser adapter uses normalized screenshot evidence returned from emit', async () => {
   const normalizedHref = '/api/workbench/wb-test/artifacts/onboarding.png';
+  const emittedLabels: string[] = [];
   const adapter = createAdapter({
     agentRunner: {
-      runScenario: async () => defaultAgentScenarioResult({
-        evidence: [{ kind: 'screenshot', label: 'Onboarding screenshot', href: '/tmp/onboarding.png' }],
-      }),
+      runScenario: async ({ onScreenshot }) => {
+        const emitted = await onScreenshot?.({ kind: 'screenshot', label: 'Onboarding screenshot', href: '/tmp/onboarding.png' });
+        return defaultAgentScenarioResult({
+          evidence: emitted ? [emitted] : [],
+        });
+      },
     },
   });
   const input = await buildInput({
     structuredModel: generationStructuredModel(),
     emit: async event => {
       if (event.type !== 'screenshot') return event;
+      emittedLabels.push(event.artifact.label);
       return { ...event, artifact: { ...event.artifact, href: normalizedHref } };
     },
   });
@@ -285,6 +290,9 @@ test('ui browser adapter uses normalized screenshot evidence returned from emit'
   const run = await adapter.run({ ...input, generation });
 
   assert.equal(run.ui.evidence[0]?.href, normalizedHref);
+  assert.ok(emittedLabels.length > 0);
+  assert.ok(emittedLabels.every(label => label === 'Onboarding screenshot'));
+  assert.ok(run.ui.evidence.every(item => item.href === normalizedHref));
   assert.equal(run.matrix[0]?.evidence, 'screenshot');
   assert.equal(run.matrix[0]?.evidenceItems?.[0]?.href, normalizedHref);
 });
@@ -500,6 +508,81 @@ test('run executes one agent-browser session per generated UI change', async () 
 });
 
 test('ui browser adapter uses agent runner with plan run constraints', async () => {
+  let seenMaxStepDurationMs: number | null = null;
+  const adapter = createAdapter({
+    agentRunner: {
+      runScenario: async ({ constraints }) => {
+        seenMaxStepDurationMs = constraints.maxStepDurationMs;
+        return defaultAgentScenarioResult({
+          thenVerdicts: [{ stepIndex: 2, text: 'Then products page is displayed', satisfied: true, reason: 'ok' }],
+          iterationsUsed: 4,
+          constraintsApplied: constraints,
+        });
+      },
+    },
+  });
+  const input = await buildInput({ structuredModel: generationStructuredModel() });
+  input.session.plan = {
+    ...plan,
+    runConstraints: [{ behavior: 'Complete onboarding with selected repository', maxStepDurationMs: 20_000, maxSteps: 15 }],
+  };
+  const generation = await adapter.generate({ ...input, plan: input.session.plan, approval: { decision: 'approve', answers: {} } });
+
+  const run = await adapter.run({ ...input, generation });
+
+  assert.equal(run.ui.outcome, 'Passed');
+  assert.equal(run.matrix[0]?.status, 'Passed');
+  assert.equal(run.matrix[0]?.reason, null);
+  assert.equal(seenMaxStepDurationMs, 20_000);
+});
+
+test('ui browser adapter lets plan model override per-step run constraints', async () => {
+  let seenMaxStepDurationMs: number | null = null;
+  const outputs = {
+    TestPlanQuestions: {
+      questions: [],
+      runConstraintOverrides: [{
+        behavior: 'Complete onboarding with selected repository',
+        maxStepDurationMs: 45_000,
+        maxSteps: 22,
+        reason: 'Repository scan progress may take longer than a normal UI step',
+      }],
+    },
+  };
+  const adapter = createAdapter({
+    agentRunner: {
+      runScenario: async ({ constraints }) => {
+        seenMaxStepDurationMs = constraints.maxStepDurationMs;
+        return defaultAgentScenarioResult({ constraintsApplied: constraints });
+      },
+    },
+  });
+  const input = await buildInput({
+    structuredModel: {
+      runStep: async ({ schemaName }: { schemaName: keyof typeof outputs }) => {
+        if (schemaName === 'TestPlanQuestions') return structuredClone(outputs.TestPlanQuestions);
+        if (schemaName === 'GenerationChanges') {
+          return { changes: structuredClone(stubGeneration()).changes };
+        }
+        throw new Error(`unexpected schema ${schemaName}`);
+      },
+    } as never,
+  });
+
+  const testPlan = await adapter.plan({ ...input, isolation: input.session.isolation! });
+  input.session.plan = testPlan;
+  const generation = await adapter.generate({ ...input, plan: testPlan, approval: { decision: 'approve', answers: {} } });
+  const run = await adapter.run({ ...input, generation });
+
+  const onboardingConstraint = testPlan.runConstraints?.find(
+    item => item.behavior === 'Complete onboarding with selected repository',
+  );
+  assert.equal(onboardingConstraint?.maxStepDurationMs, 45_000);
+  assert.equal(seenMaxStepDurationMs, 45_000);
+  assert.equal(run.ui.outcome, 'Passed');
+});
+
+test('ui browser adapter keeps injected agent runner path independent of core guide loading', async () => {
   const adapter = createAdapter({
     agentRunner: {
       runScenario: async () => defaultAgentScenarioResult({
@@ -509,15 +592,8 @@ test('ui browser adapter uses agent runner with plan run constraints', async () 
     },
   });
   const input = await buildInput({ structuredModel: generationStructuredModel() });
-  input.session.plan = {
-    ...plan,
-    runConstraints: [{ behavior: 'Complete onboarding with selected repository', maxDurationMs: 60_000, maxSteps: 15 }],
-  };
-  const generation = await adapter.generate({ ...input, plan: input.session.plan, approval: { decision: 'approve', answers: {} } });
-
+  input.session.plan = plan;
+  const generation = await adapter.generate({ ...input, plan, approval: { decision: 'approve', answers: {} } });
   const run = await adapter.run({ ...input, generation });
-
   assert.equal(run.ui.outcome, 'Passed');
-  assert.equal(run.matrix[0]?.status, 'Passed');
-  assert.equal(run.matrix[0]?.reason, null);
 });
