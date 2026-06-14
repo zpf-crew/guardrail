@@ -35,6 +35,80 @@ function stubDevServer(options: StubDevServerOptions = {}) {
   };
 }
 
+function flowPlanningModelConnect(responses: unknown[]) {
+  let callIndex = 0;
+  return {
+    getClient: () => ({
+      chat: async () => ({
+        content: JSON.stringify(responses[callIndex++] ?? responses[responses.length - 1]),
+      }),
+    }),
+  } as AdapterInput['modelConnect'];
+}
+
+function defaultFlowPlanningModelConnect() {
+  return {
+    getClient: () => ({
+      chat: async (messages: Array<{ role: string; content: string }>) => {
+        const userContent = JSON.parse(
+          messages.find(message => message.role === 'user')!.content,
+        ) as { schemaName: string; context: Record<string, unknown> };
+        if (userContent.schemaName === 'UiBrowserUserFlowPlan') {
+          const scenarios = (userContent.context.scenarios ?? []) as Array<{ index: number; title: string }>;
+          const change = userContent.context.change as { title?: string } | undefined;
+          return {
+            content: JSON.stringify({
+              behaviorTitle: change?.title ?? 'Behavior',
+              acceptedFlows: scenarios.map(scenario => ({
+                id: `flow-${scenario.index}`,
+                title: scenario.title,
+                sourceScenarioIndexes: [scenario.index],
+                userGoal: `Verify ${scenario.title}`,
+                durableOutcome: 'Behavior verified.',
+                priority: 'high',
+              })),
+              droppedScenarios: [],
+            }),
+          };
+        }
+        if (userContent.schemaName === 'UiBrowserExecutionPlan') {
+          const flow = userContent.context.flow as { id: string; title: string; durableOutcome: string };
+          return {
+            content: JSON.stringify({
+              flowId: flow.id,
+              title: flow.title,
+              steps: [
+                { id: 'step-1', kind: 'setup', instruction: 'Open the page.', successCriteria: 'Page loaded.' },
+                { id: 'step-2', kind: 'assert', instruction: flow.durableOutcome, successCriteria: flow.durableOutcome },
+              ],
+            }),
+          };
+        }
+        throw new Error(`unexpected schema ${userContent.schemaName}`);
+      },
+    }),
+  } as AdapterInput['modelConnect'];
+}
+
+function generationWithUiChange(opts: { title: string; diffText: string[] }): GenerationResult {
+  return {
+    timeline: [{ label: 'Generate', status: 'done' }],
+    changes: [{
+      id: 'change-1',
+      action: 'Add',
+      testType: 'UI / Browser',
+      title: opts.title,
+      file: 'guardrail-tests/ui/cart.feature',
+      feature: 'Cart',
+      risk: 'High',
+      reason: 'Test',
+      diff: opts.diffText.map(text => ({ kind: 'add' as const, text })),
+      status: 'staged',
+    }],
+    beforeAfter: { before: [], after: [] },
+  };
+}
+
 function defaultAgentScenarioResult(overrides: Partial<ScenarioRunResult> = {}): ScenarioRunResult {
   return {
     outcome: 'Passed',
@@ -98,15 +172,20 @@ async function buildInput(overrides: Partial<AdapterInput> = {}): Promise<Adapte
     },
   } as unknown as AdapterInput['structuredModel'];
 
+  const modelConnect = overrides.modelConnect === undefined
+    ? defaultFlowPlanningModelConnect()
+    : overrides.modelConnect;
+
   return {
     session,
     repository: repo,
     emit: async event => event,
-    modelConnect: null,
+    modelConnect,
     skills,
     structuredModel,
     signal: new AbortController().signal,
     ...overrides,
+    modelConnect,
   };
 }
 
@@ -292,10 +371,10 @@ test('ui browser adapter uses normalized screenshot evidence returned from emit'
 
   const run = await adapter.run({ ...input, generation });
 
-  assert.equal(run.ui.evidence[0]?.href, normalizedHref);
+  assert.equal(run.ui.evidence.find(item => item.kind === 'screenshot')?.href, normalizedHref);
   assert.ok(emittedLabels.length > 0);
   assert.ok(emittedLabels.every(label => label === 'Onboarding screenshot'));
-  assert.ok(run.ui.evidence.every(item => item.href === normalizedHref));
+  assert.ok(run.ui.evidence.filter(item => item.kind === 'screenshot').every(item => item.href === normalizedHref));
   assert.equal(run.matrix[0]?.evidence, 'screenshot');
   assert.equal(run.matrix[0]?.evidenceItems?.[0]?.href, normalizedHref);
 });
@@ -563,8 +642,8 @@ test('run splits multiple Gherkin scenarios from one generated UI change', async
   assert.doesNotMatch(scenarioTexts[0] ?? '', /Footer search/);
   assert.match(scenarioTexts[1] ?? '', /Scenario: Footer search/);
   assert.equal(run.matrix.length, 2);
-  assert.equal(run.matrix[0]?.title, 'Complete onboarding with selected repository (1/2)');
-  assert.equal(run.matrix[1]?.title, 'Complete onboarding with selected repository (2/2)');
+  assert.equal(run.matrix[0]?.title, 'Header search');
+  assert.equal(run.matrix[1]?.title, 'Footer search');
   assert.equal(run.ui.durationMs, 200);
 });
 
@@ -657,4 +736,100 @@ test('ui browser adapter keeps injected agent runner path independent of core gu
   const generation = await adapter.generate({ ...input, plan, approval: { decision: 'approve', answers: {} } });
   const run = await adapter.run({ ...input, generation });
   assert.equal(run.ui.outcome, 'Passed');
+});
+
+test('drops weak generated scenarios before browser execution', async () => {
+  const adapter = createAdapter({
+    agentRunner: {
+      runScenario: async () => {
+        throw new Error('runner should not execute dropped scenarios');
+      },
+    },
+  });
+  const input = await buildInput({
+    generation: generationWithUiChange({
+      title: 'Toast appears after add to cart',
+      diffText: [
+        'Feature: Cart',
+        'Scenario: Toast appears',
+        '  Given the homepage is loaded',
+        '  When I add a product to cart',
+        '  Then I should see a success toast notification',
+      ],
+    }),
+    modelConnect: flowPlanningModelConnect([
+      {
+        behaviorTitle: 'Toast appears after add to cart',
+        acceptedFlows: [],
+        droppedScenarios: [
+          { sourceScenarioIndex: 0, reason: 'Toast-only assertion is transient.' },
+        ],
+      },
+    ]),
+  });
+
+  const result = await adapter.run(input);
+
+  assert.equal(result.matrix[0]?.status, 'Skipped');
+  assert.equal(result.matrix[0]?.reason, 'Dropped before execution: Toast-only assertion is transient.');
+});
+
+test('executes accepted user flows instead of raw scenarios', async () => {
+  const seen: string[] = [];
+  const adapter = createAdapter({
+    agentRunner: {
+      runScenario: async args => {
+        seen.push((args as { executionPlan?: { title?: string } }).executionPlan?.title ?? args.gherkinText);
+        return defaultAgentScenarioResult();
+      },
+    },
+  });
+  const input = await buildInput({
+    generation: generationWithUiChange({
+      title: 'Add product to cart from homepage',
+      diffText: [
+        'Feature: Cart',
+        'Scenario: Add product',
+        '  Given the homepage is loaded',
+        '  When I click "Add to Cart"',
+        '  Then the cart should contain 1 item',
+        'Scenario: Toast appears',
+        '  Given the homepage is loaded',
+        '  When I click "Add to Cart"',
+        '  Then I should see a success toast',
+      ],
+    }),
+    modelConnect: flowPlanningModelConnect([
+      {
+        behaviorTitle: 'Add product to cart from homepage',
+        acceptedFlows: [
+          {
+            id: 'flow-1',
+            title: 'Add one product to cart',
+            sourceScenarioIndexes: [0],
+            userGoal: 'A shopper adds a product to cart.',
+            durableOutcome: 'The cart count shows one item.',
+            priority: 'high',
+          },
+        ],
+        droppedScenarios: [
+          { sourceScenarioIndex: 1, reason: 'Toast-only assertion is transient.' },
+        ],
+      },
+      {
+        flowId: 'flow-1',
+        title: 'Add one product to cart',
+        steps: [
+          { id: 'step-1', kind: 'setup', instruction: 'Open the homepage.', successCriteria: 'Homepage loaded.' },
+          { id: 'step-2', kind: 'action', instruction: 'Click Add to Cart.', successCriteria: 'Click completes.' },
+          { id: 'step-3', kind: 'assert', instruction: 'Verify cart count is one.', successCriteria: 'Cart shows one item.' },
+        ],
+      },
+    ]),
+  });
+
+  const result = await adapter.run(input);
+
+  assert.deepEqual(seen, ['Add one product to cart']);
+  assert.equal(result.matrix.some(row => row.status === 'Skipped'), true);
 });
