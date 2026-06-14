@@ -484,6 +484,7 @@ export interface TestPlan {
   /** Files the agent expects to add/modify (proposal only). */
   filesToChange: string[];
   questions: AIQuestion[];
+  runConstraints?: BehaviorRunConstraints[];
 }
 
 export interface PlanAction {
@@ -491,6 +492,13 @@ export interface PlanAction {
   label: string;                   // "Add unit tests"
   /** Number of items, or null for run/coverage actions. */
   count: number | null;
+}
+
+export interface BehaviorRunConstraints {
+  behavior: string;
+  maxDurationMs: number;
+  maxSteps: number;
+  reason?: string;
 }
 
 /** Explicit pre-flight risk disclosure shown before any file is written. */

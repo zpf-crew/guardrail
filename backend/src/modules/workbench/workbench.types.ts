@@ -127,12 +127,40 @@ export interface TestPlan {
   risk: PlanRiskAssessment;
   filesToChange: string[];
   questions: AIQuestion[];
+  runConstraints?: BehaviorRunConstraints[];
 }
 
 export interface PlanAction {
   action: 'add' | 'update' | 'delete' | 'run';
   label: string;
   count: number | null;
+  /** Behavior titles covered by this action group. */
+  items?: string[];
+}
+
+export interface BehaviorRunConstraints {
+  behavior: string;
+  maxDurationMs: number;
+  maxSteps: number;
+  reason?: string;
+}
+
+export interface ThenVerdict {
+  stepIndex: number;
+  text: string;
+  satisfied: boolean;
+  reason: string;
+  screenshotLabel?: string;
+}
+
+export interface ScenarioRunResult {
+  outcome: RunOutcome;
+  durationMs: number;
+  evidence: Evidence[];
+  thenVerdicts: ThenVerdict[];
+  reason: string | null;
+  iterationsUsed: number;
+  constraintsApplied: BehaviorRunConstraints;
 }
 
 export interface PlanRiskAssessment {
