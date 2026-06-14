@@ -101,7 +101,7 @@ export class AgentModelRunner {
           { role: 'system', content: args.skill.content },
           { role: 'user', content: userContent },
         ],
-        { temperature: 0, maxTokens: 2200, signal: args.signal },
+        { temperature: 0, maxTokens: 4000, signal: args.signal },
       );
 
       try {
@@ -139,8 +139,6 @@ function parseJsonObject(content: string): unknown {
 }
 
 function extractFirstJsonObject(value: string): string {
-  if (value.startsWith('{')) return value;
-
   const start = value.indexOf('{');
   if (start < 0) return value;
 

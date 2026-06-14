@@ -339,6 +339,14 @@ export class UiBrowserAgentRunner {
         if (!action.satisfied) {
           return fail(action.reason, 'Failed', `Failed check — ${step.text}`);
         }
+        const screenshot = await captureScreenshotEvidence(
+          this.#execute,
+          args.signal,
+          `Verified — ${step.text}`,
+        );
+        if (screenshot) {
+          evidence.push(await emitScreenshot(screenshot, args.onScreenshot));
+        }
         if (allThenStepsSatisfied(steps, thenVerdicts)) {
           return finishScenario({
             outcome: 'Passed',

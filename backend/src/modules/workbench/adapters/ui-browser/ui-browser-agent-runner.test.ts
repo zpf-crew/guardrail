@@ -38,6 +38,7 @@ test('agent runner opens the managed default route before first snapshot', async
 
 test('agent runner passes when model completes all Then steps', async () => {
   let call = 0;
+  const streamedLabels: string[] = [];
   const scripted: UiBrowserAgentAction[] = [
     { kind: 'agentBrowserCommand', command: 'open', args: ['/'], reason: 'Open home page' },
     { kind: 'agentBrowserCommand', command: 'snapshot', args: ['-i'], reason: 'Home loaded' },
@@ -54,6 +55,9 @@ test('agent runner passes when model completes all Then steps', async () => {
       if (args[0] === 'snapshot') {
         return { exitCode: 0, stdout: '- button "Shop Now" @e3', stderr: '' };
       }
+      if (args[0] === 'screenshot') {
+        return { exitCode: 0, stdout: 'Screenshot saved to /tmp/products-verified.png', stderr: '' };
+      }
       if (args[0] === 'get' && args[1] === 'url') return { exitCode: 0, stdout: 'http://127.0.0.1:5555/', stderr: '' };
       return { exitCode: 0, stdout: 'ok', stderr: '' };
     },
@@ -65,11 +69,17 @@ test('agent runner passes when model completes all Then steps', async () => {
     constraints: { behavior: 'Shop now', maxStepDurationMs: 20_000, maxSteps: 15 },
     defaultRoute: '/',
     signal: new AbortController().signal,
+    onScreenshot: async evidence => {
+      streamedLabels.push(evidence.label);
+      return { ...evidence, href: `/api/workbench/wb-test/artifacts/${streamedLabels.length}.png` };
+    },
   });
 
   assert.equal(result.outcome, 'Passed');
   assert.equal(result.thenVerdicts.length, 1);
   assert.equal(result.thenVerdicts[0]?.satisfied, true);
+  assert.deepEqual(streamedLabels, ['Verified — the products page is displayed']);
+  assert.equal(result.evidence[0]?.href, '/api/workbench/wb-test/artifacts/1.png');
 });
 
 test('agent runner fails fast on assertThen satisfied false', async () => {

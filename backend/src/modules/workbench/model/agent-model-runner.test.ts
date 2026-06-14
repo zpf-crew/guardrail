@@ -153,6 +153,52 @@ test('decideNext extracts JSON object from prose model output', async () => {
   });
 });
 
+test('decideNext extracts first JSON object when model appends trailing prose', async () => {
+  const runner = new AgentModelRunner({
+    modelConnect: fakeModelConnect({
+      content:
+        '{"kind":"agentBrowserCommand","command":"press","args":["Enter"],"reason":"Submit search"} The search field has been filled, so pressing Enter submits it.',
+    }),
+  });
+
+  const action = await runner.decideNext({
+    profile: 'coder',
+    skill: { name: 'test-run-ui-browser-agent', content: '# skill' },
+    context: {
+      scenarioTitle: 'Search',
+      gherkinSteps: [
+        { index: 0, kind: 'When', effectiveKind: 'When', text: 'the user searches for headphone' },
+      ],
+      currentStepIndex: 0,
+      currentStep: {
+        index: 0,
+        kind: 'When',
+        effectiveKind: 'When',
+        text: 'the user searches for headphone',
+        observationOnlyActionsUsed: 0,
+        verdictRequiredNow: false,
+      },
+      completedSteps: [],
+      thenVerdicts: [],
+      pageSnapshot: '- searchbox "Search products" @e67: headphone',
+      actionHistory: [{ iteration: 1, action: 'fill @e67 [redacted]', result: 'ok' }],
+      constraints: { behavior: 'Search', maxStepDurationMs: 60_000, maxSteps: 15 },
+      elapsedMs: 0,
+      iterationsUsed: 2,
+      allowedActionKinds: ['agentBrowserCommand', 'stepComplete', 'stepFailed'],
+      allowedCommands: ['open', 'snapshot', 'click', 'find', 'fill', 'press', 'scroll', 'scrollintoview', 'get', 'is', 'wait'],
+    },
+    signal: new AbortController().signal,
+  });
+
+  assert.deepEqual(action, {
+    kind: 'agentBrowserCommand',
+    command: 'press',
+    args: ['Enter'],
+    reason: 'Submit search',
+  });
+});
+
 test('decideNext retries prose-only output with stricter JSON instruction', async () => {
   const runner = new AgentModelRunner({
     modelConnect: fakeSequenceModelConnect([
@@ -201,11 +247,13 @@ test('decideNext retries prose-only output with stricter JSON instruction', asyn
 
 test('decideNext normalizes stepComplete missing required fields', async () => {
   let calls = 0;
+  let capturedMaxTokens: number | undefined;
   const runner = new AgentModelRunner({
     modelConnect: {
       getClient: () => ({
-        chat: async () => {
+        chat: async (_messages: unknown, options: { maxTokens?: number }) => {
           calls += 1;
+          capturedMaxTokens = options.maxTokens;
           return { content: '{"kind":"stepComplete"}' };
         },
       }),
@@ -244,25 +292,36 @@ test('decideNext normalizes stepComplete missing required fields', async () => {
   assert.equal(action.stepIndex, 0);
   assert.ok(action.note);
   assert.equal(calls, 1);
+  assert.equal(capturedMaxTokens, 1500);
 });
 
 test('plans UI Browser user flows', async () => {
-  const runner = new AgentModelRunner({ modelConnect: fakeModelConnect({
-    content: JSON.stringify({
-      behaviorTitle: 'Add product to cart from homepage',
-      acceptedFlows: [
-        {
-          id: 'flow-1',
-          title: 'Add one product to cart',
-          sourceScenarioIndexes: [0],
-          userGoal: 'A shopper adds a product to the cart.',
-          durableOutcome: 'The cart count shows one item.',
-          priority: 'high',
+  let capturedMaxTokens: number | undefined;
+  const runner = new AgentModelRunner({
+    modelConnect: {
+      getClient: () => ({
+        chat: async (_messages: unknown, options: { maxTokens?: number }) => {
+          capturedMaxTokens = options.maxTokens;
+          return {
+            content: JSON.stringify({
+              behaviorTitle: 'Add product to cart from homepage',
+              acceptedFlows: [
+                {
+                  id: 'flow-1',
+                  title: 'Add one product to cart',
+                  sourceScenarioIndexes: [0],
+                  userGoal: 'A shopper adds a product to the cart.',
+                  durableOutcome: 'The cart count shows one item.',
+                  priority: 'high',
+                },
+              ],
+              droppedScenarios: [],
+            }),
+          };
         },
-      ],
-      droppedScenarios: [],
-    }),
-  }) });
+      }),
+    } as never,
+  });
 
   const result = await runner.planUiBrowserFlows({
     profile: 'coder',
@@ -272,35 +331,46 @@ test('plans UI Browser user flows', async () => {
   });
 
   assert.equal(result.acceptedFlows[0].id, 'flow-1');
+  assert.equal(capturedMaxTokens, 4000);
 });
 
 test('plans UI Browser execution steps', async () => {
-  const runner = new AgentModelRunner({ modelConnect: fakeModelConnect({
-    content: JSON.stringify({
-      flowId: 'flow-1',
-      title: 'Add one product to cart',
-      steps: [
-        {
-          id: 'step-1',
-          kind: 'setup',
-          instruction: 'Open the homepage.',
-          successCriteria: 'The homepage is loaded.',
+  let capturedMaxTokens: number | undefined;
+  const runner = new AgentModelRunner({
+    modelConnect: {
+      getClient: () => ({
+        chat: async (_messages: unknown, options: { maxTokens?: number }) => {
+          capturedMaxTokens = options.maxTokens;
+          return {
+            content: JSON.stringify({
+              flowId: 'flow-1',
+              title: 'Add one product to cart',
+              steps: [
+                {
+                  id: 'step-1',
+                  kind: 'setup',
+                  instruction: 'Open the homepage.',
+                  successCriteria: 'The homepage is loaded.',
+                },
+                {
+                  id: 'step-2',
+                  kind: 'action',
+                  instruction: 'Click Add to Cart.',
+                  successCriteria: 'The click completes.',
+                },
+                {
+                  id: 'step-3',
+                  kind: 'assert',
+                  instruction: 'Verify the cart contains one item.',
+                  successCriteria: 'The cart shows one item.',
+                },
+              ],
+            }),
+          };
         },
-        {
-          id: 'step-2',
-          kind: 'action',
-          instruction: 'Click Add to Cart.',
-          successCriteria: 'The click completes.',
-        },
-        {
-          id: 'step-3',
-          kind: 'assert',
-          instruction: 'Verify the cart contains one item.',
-          successCriteria: 'The cart shows one item.',
-        },
-      ],
-    }),
-  }) });
+      }),
+    } as never,
+  });
 
   const result = await runner.planUiBrowserExecution({
     profile: 'coder',
@@ -310,4 +380,5 @@ test('plans UI Browser execution steps', async () => {
   });
 
   assert.equal(result.steps[2].kind, 'assert');
+  assert.equal(capturedMaxTokens, 4000);
 });

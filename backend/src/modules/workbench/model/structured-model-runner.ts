@@ -47,7 +47,7 @@ export class StructuredModelRunner {
           ),
         },
       ],
-      { temperature: 0, maxTokens: 4000, signal: args.signal },
+      { temperature: 0, maxTokens: 8000, signal: args.signal },
     );
 
     const parsed = parseJsonObject(response.content);
