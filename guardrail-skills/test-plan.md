@@ -14,8 +14,9 @@ Guardrail **does not** use Playwright, Cypress, Vitest jsdom, or React Testing L
 | Browser | Chromium |
 | App hosting | Managed local dev server started by Guardrail before run |
 | Scenarios | Gherkin-style files under `guardrail-tests/ui/*.feature` |
-| Run flow | Resolve dev server → health wait → `agent-browser open` → click/fill/assert/screenshot |
-| Selectors | Role/name and visible text from repository snippets |
+| Run flow | Gherkin steps → snapshot-ref agent loop (@eN click/fill) → per-Then verdict |
+| Run budgets | Default 60s / 15 steps per behavior; plan may propose overrides for heavy flows |
+| Selectors | Live `@eN` refs from accessibility snapshot — never guessed text/role upfront |
 
 Context JSON includes `guardrailUiTestDesign` and `resolvedEvidence` with routes, source pages, specs, and snippets. **Treat those as facts, not questions.**
 
