@@ -8,7 +8,7 @@ import type {
   RunOutcome,
   ScenarioRunResult,
 } from '../../workbench.types.js';
-import type { UiBrowserAgentAction, UiBrowserScenarioPlan } from '../../validation/workbench-validators.js';
+import type { UiBrowserAgentAction, UiBrowserExecutionPlan, UiBrowserScenarioPlan } from '../../validation/workbench-validators.js';
 import { parseGherkinSteps, scenarioTitleFromGherkin, type GherkinStep } from './gherkin-step-parser.js';
 import {
   buildAgentIterationContext,
@@ -43,6 +43,7 @@ export interface RunScenarioArgs {
   constraints: BehaviorRunConstraints;
   defaultRoute: string;
   scenarioPlan?: UiBrowserScenarioPlan;
+  executionPlan?: UiBrowserExecutionPlan;
   signal: AbortSignal;
   onScreenshot?: (evidence: Evidence) => Promise<Evidence>;
   onProgress?: (message: string) => void;
@@ -59,8 +60,12 @@ export class UiBrowserAgentRunner {
   }
 
   async runScenario(args: RunScenarioArgs): Promise<ScenarioRunResult> {
-    const steps = args.scenarioPlan ? stepsFromScenarioPlan(args.scenarioPlan) : parseGherkinSteps(args.gherkinText);
-    const title = scenarioTitleFromGherkin(args.gherkinText);
+    const steps = args.executionPlan
+      ? stepsFromExecutionPlan(args.executionPlan)
+      : args.scenarioPlan
+        ? stepsFromScenarioPlan(args.scenarioPlan)
+        : parseGherkinSteps(args.gherkinText);
+    const title = args.executionPlan?.title ?? args.scenarioPlan?.title ?? scenarioTitleFromGherkin(args.gherkinText);
     let currentStepIndex = 0;
     let iterationsUsed = 0;
     const startedAt = Date.now();
@@ -84,6 +89,13 @@ export class UiBrowserAgentRunner {
         atMs: 0,
         type: 'plan',
         plan: args.scenarioPlan,
+      });
+    }
+    if (args.executionPlan) {
+      trace.push({
+        atMs: 0,
+        type: 'execution-plan',
+        plan: args.executionPlan,
       });
     }
 
@@ -261,6 +273,14 @@ export class UiBrowserAgentRunner {
           'Failed',
           currentStep ? `Failed check — ${currentStep.text}` : undefined,
         );
+      }
+
+      if (
+        currentStep?.effectiveKind === 'Then'
+        && isAgentBrowserCommandAction(action)
+        && isMutatingCommand(action)
+      ) {
+        return fail(`Mutating browser command is not allowed during assert step: ${formatActionForHistory(action)}`);
       }
 
       args.onProgress?.(formatActionForProgress(action, steps, currentStepIndex));
@@ -452,6 +472,11 @@ type UiBrowserTraceEvent =
   }
   | {
     atMs: number;
+    type: 'execution-plan';
+    plan: UiBrowserExecutionPlan;
+  }
+  | {
+    atMs: number;
     type: 'snapshot';
     exitCode: number;
     stdout: string;
@@ -586,6 +611,18 @@ function stepsFromScenarioPlan(plan: UiBrowserScenarioPlan): GherkinStep[] {
   });
 }
 
+function stepsFromExecutionPlan(plan: UiBrowserExecutionPlan): GherkinStep[] {
+  return plan.steps.map((step, index) => {
+    const effectiveKind = step.kind === 'assert' ? 'Then' : step.kind === 'setup' ? 'Given' : 'When';
+    return {
+      index,
+      kind: effectiveKind,
+      effectiveKind,
+      text: `${step.instruction} (${step.successCriteria})`,
+    };
+  });
+}
+
 function truncateDetail(value: string, max = 180): string {
   const clean = value.replace(/\s+/g, ' ').trim();
   return clean.length <= max ? clean : `${clean.slice(0, max - 1)}…`;
@@ -637,6 +674,11 @@ function repeatedThenObservationReason(
   const step = steps[stepIndex];
   if (!step) return 'Then step was observed repeatedly without an assertion.';
   return `Then step was observed repeatedly without an assertion on step ${stepIndex + 1}/${steps.length}: ${step.effectiveKind} ${step.text}`;
+}
+
+function isMutatingCommand(action: AgentBrowserCommandAction): boolean {
+  return isPrimaryActionCommand(action)
+    || ['open', 'go', 'reload', 'back', 'forward'].includes(action.command);
 }
 
 function isPrimaryActionCommand(action: AgentBrowserCommandAction): boolean {

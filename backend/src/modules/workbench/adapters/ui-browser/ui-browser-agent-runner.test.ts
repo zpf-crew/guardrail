@@ -604,6 +604,87 @@ test('agent runner records informative command output in action history context'
   assert.deepEqual(observedHistory, ['', 'http://127.0.0.1:5555/products']);
 });
 
+test('uses execution plan steps instead of raw Gherkin when provided', async () => {
+  const actions: UiBrowserAgentAction[] = [
+    { kind: 'stepComplete', stepIndex: 0, note: 'Homepage loaded.' },
+    { kind: 'agentBrowserCommand', command: 'click', args: ['@e1'], reason: 'Click Add to Cart.' },
+    { kind: 'agentBrowserCommand', command: 'screenshot', args: [], reason: 'Extra evidence that should be skipped.' },
+    { kind: 'assertThen', stepIndex: 2, satisfied: true, reason: 'Cart shows one item.' },
+    { kind: 'scenarioComplete' },
+  ];
+
+  const runner = new UiBrowserAgentRunner({
+    decideNext: async context => {
+      assert.match(context.gherkinSteps[1].text, /Click Add to Cart/);
+      return actions.shift()!;
+    },
+    execute: fakeExecutor({
+      snapshot: 'button "Add to Cart" @e1\ntext "Cart 1" @e2',
+      screenshotPath: '/tmp/cart.png',
+    }),
+  });
+
+  const result = await runner.runScenario({
+    baseUrl: 'http://127.0.0.1:5173',
+    gherkinText: 'Scenario: Raw scenario\nThen raw text should not drive execution',
+    executionPlan: {
+      flowId: 'flow-1',
+      title: 'Add one product to cart',
+      steps: [
+        { id: 'step-1', kind: 'setup', instruction: 'Open the homepage.', successCriteria: 'Homepage loaded.' },
+        { id: 'step-2', kind: 'action', instruction: 'Click Add to Cart.', successCriteria: 'Click completes.' },
+        { id: 'step-3', kind: 'assert', instruction: 'Verify cart contains one item.', successCriteria: 'Cart shows one item.' },
+      ],
+    },
+    constraints: { behavior: 'Cart', maxStepDurationMs: 60000, maxSteps: 15 },
+    defaultRoute: '/',
+    signal: new AbortController().signal,
+  });
+
+  assert.equal(result.outcome, 'Passed');
+});
+
+test('rejects mutating browser commands during assert steps', async () => {
+  const runner = new UiBrowserAgentRunner({
+    decideNext: async () => ({ kind: 'agentBrowserCommand', command: 'click', args: ['@e1'], reason: 'Do not mutate during assert.' }),
+    execute: fakeExecutor({ snapshot: 'button "Cart" @e1' }),
+  });
+
+  const result = await runner.runScenario({
+    baseUrl: 'http://127.0.0.1:5173',
+    gherkinText: 'Scenario: Assert only',
+    executionPlan: {
+      flowId: 'flow-1',
+      title: 'Assert cart',
+      steps: [
+        { id: 'step-1', kind: 'assert', instruction: 'Verify cart has one item.', successCriteria: 'Cart shows one item.' },
+      ],
+    },
+    constraints: { behavior: 'Cart', maxStepDurationMs: 60000, maxSteps: 15 },
+    defaultRoute: '/',
+    signal: new AbortController().signal,
+  });
+
+  assert.equal(result.outcome, 'Failed');
+  assert.match(result.reason ?? '', /Mutating browser command is not allowed during assert step/);
+});
+
+function fakeExecutor(options: { snapshot?: string; screenshotPath?: string }) {
+  return async (args: string[]) => {
+    if (args[0] === 'snapshot') {
+      return { exitCode: 0, stdout: options.snapshot ?? '@e1', stderr: '' };
+    }
+    if (args[0] === 'screenshot') {
+      const path = options.screenshotPath ?? '/tmp/screenshot.png';
+      return { exitCode: 0, stdout: `Screenshot saved to ${path}`, stderr: '' };
+    }
+    if (args[0] === 'get' && args[1] === 'url') {
+      return { exitCode: 0, stdout: 'http://127.0.0.1:5173/', stderr: '' };
+    }
+    return { exitCode: 0, stdout: 'ok', stderr: '' };
+  };
+}
+
 function delay(ms: number): Promise<void> {
   return new Promise(resolve => setTimeout(resolve, ms));
 }
