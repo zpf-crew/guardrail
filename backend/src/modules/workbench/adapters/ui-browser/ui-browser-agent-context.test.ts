@@ -110,7 +110,12 @@ test('buildAgentIterationContext allows scenario completion when all Then steps 
     gherkinSteps: steps,
     currentStepIndex: 2,
     completedSteps: [{ index: 0, note: 'Home open' }, { index: 1, note: 'Clicked' }],
-    thenVerdicts: [{ stepIndex: 2, satisfied: true, reason: 'Products page is displayed' }],
+    thenVerdicts: [{
+      stepIndex: 2,
+      text: 'the products page is displayed',
+      satisfied: true,
+      reason: 'Products page is displayed',
+    }],
     pageSnapshot: '- heading "Products" @e4',
     actionHistory: [{ iteration: 4, action: 'assertThen 2 true', result: 'ok' }],
     constraints: { behavior: 'Add to cart', maxStepDurationMs: 60_000, maxSteps: 15 },
