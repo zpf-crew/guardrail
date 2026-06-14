@@ -2,6 +2,7 @@ import { spawn } from 'node:child_process';
 import type { UiBrowserAgentAction } from '../../validation/workbench-validators.js';
 import {
   agentBrowserCommandArgs,
+  isAgentBrowserCommandAction,
   isExecutableAgentBrowserCommand,
 } from './agent-browser-command-policy.js';
 
@@ -14,7 +15,7 @@ export interface AgentExecuteResult {
 export type AgentExecutor = (args: string[], signal: AbortSignal) => Promise<AgentExecuteResult>;
 
 export function agentCommandArgs(baseUrl: string, action: UiBrowserAgentAction): string[] | null {
-  if (!isExecutableAgentBrowserCommand(action)) return null;
+  if (!isAgentBrowserCommandAction(action)) return null;
   return agentBrowserCommandArgs(baseUrl, action);
 }
 
