@@ -545,8 +545,6 @@ export interface PlanAction {
   label: string;                   // "Add unit tests"
   /** Number of items, or null for run/coverage actions. */
   count: number | null;
-  /** Behavior titles covered by this action group. */
-  items?: string[];
 }
 
 export interface BehaviorRunConstraints {
