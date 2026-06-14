@@ -330,12 +330,12 @@ classDiagram
 
 `generate` short-circuits to a no-op result when approval is `cancel`, `skipUiTests`, or `unitTestsOnly` — without calling the model.
 
-`run` is **not** model-driven today. It:
+`run` drives an agentic snapshot-ref loop:
 
-1. Extracts scenario text from generated diffs (`scenarioTextFromGeneration`)
-2. Builds a bounded browser action plan (`fallbackRunPlanFromScenario`)
-3. Executes commands via `UiBrowserRunner` → `agent-browser`
-4. Streams screenshot events through `emit` as commands complete
+1. Extracts Gherkin scenario text from generated diffs (`scenarioTextFromChange`)
+2. Parses steps and loops: `agent-browser snapshot -i` → model decides next `@eN` action
+3. Records per-`Then` verdicts; scenario passes only when all `Then` steps are satisfied
+4. Streams screenshot events through `emit` as the agent captures evidence
 
 ---
 
@@ -422,13 +422,16 @@ sequenceDiagram
   participant SSE as SSE stream
   participant UI as RunStep / evidence-panel
 
-  Adapter->>Scenario: scenarioTextFromGeneration()
-  Scenario->>Adapter: UiBrowserRunPlan
-  Adapter->>Runner: run(url, route, plan)
-  loop Each plan action
-    Runner->>CLI: spawn command
-    CLI-->>Runner: stdout (screenshot path)
-    Runner->>Adapter: evidence item
+  Adapter->>Scenario: scenarioTextFromChange()
+  Adapter->>AgentRunner: runScenario(gherkin, constraints)
+  loop Each agent iteration
+    AgentRunner->>CLI: snapshot -i
+    CLI-->>AgentRunner: accessibility tree (@eN refs)
+    AgentRunner->>Model: decideNext(context)
+    Model-->>AgentRunner: UiBrowserAgentAction
+    AgentRunner->>CLI: click/fill/screenshot
+    CLI-->>AgentRunner: stdout (screenshot path)
+    AgentRunner->>Adapter: evidence item
     Adapter->>SSE: emit screenshot event
     SSE->>UI: live thumbnail
   end
@@ -470,7 +473,7 @@ The architecture is designed for incremental expansion:
 | New test type | Implement `TestTypeAdapter`, register in `WorkbenchService` adapters array |
 | New repository source | Implement `RepositoryContextProvider` (e.g. GitHub clone) |
 | New workbench step | Add to `WorkflowStepId`, route, service dispatch, frontend step component |
-| Richer browser planning | Replace `fallbackRunPlanFromScenario` with model-driven `test-run-ui-browser` skill |
+| Agentic UI run budgets | Tune per-behavior `runConstraints` in Plan (default 60s / 15 steps) |
 | Persistent sessions | Swap `WorkbenchJobStore` for a database-backed implementation without changing routes |
 
 ---

@@ -2,7 +2,6 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
   validateWorkbenchStepResult,
-  validateUiBrowserRunPlan,
   validateUiBrowserAgentAction,
 } from './workbench-validators.js';
 
@@ -61,21 +60,6 @@ test('rejects invalid generation result shape', () => {
   );
 });
 
-test('validates ui browser run plan', () => {
-  const result = validateUiBrowserRunPlan({
-    scenarioTitle: 'Complete onboarding',
-    actions: [
-      { kind: 'open', path: '/onboarding' },
-      { kind: 'waitForLoad', state: 'networkidle' },
-      { kind: 'screenshot', label: 'Onboarding loaded' },
-      { kind: 'click', role: 'button', name: 'Continue' },
-      { kind: 'assertText', text: 'Scan' },
-    ],
-  });
-
-  assert.equal(result.actions.length, 5);
-});
-
 test('validateUiBrowserAgentAction accepts click ref action', () => {
   const result = validateUiBrowserAgentAction({ kind: 'click', ref: '@e4' });
   assert.equal(result.kind, 'click');
@@ -89,5 +73,8 @@ test('validateUiBrowserAgentAction accepts assertThen', () => {
     satisfied: false,
     reason: 'Products page not visible',
   });
-  assert.equal(result.satisfied, false);
+  assert.equal(result.kind, 'assertThen');
+  if (result.kind === 'assertThen') {
+    assert.equal(result.satisfied, false);
+  }
 });

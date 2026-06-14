@@ -252,21 +252,6 @@ const reviewSchema = z.object({
   recommendation: z.string(),
 });
 
-const uiBrowserRunActionSchema = z.discriminatedUnion('kind', [
-  z.object({ kind: z.literal('open'), path: z.string() }),
-  z.object({ kind: z.literal('waitForLoad'), state: z.enum(['load', 'domcontentloaded', 'networkidle']) }),
-  z.object({ kind: z.literal('snapshot') }),
-  z.object({ kind: z.literal('screenshot'), label: z.string() }),
-  z.object({ kind: z.literal('click'), role: z.string(), name: z.string() }),
-  z.object({ kind: z.literal('fill'), label: z.string(), value: z.string() }),
-  z.object({ kind: z.literal('assertText'), text: z.string() }),
-]);
-
-const uiBrowserRunPlanSchema = z.object({
-  scenarioTitle: z.string(),
-  actions: z.array(uiBrowserRunActionSchema).min(1),
-});
-
 const schemas = {
   IsolationResult: isolationSchema,
   IsolationClassifications: isolationClassificationsSchema,
@@ -277,7 +262,6 @@ const schemas = {
   TestRunResult: runSchema,
   ReviewSummary: reviewSchema,
   ReviewRecommendation: reviewRecommendationSchema,
-  UiBrowserRunPlan: uiBrowserRunPlanSchema,
 } as const;
 
 interface WorkbenchStepResultByName {
@@ -290,11 +274,9 @@ interface WorkbenchStepResultByName {
   TestRunResult: TestRunResult;
   ReviewSummary: ReviewSummary;
   ReviewRecommendation: { recommendation: string };
-  UiBrowserRunPlan: UiBrowserRunPlan;
 }
 
 export type WorkbenchSchemaName = keyof typeof schemas;
-export type UiBrowserRunPlan = z.infer<typeof uiBrowserRunPlanSchema>;
 export type UiBrowserAgentAction = z.infer<typeof uiBrowserAgentActionSchema>;
 export type BehaviorRunConstraints = z.infer<typeof behaviorRunConstraintsSchema>;
 
@@ -316,15 +298,6 @@ export function validateWorkbenchStepResult<TName extends WorkbenchSchemaName>(
   }
 
   return result.data as WorkbenchStepResultByName[TName];
-}
-
-export function validateUiBrowserRunPlan(value: unknown): UiBrowserRunPlan {
-  const result = uiBrowserRunPlanSchema.safeParse(value);
-  if (!result.success) {
-    throw new Error(`UiBrowserRunPlan validation failed: ${formatIssues(result.error.issues)}`);
-  }
-
-  return result.data;
 }
 
 function formatIssues(issues: z.ZodIssue[]): string {

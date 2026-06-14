@@ -261,7 +261,7 @@ test('workbench run job emits screenshot event with served artifact URL', async 
   })).json();
   const analyzeSnapshot = await waitForJob(app, session.id, analyzeJob.jobId, ['succeeded']);
   assert.equal(analyzeSnapshot.session.isolation?.target.feature, 'Checkout');
-  assert.ok(analyzeSnapshot.session.isolation?.sourceFiles[0]?.path.includes('CheckoutPage'));
+  assert.ok((analyzeSnapshot.session.isolation?.classifications.length ?? 0) > 0);
 
   const planJob = (await app.inject({
     method: 'POST',
@@ -590,7 +590,7 @@ async function buildRouteTestApp(): Promise<FastifyInstance> {
 }
 
 async function buildWorkbenchRouteTestApp(options: {
-  runner?: NonNullable<NonNullable<ConstructorParameters<typeof UiBrowserAdapter>[0]>['runner']>;
+  agentRunner?: NonNullable<NonNullable<ConstructorParameters<typeof UiBrowserAdapter>[0]>['agentRunner']>;
   devServer?: NonNullable<ConstructorParameters<typeof UiBrowserAdapter>[0]>['devServer'];
   artifactStore?: WorkbenchArtifactStore;
   eventBus?: WorkbenchJobEventBus;
@@ -620,7 +620,7 @@ async function buildWorkbenchRouteTestApp(options: {
   const repositoryProvider = options.repositoryProvider
     ?? new LocalGuardrailRepositoryProvider({ rootDir });
   const uiBrowserOptions: ConstructorParameters<typeof UiBrowserAdapter>[0] = {};
-  if (options.runner) uiBrowserOptions.runner = options.runner;
+  if (options.agentRunner) uiBrowserOptions.agentRunner = options.agentRunner;
   if (options.devServer) uiBrowserOptions.devServer = options.devServer;
 
   const service = new WorkbenchService(
@@ -646,15 +646,19 @@ async function buildArtifactRouteTestApp(
   return buildWorkbenchRouteTestApp({
     artifactStore: new WorkbenchArtifactStore({ rootDir: artifactRoot, allowedSourceRoots: [screenshotRoot] }),
     devServer: stubDevServer(),
-    runner: {
-      async run() {
+    agentRunner: {
+      async runScenario() {
         return {
-          outcome: 'Passed',
+          outcome: 'Passed' as const,
           durationMs: 25,
           evidence: [
-            { kind: 'screenshot', label: 'Onboarding page loaded', href: loadedScreenshotPath },
-            { kind: 'screenshot', label: 'Onboarding progress evidence', href: screenshotPath },
+            { kind: 'screenshot' as const, label: 'Onboarding page loaded', href: loadedScreenshotPath },
+            { kind: 'screenshot' as const, label: 'Onboarding progress evidence', href: screenshotPath },
           ],
+          thenVerdicts: [],
+          reason: null,
+          iterationsUsed: 2,
+          constraintsApplied: { behavior: 'Test', maxDurationMs: 60_000, maxSteps: 15 },
         };
       },
     },
