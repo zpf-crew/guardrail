@@ -75,17 +75,20 @@ const isolationSchema = z.object({
 
 const behaviorRunConstraintsSchema = z.object({
   behavior: z.string(),
-  maxDurationMs: z.number().int().positive(),
+  maxStepDurationMs: z.number().int().positive(),
   maxSteps: z.number().int().positive(),
   reason: z.string().optional(),
 });
 
+const agentBrowserCommandSchema = z.object({
+  kind: z.literal('agentBrowserCommand'),
+  command: z.string().min(1),
+  args: z.array(z.string()).max(12),
+  reason: z.string().min(1),
+});
+
 const uiBrowserAgentActionSchema = z.discriminatedUnion('kind', [
-  z.object({ kind: z.literal('open'), path: z.string() }),
-  z.object({ kind: z.literal('wait'), load: z.enum(['networkidle', 'domcontentloaded']) }),
-  z.object({ kind: z.literal('click'), ref: z.string().regex(/^@e\d+$/) }),
-  z.object({ kind: z.literal('fill'), ref: z.string().regex(/^@e\d+$/), value: z.string() }),
-  z.object({ kind: z.literal('screenshot'), label: z.string() }),
+  agentBrowserCommandSchema,
   z.object({ kind: z.literal('stepComplete'), stepIndex: z.number().int().nonnegative(), note: z.string() }),
   z.object({
     kind: z.literal('assertThen'),
@@ -130,6 +133,7 @@ const planQuestionSchema = z.object({
 
 const testPlanQuestionsSchema = z.object({
   questions: z.array(planQuestionSchema),
+  runConstraintOverrides: z.array(behaviorRunConstraintsSchema).optional(),
 });
 
 const diffLineSchema = z.object({
@@ -268,7 +272,10 @@ interface WorkbenchStepResultByName {
   IsolationResult: IsolationResult;
   IsolationClassifications: { classifications: IsolationResult['classifications'] };
   TestPlan: TestPlan;
-  TestPlanQuestions: { questions: TestPlan['questions'] };
+  TestPlanQuestions: {
+    questions: TestPlan['questions'];
+    runConstraintOverrides?: TestPlan['runConstraints'];
+  };
   GenerationResult: GenerationResult;
   GenerationChanges: { changes: GenerationResult['changes'] };
   TestRunResult: TestRunResult;

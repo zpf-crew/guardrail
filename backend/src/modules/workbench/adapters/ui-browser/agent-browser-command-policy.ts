@@ -75,12 +75,12 @@ const FIND_LOCATORS = new Set([
 type ActionWithKind = { kind?: unknown };
 
 export function isAgentBrowserCommandAction(
-  action: UiBrowserAgentAction | AgentBrowserCommandAction,
-): action is AgentBrowserCommandAction {
+  action: UiBrowserAgentAction,
+): action is UiBrowserAgentAction & AgentBrowserCommandAction {
   return (action as ActionWithKind).kind === 'agentBrowserCommand';
 }
 
-export function isExecutableAgentBrowserCommand(action: UiBrowserAgentAction | AgentBrowserCommandAction): boolean {
+export function isExecutableAgentBrowserCommand(action: UiBrowserAgentAction): boolean {
   return isAgentBrowserCommandAction(action);
 }
 

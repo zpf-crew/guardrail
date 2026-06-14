@@ -1,6 +1,9 @@
 import type { AgentIterationContext } from '../adapters/ui-browser/ui-browser-agent-context.js';
 
 const KIND_ALIASES: Record<string, string> = {
+  agent_browser_command: 'agentBrowserCommand',
+  agent_browser: 'agentBrowserCommand',
+  command: 'agentBrowserCommand',
   step_complete: 'stepComplete',
   step_failed: 'stepFailed',
   assert_then: 'assertThen',
@@ -57,6 +60,84 @@ function normalizeRef(raw: unknown): string | undefined {
   return trimmed;
 }
 
+function stringArgs(raw: unknown): string[] {
+  if (!Array.isArray(raw)) return [];
+  return raw.map(value => String(value));
+}
+
+function commandReason(action: Record<string, unknown>, fallback: string): string {
+  return typeof action.reason === 'string' && action.reason.trim()
+    ? action.reason.trim()
+    : fallback;
+}
+
+function legacyCommand(kind: string, normalized: Record<string, unknown>, context: AgentIterationContext): unknown {
+  switch (kind) {
+    case 'open':
+      return {
+        kind: 'agentBrowserCommand',
+        command: 'open',
+        args: [typeof normalized.path === 'string' && normalized.path.trim() ? normalized.path.trim() : '/'],
+        reason: commandReason(normalized, `Open page for ${context.gherkinSteps[context.currentStepIndex]?.text ?? context.scenarioTitle}`),
+      };
+    case 'wait':
+      return {
+        kind: 'agentBrowserCommand',
+        command: 'wait',
+        args: [normalized.load === 'domcontentloaded' ? 'domcontentloaded' : 'networkidle'],
+        reason: commandReason(normalized, 'Wait for page readiness'),
+      };
+    case 'click': {
+      const ref = normalizeRef(normalized.ref);
+      return ref ? {
+        kind: 'agentBrowserCommand',
+        command: 'click',
+        args: [ref],
+        reason: commandReason(normalized, `Click ${ref}`),
+      } : normalized;
+    }
+    case 'fill': {
+      const ref = normalizeRef(normalized.ref);
+      return ref ? {
+        kind: 'agentBrowserCommand',
+        command: 'fill',
+        args: [ref, typeof normalized.value === 'string' ? normalized.value : ''],
+        reason: commandReason(normalized, `Fill ${ref}`),
+      } : normalized;
+    }
+    case 'press':
+      return {
+        kind: 'agentBrowserCommand',
+        command: 'press',
+        args: [typeof normalized.key === 'string' && normalized.key.trim() ? normalized.key.trim() : 'Enter'],
+        reason: commandReason(normalized, 'Press keyboard key'),
+      };
+    case 'scroll':
+      return {
+        kind: 'agentBrowserCommand',
+        command: 'scroll',
+        args: [
+          isScrollDirection(normalized.direction) ? normalized.direction : 'down',
+          ...(typeof normalized.pixels === 'number' && Number.isFinite(normalized.pixels) && normalized.pixels > 0
+            ? [String(Math.round(normalized.pixels))]
+            : []),
+        ],
+        reason: commandReason(normalized, 'Scroll page'),
+      };
+    case 'screenshot':
+      return {
+        kind: 'agentBrowserCommand',
+        command: 'screenshot',
+        args: [],
+        reason: typeof normalized.label === 'string' && normalized.label.trim()
+          ? normalized.label.trim()
+          : stepText(context, context.currentStepIndex),
+      };
+    default:
+      return normalized;
+  }
+}
+
 export function normalizeAgentActionInput(
   value: unknown,
   context: AgentIterationContext,
@@ -98,36 +179,26 @@ export function normalizeAgentActionInput(
           ? normalized.reason
           : `Failed: ${stepText(context, stepIndex)}`,
       };
-    case 'screenshot':
+    case 'agentBrowserCommand':
       return {
         kind,
-        label: typeof normalized.label === 'string' && normalized.label.trim()
-          ? normalized.label
-          : stepText(context, stepIndex),
+        command: typeof normalized.command === 'string' ? normalized.command.trim() : '',
+        args: stringArgs(normalized.args),
+        reason: commandReason(normalized, stepText(context, stepIndex)),
       };
     case 'open':
-      return {
-        kind,
-        path: typeof normalized.path === 'string' && normalized.path.trim()
-          ? normalized.path
-          : '/',
-      };
     case 'wait':
-      return {
-        kind,
-        load: normalized.load === 'domcontentloaded' ? 'domcontentloaded' : 'networkidle',
-      };
-    case 'click': {
-      const ref = normalizeRef(normalized.ref);
-      return ref ? { kind, ref } : normalized;
-    }
-    case 'fill': {
-      const ref = normalizeRef(normalized.ref);
-      return ref
-        ? { kind, ref, value: typeof normalized.value === 'string' ? normalized.value : '' }
-        : normalized;
-    }
+    case 'click':
+    case 'fill':
+    case 'press':
+    case 'scroll':
+    case 'screenshot':
+      return legacyCommand(kind, normalized, context);
     default:
       return normalized;
   }
+}
+
+function isScrollDirection(value: unknown): value is 'up' | 'down' | 'left' | 'right' {
+  return value === 'up' || value === 'down' || value === 'left' || value === 'right';
 }
