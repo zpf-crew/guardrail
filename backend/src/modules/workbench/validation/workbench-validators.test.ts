@@ -100,3 +100,58 @@ test('validateUiBrowserAgentAction accepts agentBrowserCommand', () => {
     assert.deepEqual(result.args, ['role', 'button', 'click', 'Add to Cart']);
   }
 });
+
+test('validates UI Browser user flow plans', () => {
+  const result = validateWorkbenchStepResult('UiBrowserUserFlowPlan', {
+    behaviorTitle: 'Add product to cart from homepage',
+    acceptedFlows: [
+      {
+        id: 'flow-1',
+        title: 'Add one product to cart',
+        sourceScenarioIndexes: [0, 1],
+        userGoal: 'A shopper adds a product from the homepage to the cart.',
+        durableOutcome: 'The cart count or cart contents show one item.',
+        priority: 'high',
+      },
+    ],
+    droppedScenarios: [
+      {
+        sourceScenarioIndex: 2,
+        reason: 'Toast-only assertion is transient and covered by cart state.',
+      },
+    ],
+  });
+
+  assert.equal(result.acceptedFlows[0].id, 'flow-1');
+  assert.equal(result.droppedScenarios[0].sourceScenarioIndex, 2);
+});
+
+test('validates UI Browser execution plans', () => {
+  const result = validateWorkbenchStepResult('UiBrowserExecutionPlan', {
+    flowId: 'flow-1',
+    title: 'Add one product to cart',
+    steps: [
+      {
+        id: 'step-1',
+        kind: 'setup',
+        instruction: 'Open the homepage.',
+        successCriteria: 'The homepage is loaded.',
+      },
+      {
+        id: 'step-2',
+        kind: 'action',
+        instruction: 'Find the first Add to Cart button, scrolling if needed, and click it.',
+        successCriteria: 'The click completes.',
+      },
+      {
+        id: 'step-3',
+        kind: 'assert',
+        instruction: 'Verify the cart reflects one added item.',
+        successCriteria: 'The cart count or cart contents show one item.',
+      },
+    ],
+  });
+
+  assert.equal(result.steps.length, 3);
+  assert.equal(result.steps[2].kind, 'assert');
+});
