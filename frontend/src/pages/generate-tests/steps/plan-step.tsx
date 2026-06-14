@@ -1,5 +1,5 @@
 import * as React from 'react';
-import type { TestPlan, PlanAction, PlanRiskAssessment, PlanApproval } from '@/types/testlens';
+import type { TestPlan, PlanAction, PlanRiskAssessment, PlanApproval, BehaviorRunConstraints } from '@/types/testlens';
 import { Button } from '@/components/ui/button';
 import { ArrowLeftIcon, CheckIcon, PlanActionIcon } from '@/components/icons';
 import { StepHeader, BlockHeader, FileIcon } from '../shared';
@@ -29,6 +29,21 @@ const LEVEL_CLASS: Record<RiskLevel, string> = {
   medium: 'text-[#fbbf24] bg-[rgba(251,191,36,0.14)]',
   high: 'text-[#fb7185] bg-[rgba(251,113,133,0.14)]',
 };
+
+function constraintForBehavior(
+  plan: TestPlan,
+  behavior: string,
+): BehaviorRunConstraints | undefined {
+  return plan.runConstraints?.find(item => item.behavior === behavior);
+}
+
+function formatConstraint(constraint: BehaviorRunConstraints): string {
+  const seconds = Math.round(constraint.maxDurationMs / 1000);
+  const duration = seconds >= 60 ? `${Math.round(seconds / 60)}m` : `${seconds}s`;
+  const isDefault = constraint.maxDurationMs === 60_000 && constraint.maxSteps === 15;
+  if (isDefault && !constraint.reason) return `${duration} / ${constraint.maxSteps} steps`;
+  return `${duration} / ${constraint.maxSteps} steps${constraint.reason ? ` — ${constraint.reason}` : ''}`;
+}
 
 import { WorkbenchProgressPanel } from '../workbench-progress-panel';
 import type { WorkbenchProgressEvent } from '../use-workbench';
@@ -66,12 +81,31 @@ export function PlanStep({ plan, generating, generateProgress, onBack, onApprove
           <BlockHeader label="Proposed actions" />
           <div className="flex flex-col gap-[9px]">
             {plan.proposedActions.map(a => (
-              <div key={a.label} className="flex items-center gap-[12px] p-[12px_14px] bg-[#11141c] border border-[rgba(255,255,255,0.07)] rounded-[11px]">
-                <div className="w-[30px] h-[30px] rounded-[8px] flex-shrink-0 grid place-items-center" style={{ background: ACTION_BG[a.action], color: ACTION_COLOR[a.action] }}>
-                  <PlanActionIcon action={a.label} />
+              <div key={a.label} className="p-[12px_14px] bg-[#11141c] border border-[rgba(255,255,255,0.07)] rounded-[11px]">
+                <div className="flex items-center gap-[12px]">
+                  <div className="w-[30px] h-[30px] rounded-[8px] flex-shrink-0 grid place-items-center" style={{ background: ACTION_BG[a.action], color: ACTION_COLOR[a.action] }}>
+                    <PlanActionIcon action={a.label} />
+                  </div>
+                  <span className="text-[13.5px] text-[#e8ebf2] font-medium">{a.label}</span>
+                  <span className="ml-auto font-mono text-[16px] font-bold" style={{ color: ACTION_COLOR[a.action] }}>{a.count ?? '—'}</span>
                 </div>
-                <span className="text-[13.5px] text-[#e8ebf2] font-medium">{a.label}</span>
-                <span className="ml-auto font-mono text-[16px] font-bold" style={{ color: ACTION_COLOR[a.action] }}>{a.count ?? '—'}</span>
+                {a.items && a.items.length > 0 && (
+                  <ul className="mt-[10px] ml-[42px] flex flex-col gap-[6px] border-t border-[rgba(255,255,255,0.06)] pt-[10px]">
+                    {a.items.map(item => (
+                      <li key={item} className="text-[12.5px] text-[#98a1b3] leading-[1.45] list-none flex gap-[8px]">
+                        <span className="text-[#6b7488] flex-shrink-0">•</span>
+                        <span className="min-w-0 flex flex-col gap-[2px]">
+                          <span>{item}</span>
+                          {constraintForBehavior(plan, item) && (
+                            <span className="text-[11px] text-[#6b7488] font-mono">
+                              {formatConstraint(constraintForBehavior(plan, item)!)}
+                            </span>
+                          )}
+                        </span>
+                      </li>
+                    ))}
+                  </ul>
+                )}
               </div>
             ))}
           </div>
