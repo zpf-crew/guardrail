@@ -43,7 +43,7 @@ function flowPlanningModelConnect(responses: unknown[]) {
         content: JSON.stringify(responses[callIndex++] ?? responses[responses.length - 1]),
       }),
     }),
-  } as AdapterInput['modelConnect'];
+  } as unknown as AdapterInput['modelConnect'];
 }
 
 function defaultFlowPlanningModelConnect() {
@@ -87,7 +87,7 @@ function defaultFlowPlanningModelConnect() {
         throw new Error(`unexpected schema ${userContent.schemaName}`);
       },
     }),
-  } as AdapterInput['modelConnect'];
+  } as unknown as AdapterInput['modelConnect'];
 }
 
 function generationWithUiChange(opts: { title: string; diffText: string[] }): GenerationResult {
@@ -180,7 +180,6 @@ async function buildInput(overrides: Partial<AdapterInput> = {}): Promise<Adapte
     session,
     repository: repo,
     emit: async event => event,
-    modelConnect,
     skills,
     structuredModel,
     signal: new AbortController().signal,
@@ -747,16 +746,6 @@ test('drops weak generated scenarios before browser execution', async () => {
     },
   });
   const input = await buildInput({
-    generation: generationWithUiChange({
-      title: 'Toast appears after add to cart',
-      diffText: [
-        'Feature: Cart',
-        'Scenario: Toast appears',
-        '  Given the homepage is loaded',
-        '  When I add a product to cart',
-        '  Then I should see a success toast notification',
-      ],
-    }),
     modelConnect: flowPlanningModelConnect([
       {
         behaviorTitle: 'Toast appears after add to cart',
@@ -767,8 +756,18 @@ test('drops weak generated scenarios before browser execution', async () => {
       },
     ]),
   });
+  const generation = generationWithUiChange({
+    title: 'Toast appears after add to cart',
+    diffText: [
+      'Feature: Cart',
+      'Scenario: Toast appears',
+      '  Given the homepage is loaded',
+      '  When I add a product to cart',
+      '  Then I should see a success toast notification',
+    ],
+  });
 
-  const result = await adapter.run(input);
+  const result = await adapter.run({ ...input, generation });
 
   assert.equal(result.matrix[0]?.status, 'Skipped');
   assert.equal(result.matrix[0]?.reason, 'Dropped before execution: Toast-only assertion is transient.');
@@ -784,21 +783,21 @@ test('executes accepted user flows instead of raw scenarios', async () => {
       },
     },
   });
+  const generation = generationWithUiChange({
+    title: 'Add product to cart from homepage',
+    diffText: [
+      'Feature: Cart',
+      'Scenario: Add product',
+      '  Given the homepage is loaded',
+      '  When I click "Add to Cart"',
+      '  Then the cart should contain 1 item',
+      'Scenario: Toast appears',
+      '  Given the homepage is loaded',
+      '  When I click "Add to Cart"',
+      '  Then I should see a success toast',
+    ],
+  });
   const input = await buildInput({
-    generation: generationWithUiChange({
-      title: 'Add product to cart from homepage',
-      diffText: [
-        'Feature: Cart',
-        'Scenario: Add product',
-        '  Given the homepage is loaded',
-        '  When I click "Add to Cart"',
-        '  Then the cart should contain 1 item',
-        'Scenario: Toast appears',
-        '  Given the homepage is loaded',
-        '  When I click "Add to Cart"',
-        '  Then I should see a success toast',
-      ],
-    }),
     modelConnect: flowPlanningModelConnect([
       {
         behaviorTitle: 'Add product to cart from homepage',
@@ -828,7 +827,7 @@ test('executes accepted user flows instead of raw scenarios', async () => {
     ]),
   });
 
-  const result = await adapter.run(input);
+  const result = await adapter.run({ ...input, generation });
 
   assert.deepEqual(seen, ['Add one product to cart']);
   assert.equal(result.matrix.some(row => row.status === 'Skipped'), true);
@@ -881,7 +880,6 @@ test('end-to-end smoke test reduces duplicate and toast drafts before execution'
     },
   });
   const input = await buildInput({
-    generation,
     modelConnect: flowPlanningModelConnect([
       {
         behaviorTitle: 'Add product to cart',
@@ -931,7 +929,7 @@ test('end-to-end smoke test reduces duplicate and toast drafts before execution'
     ]),
   });
 
-  const result = await adapter.run(input);
+  const result = await adapter.run({ ...input, generation });
 
   assert.equal(result.ui.outcome, 'Passed');
   assert.equal(result.ui.passed, 2);
