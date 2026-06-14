@@ -196,49 +196,6 @@ test('decideNext normalizes stepComplete missing required fields', async () => {
   assert.equal(calls, 1);
 });
 
-test('planScenario validates concise UI browser scenario plan JSON', async () => {
-  const runner = new AgentModelRunner({
-    modelConnect: fakeModelConnect({
-      content: JSON.stringify({
-        title: 'Add to cart',
-        steps: [
-          {
-            id: 'step-1',
-            kind: 'setup',
-            sourceStepIndexes: [0],
-            instruction: 'Open the home page',
-            successCriteria: 'The home page is loaded',
-          },
-          {
-            id: 'step-2',
-            kind: 'action',
-            sourceStepIndexes: [1],
-            instruction: 'Find the first Add to Cart button, scrolling if needed, and click it',
-            successCriteria: 'The click completes',
-          },
-          {
-            id: 'step-3',
-            kind: 'assert',
-            sourceStepIndexes: [3],
-            instruction: 'Verify the cart count increased',
-            successCriteria: 'A durable cart count shows 1 item',
-          },
-        ],
-      }),
-    }),
-  });
-
-  const plan = await runner.planScenario({
-    profile: 'coder',
-    skill: { name: 'test-plan-ui-browser-scenario', content: '# skill' },
-    context: { gherkinText: 'Scenario: Add to cart' },
-    signal: new AbortController().signal,
-  });
-
-  assert.equal(plan.title, 'Add to cart');
-  assert.deepEqual(plan.steps.map(step => step.kind), ['setup', 'action', 'assert']);
-});
-
 test('plans UI Browser user flows', async () => {
   const runner = new AgentModelRunner({ modelConnect: fakeModelConnect({
     content: JSON.stringify({

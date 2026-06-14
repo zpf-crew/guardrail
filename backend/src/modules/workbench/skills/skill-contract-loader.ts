@@ -5,7 +5,6 @@ const supportedSkillNames = new Set([
   'test-isolation-files',
   'test-plan',
   'test-generate-ui-browser',
-  'test-plan-ui-browser-scenario',
   'test-plan-ui-browser-flows',
   'test-plan-ui-browser-execution',
   'test-run-ui-browser-agent',
