@@ -5,6 +5,7 @@ import type {
   PlanApproval,
   ReviewSummary,
   RunOutcome,
+  ScenarioRunResult,
   TestPlan,
   TestResultRow,
   TestRunResult,
@@ -24,13 +25,14 @@ import {
   resolveDevServerTarget,
   type DevServerTarget,
 } from '../../dev-server/dev-server-resolver.js';
-import { buildRunPlan } from '../../run/run-plan-builder.js';
-import { buildRunPlanContext } from '../../run/run-plan-context.js';
+import { lookupRunConstraints } from '../../plan/run-constraints.js';
+import { AgentModelRunner } from '../../model/agent-model-runner.js';
 import { scenarioTextFromChange } from './ui-browser-scenario.js';
-import { UiBrowserRunner, type UiBrowserRunnerResult, type UiBrowserRunnerRunArgs } from './ui-browser-runner.js';
+import { UiBrowserAgentRunner, type RunScenarioArgs } from './ui-browser-agent-runner.js';
+import { defaultAgentExecutor } from './ui-browser-agent-executor.js';
 
-interface UiBrowserRunnerLike {
-  run(args: UiBrowserRunnerRunArgs): Promise<UiBrowserRunnerResult>;
+interface AgentRunnerLike {
+  runScenario(args: RunScenarioArgs): Promise<ScenarioRunResult>;
 }
 
 interface DevServerLike {
@@ -40,12 +42,17 @@ interface DevServerLike {
 }
 
 interface UiBrowserAdapterOptions {
-  runner?: UiBrowserRunnerLike;
+  agentRunner?: AgentRunnerLike;
   devServer?: DevServerLike;
 }
 
 interface UiRunOutcome {
-  result: UiBrowserRunnerResult;
+  result: {
+    outcome: RunOutcome;
+    durationMs: number;
+    evidence: ScenarioRunResult['evidence'];
+    errorMessage?: string;
+  };
   targetUrl: string | null;
   matrix: TestResultRow[];
 }
@@ -60,13 +67,8 @@ function worstRunOutcome(current: RunOutcome, next: RunOutcome): RunOutcome {
   return current;
 }
 
-function matrixEvidenceLabel(evidence: UiBrowserRunnerResult['evidence']): string | null {
+function matrixEvidenceLabelFromItems(evidence: Array<{ kind: string }>): string | null {
   return evidence.length > 0 ? evidence.map(item => item.kind).join(', ') : null;
-}
-
-function matrixFailureReason(outcome: RunOutcome, errorMessage?: string): string | null {
-  if (outcome === 'Passed' || outcome === 'Skipped') return null;
-  return errorMessage ?? `UI Browser runner reported ${outcome.toLowerCase()} outcome.`;
 }
 
 function uiCommandFor(targetUrl: string | null): string {
@@ -144,11 +146,11 @@ function noOpRun(): TestRunResult {
 export class UiBrowserAdapter implements TestTypeAdapter {
   readonly testType = 'UI / Browser' as const;
 
-  readonly #runner: UiBrowserRunnerLike;
+  readonly #agentRunner: AgentRunnerLike | null;
   readonly #devServer: DevServerLike;
 
   constructor(options: UiBrowserAdapterOptions = {}) {
-    this.#runner = options.runner ?? new UiBrowserRunner();
+    this.#agentRunner = options.agentRunner ?? null;
     if (options.devServer) {
       this.#devServer = options.devServer;
     } else {
@@ -401,13 +403,12 @@ export class UiBrowserAdapter implements TestTypeAdapter {
       })),
     });
 
-    let commandProgress = Promise.resolve();
     const clonePath = input.repository.repo.path;
     const sessionId = input.session.id;
     let lease: DevServerLease | null = null;
     let targetUrl: string | null = null;
     const matrix: TestResultRow[] = [];
-    const allEvidence: UiBrowserRunnerResult['evidence'] = [];
+    const allEvidence: ScenarioRunResult['evidence'] = [];
     let totalDuration = 0;
     let worstOutcome: RunOutcome = 'Passed';
 
@@ -429,56 +430,23 @@ export class UiBrowserAdapter implements TestTypeAdapter {
       for (const [changeIndex, change] of uiChanges.entries()) {
         input.signal.throwIfAborted();
         const scenarioText = scenarioTextFromChange(change);
-        let modelPlan = null;
-        try {
-          const skill = await input.skills.load('test-run-ui-browser');
-          modelPlan = await input.structuredModel.runStep({
-            profile: 'coder',
-            skill,
-            schemaName: 'UiBrowserRunPlan',
-            context: buildRunPlanContext({
-              change,
-              scenarioText,
-              repository: input.repository,
-              isolation,
-              targetUrl: lease.baseUrl,
-            }),
-            signal: input.signal,
-          });
-        } catch (error) {
-          rethrowIfAbort(error, input.signal);
-        }
-
-        const plan = await buildRunPlan({
-          scenarioText,
-          modelPlan: modelPlan ?? null,
+        const constraints = lookupRunConstraints(input.session.plan?.runConstraints, change.title);
+        const agentRunner = this.#agentRunner ?? this.#createAgentRunner(input);
+        const scenarioResult = await agentRunner.runScenario({
+          baseUrl: lease.baseUrl,
+          gherkinText: scenarioText,
+          constraints,
           defaultRoute,
-        });
-        const runRoute = plan.actions[0]?.kind === 'open' ? plan.actions[0].path : defaultRoute;
-
-        await input.emit({
-          type: 'progress',
-          message: `Opening frontend in agent-browser (${changeIndex + 1}/${uiChanges.length}).`,
-          percent: Math.min(89, 78 + Math.round((changeIndex / uiChanges.length) * 10)),
-        });
-
-        const changeResult = await this.#runner.run({
-          url: lease.baseUrl,
-          route: runRoute,
-          plan,
           signal: input.signal,
-          onCommand: (args, index, total) => {
-            commandProgress = commandProgress.then(() => input.emit({
-              type: 'progress',
-              message: `Running agent-browser ${args[0]} (${index + 1}/${total}).`,
-              percent: Math.min(90, 78 + Math.round(((changeIndex + (index + 1) / total) / uiChanges.length) * 10)),
-            })).then(() => undefined);
-          },
+          onProgress: message => input.emit({
+            type: 'progress',
+            message: `[Scenario ${changeIndex + 1}/${uiChanges.length}] ${message}`,
+            percent: Math.min(90, 78 + Math.round(((changeIndex + 0.5) / uiChanges.length) * 10)),
+          }),
         });
-        await commandProgress;
 
-        const changeEvidence: UiBrowserRunnerResult['evidence'] = [];
-        for (const item of changeResult.evidence) {
+        const changeEvidence: ScenarioRunResult['evidence'] = [];
+        for (const item of scenarioResult.evidence) {
           if (item.kind === 'screenshot') {
             const emitted = await input.emit({ type: 'screenshot', artifact: item });
             if (emitted.type === 'screenshot') changeEvidence.push(emitted.artifact);
@@ -487,17 +455,17 @@ export class UiBrowserAdapter implements TestTypeAdapter {
           }
         }
 
-        totalDuration += changeResult.durationMs;
-        worstOutcome = worstRunOutcome(worstOutcome, changeResult.outcome);
+        totalDuration += scenarioResult.durationMs;
+        worstOutcome = worstRunOutcome(worstOutcome, scenarioResult.outcome);
         allEvidence.push(...changeEvidence);
         matrix.push({
           title: change.title,
           type: 'UI / Browser',
-          status: changeResult.outcome,
-          duration: durationLabel(changeResult.durationMs),
-          evidence: matrixEvidenceLabel(changeEvidence),
+          status: scenarioResult.outcome,
+          duration: durationLabel(scenarioResult.durationMs),
+          evidence: matrixEvidenceLabelFromItems(changeEvidence),
           evidenceItems: changeEvidence.length > 0 ? changeEvidence : undefined,
-          reason: matrixFailureReason(changeResult.outcome, changeResult.errorMessage),
+          reason: scenarioResult.reason,
           file: change.file,
         });
       }
@@ -512,7 +480,6 @@ export class UiBrowserAdapter implements TestTypeAdapter {
         matrix,
       };
     } catch (error) {
-      await commandProgress;
       rethrowIfAbort(error, input.signal);
       await input.emit({
         type: 'progress',
@@ -561,11 +528,27 @@ export class UiBrowserAdapter implements TestTypeAdapter {
       reason: failed.reason ?? `UI Browser runner reported ${failed.status.toLowerCase()} outcome.`,
       likelyCause: failed.status === 'Flaky'
         ? 'The UI or browser automation has inconsistent timing or state.'
-        : 'A browser command in the run plan did not complete successfully.',
+        : 'A Gherkin Then step was not satisfied on the live page.',
       suggestedFix: failed.status === 'Flaky'
         ? 'Review the captured trace and stabilize wait conditions before applying.'
         : 'Review the failure reason, fix selectors or assertions, and rerun.',
       actions: ['ask-agent-to-fix', 'accept-and-keep', 'revert-generated-test'],
     };
+  }
+
+  #createAgentRunner(input: AdapterInput): AgentRunnerLike {
+    const agentModel = new AgentModelRunner({ modelConnect: input.modelConnect });
+    return new UiBrowserAgentRunner({
+      decideNext: async context => {
+        const skill = await input.skills.load('test-run-ui-browser-agent');
+        return agentModel.decideNext({
+          profile: 'coder',
+          skill,
+          context,
+          signal: input.signal,
+        });
+      },
+      execute: defaultAgentExecutor,
+    });
   }
 }

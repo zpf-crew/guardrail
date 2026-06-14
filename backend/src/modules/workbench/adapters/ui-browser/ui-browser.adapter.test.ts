@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { UiBrowserAdapter } from './ui-browser.adapter.js';
 import { LocalGuardrailRepositoryProvider } from '../../repositories/local-guardrail-repository-provider.js';
 import type { AdapterInput } from '../test-type-adapter.js';
-import type { GenerationResult, WorkbenchSession, TestPlan } from '../../workbench.types.js';
+import type { GenerationResult, WorkbenchSession, TestPlan, ScenarioRunResult } from '../../workbench.types.js';
 import type { DevServerLease } from '../../dev-server/dev-server-orchestrator.js';
 import type { DevServerTarget } from '../../dev-server/dev-server-resolver.js';
 
@@ -30,6 +30,29 @@ function stubDevServer(options: StubDevServerOptions = {}) {
     })),
     stop: options.stop ?? (async lease => { await lease.stop(); }),
   };
+}
+
+function defaultAgentScenarioResult(overrides: Partial<ScenarioRunResult> = {}): ScenarioRunResult {
+  return {
+    outcome: 'Passed',
+    durationMs: 1000,
+    evidence: [],
+    thenVerdicts: [],
+    reason: null,
+    iterationsUsed: 1,
+    constraintsApplied: { behavior: 'Test', maxDurationMs: 60_000, maxSteps: 15 },
+    ...overrides,
+  };
+}
+
+function createAdapter(options: ConstructorParameters<typeof UiBrowserAdapter>[0] = {}) {
+  return new UiBrowserAdapter({
+    devServer: stubDevServer(),
+    agentRunner: {
+      runScenario: async () => defaultAgentScenarioResult(),
+    },
+    ...options,
+  });
 }
 
 async function buildInput(overrides: Partial<AdapterInput> = {}): Promise<AdapterInput> {
@@ -142,16 +165,6 @@ function generationStructuredModel() {
       if (schemaName === 'GenerationChanges') {
         return { changes: structuredClone(stubGeneration()).changes };
       }
-      if (schemaName === 'UiBrowserRunPlan') {
-        return {
-          scenarioTitle: 'Generated scenario',
-          actions: [
-            { kind: 'open', path: '/checkout' },
-            { kind: 'waitForLoad', state: 'networkidle' },
-            { kind: 'screenshot', label: 'Loaded' },
-          ],
-        };
-      }
       throw new Error(`unexpected schema ${schemaName}`);
     },
   } as never;
@@ -205,14 +218,6 @@ test('ui browser adapter uses structured model outputs for analyze plan generate
     ReviewRecommendation: {
       recommendation: 'Review screenshot evidence before applying.',
     },
-    UiBrowserRunPlan: {
-      scenarioTitle: 'Complete onboarding with selected repository',
-      actions: [
-        { kind: 'open', path: '/onboarding' },
-        { kind: 'waitForLoad', state: 'networkidle' },
-        { kind: 'screenshot', label: 'Onboarding page loaded' },
-      ],
-    },
   };
   const seenSchemas: string[] = [];
   const seenContexts: Record<string, unknown> = {};
@@ -225,10 +230,7 @@ test('ui browser adapter uses structured model outputs for analyze plan generate
       },
     } as never,
   });
-  const adapter = new UiBrowserAdapter({
-    devServer: stubDevServer(),
-    runner: { run: async () => ({ outcome: 'Passed', durationMs: 1000, evidence: [] }) },
-  });
+  const adapter = createAdapter();
 
   const isolation = await adapter.analyze(input);
   input.session.isolation = isolation;
@@ -243,7 +245,6 @@ test('ui browser adapter uses structured model outputs for analyze plan generate
     'IsolationClassifications',
     'TestPlanQuestions',
     'GenerationChanges',
-    'UiBrowserRunPlan',
     'ReviewRecommendation',
   ]);
   assert.ok(JSON.stringify(seenContexts.analyze).includes('onboarding'));
@@ -251,7 +252,7 @@ test('ui browser adapter uses structured model outputs for analyze plan generate
   assert.ok(JSON.stringify(seenContexts.generationchanges ?? '').includes('generationScope'));
   assert.ok(JSON.stringify(seenContexts.reviewrecommendation ?? '').includes('unresolvedPlanQuestions'));
   assert.equal(isolation.target.feature, 'Checkout');
-  assert.ok(isolation.sourceFiles[0]?.path.includes('CheckoutPage'));
+  assert.ok(isolation.classifications.length > 0);
   assert.ok(testPlan.proposedActions.length > 0);
   assert.equal(testPlan.questions.length, 1);
   assert.equal(testPlan.questions[0]?.id, 'coupon-apply-conflict');
@@ -265,12 +266,9 @@ test('ui browser adapter uses structured model outputs for analyze plan generate
 
 test('ui browser adapter uses normalized screenshot evidence returned from emit', async () => {
   const normalizedHref = '/api/workbench/wb-test/artifacts/onboarding.png';
-  const adapter = new UiBrowserAdapter({
-    devServer: stubDevServer(),
-    runner: {
-      run: async () => ({
-        outcome: 'Passed',
-        durationMs: 1000,
+  const adapter = createAdapter({
+    agentRunner: {
+      runScenario: async () => defaultAgentScenarioResult({
         evidence: [{ kind: 'screenshot', label: 'Onboarding screenshot', href: '/tmp/onboarding.png' }],
       }),
     },
@@ -292,7 +290,7 @@ test('ui browser adapter uses normalized screenshot evidence returned from emit'
 });
 
 test('ui browser adapter generate returns no-op changes when ui tests are skipped', async () => {
-  const adapter = new UiBrowserAdapter();
+  const adapter = createAdapter();
   const input = await buildInput();
 
   const generation = await adapter.generate({
@@ -306,7 +304,7 @@ test('ui browser adapter generate returns no-op changes when ui tests are skippe
 });
 
 test('ui browser adapter generate returns no-op changes for unit-tests-only approval', async () => {
-  const adapter = new UiBrowserAdapter();
+  const adapter = createAdapter();
   const input = await buildInput();
 
   const generation = await adapter.generate({
@@ -320,7 +318,7 @@ test('ui browser adapter generate returns no-op changes for unit-tests-only appr
 });
 
 test('ui browser adapter generate returns no-op changes when approval is canceled', async () => {
-  const adapter = new UiBrowserAdapter();
+  const adapter = createAdapter();
   const input = await buildInput();
 
   const generation = await adapter.generate({
@@ -335,9 +333,8 @@ test('ui browser adapter generate returns no-op changes when approval is cancele
 
 test('ui browser adapter propagates runner abort rejection', async () => {
   const abortError = new DOMException('The operation was aborted.', 'AbortError');
-  const adapter = new UiBrowserAdapter({
-    devServer: stubDevServer(),
-    runner: { run: async () => { throw abortError; } },
+  const adapter = createAdapter({
+    agentRunner: { runScenario: async () => { throw abortError; } },
   });
   const input = await buildInput({ structuredModel: generationStructuredModel() });
   const generation = await adapter.generate({ ...input, plan, approval: { decision: 'approve', answers: {} } });
@@ -347,7 +344,7 @@ test('ui browser adapter propagates runner abort rejection', async () => {
 
 test('ui browser adapter propagates model abort rejection', async () => {
   const abortError = new DOMException('The operation was aborted.', 'AbortError');
-  const adapter = new UiBrowserAdapter();
+  const adapter = createAdapter();
   const input = await buildInput({
     structuredModel: {
       runStep: async () => { throw abortError; },
@@ -361,9 +358,10 @@ test('ui browser adapter propagates model abort rejection', async () => {
 });
 
 test('ui browser adapter returns attention for flaky runner results', async () => {
-  const adapter = new UiBrowserAdapter({
-    devServer: stubDevServer(),
-    runner: { run: async () => ({ outcome: 'Flaky', durationMs: 1500, evidence: [] }) },
+  const adapter = createAdapter({
+    agentRunner: {
+      runScenario: async () => defaultAgentScenarioResult({ outcome: 'Flaky', durationMs: 1500 }),
+    },
   });
   const input = await buildInput({ structuredModel: generationStructuredModel() });
   const generation = await adapter.generate({ ...input, plan, approval: { decision: 'approve', answers: {} } });
@@ -375,14 +373,13 @@ test('ui browser adapter returns attention for flaky runner results', async () =
 });
 
 test('ui browser adapter stores per-test failure reason in matrix rows', async () => {
-  const adapter = new UiBrowserAdapter({
-    devServer: stubDevServer(),
-    runner: {
-      run: async () => ({
+  const adapter = createAdapter({
+    agentRunner: {
+      runScenario: async () => defaultAgentScenarioResult({
         outcome: 'Failed',
         durationMs: 2100,
         evidence: [{ kind: 'screenshot', label: 'Homepage loaded', href: '/tmp/home.png' }],
-        errorMessage: 'agent-browser find role button click --name Add to cart failed: element not found',
+        reason: 'agent-browser find role button click --name Add to cart failed: element not found',
       }),
     },
   });
@@ -397,9 +394,8 @@ test('ui browser adapter stores per-test failure reason in matrix rows', async (
 });
 
 test('ui browser adapter returns failed result for non-abort runner failure', async () => {
-  const adapter = new UiBrowserAdapter({
-    devServer: stubDevServer(),
-    runner: { run: async () => { throw new Error('browser unavailable'); } },
+  const adapter = createAdapter({
+    agentRunner: { runScenario: async () => { throw new Error('browser unavailable'); } },
   });
   const input = await buildInput({ structuredModel: generationStructuredModel() });
   const generation = await adapter.generate({ ...input, plan, approval: { decision: 'approve', answers: {} } });
@@ -411,13 +407,13 @@ test('ui browser adapter returns failed result for non-abort runner failure', as
   assert.match(run.attention?.reason ?? '', /browser unavailable/);
 });
 
-test('ui browser adapter does not call runner after no-op generation', async () => {
+test('ui browser adapter does not call agent runner after no-op generation', async () => {
   let runnerCalled = false;
-  const adapter = new UiBrowserAdapter({
-    runner: {
-      run: async () => {
+  const adapter = createAdapter({
+    agentRunner: {
+      runScenario: async () => {
         runnerCalled = true;
-        return { outcome: 'Passed', durationMs: 1000, evidence: [] };
+        return defaultAgentScenarioResult();
       },
     },
   });
@@ -454,7 +450,7 @@ test('ui browser adapter does not call runner after no-op generation', async () 
 
 test('run starts and stops dev server before agent-browser', async () => {
   const events: string[] = [];
-  const adapter = new UiBrowserAdapter({
+  const adapter = createAdapter({
     devServer: {
       start: async () => ({
         baseUrl: 'http://127.0.0.1:5555',
@@ -471,7 +467,6 @@ test('run starts and stops dev server before agent-browser', async () => {
       }),
       stop: async lease => { await lease.stop(); },
     },
-    runner: { run: async () => ({ outcome: 'Passed', durationMs: 100, evidence: [] }) },
   });
   const input = await buildInput({ structuredModel: generationStructuredModel() });
   const generation = await adapter.generate({ ...input, plan, approval: { decision: 'approve', answers: {} } });
@@ -483,28 +478,15 @@ test('run starts and stops dev server before agent-browser', async () => {
 
 test('run executes one agent-browser session per generated UI change', async () => {
   const runCalls: string[] = [];
-  const adapter = new UiBrowserAdapter({
-    devServer: stubDevServer(),
-    runner: {
-      run: async ({ url }) => {
-        runCalls.push(url);
-        return { outcome: 'Passed', durationMs: 100, evidence: [] };
+  const adapter = createAdapter({
+    agentRunner: {
+      runScenario: async ({ baseUrl }) => {
+        runCalls.push(baseUrl);
+        return defaultAgentScenarioResult({ durationMs: 100 });
       },
     },
   });
-  const input = await buildInput({
-    structuredModel: {
-      runStep: async ({ schemaName }: { schemaName: string }) => {
-        if (schemaName === 'UiBrowserRunPlan') {
-          return {
-            scenarioTitle: 'Test',
-            actions: [{ kind: 'open', path: '/checkout' }, { kind: 'screenshot', label: 'ok' }],
-          };
-        }
-        throw new Error(`unexpected ${schemaName}`);
-      },
-    } as never,
-  });
+  const input = await buildInput({ structuredModel: generationStructuredModel() });
   const generation = stubGenerationWithTwoChanges();
 
   const run = await adapter.run({ ...input, generation });
@@ -515,4 +497,27 @@ test('run executes one agent-browser session per generated UI change', async () 
   assert.equal(run.matrix[1]?.status, 'Passed');
   assert.equal(run.ui.outcome, 'Passed');
   assert.equal(run.ui.durationMs, 200);
+});
+
+test('ui browser adapter uses agent runner with plan run constraints', async () => {
+  const adapter = createAdapter({
+    agentRunner: {
+      runScenario: async () => defaultAgentScenarioResult({
+        thenVerdicts: [{ stepIndex: 2, text: 'Then products page is displayed', satisfied: true, reason: 'ok' }],
+        iterationsUsed: 4,
+      }),
+    },
+  });
+  const input = await buildInput({ structuredModel: generationStructuredModel() });
+  input.session.plan = {
+    ...plan,
+    runConstraints: [{ behavior: 'Complete onboarding with selected repository', maxDurationMs: 60_000, maxSteps: 15 }],
+  };
+  const generation = await adapter.generate({ ...input, plan: input.session.plan, approval: { decision: 'approve', answers: {} } });
+
+  const run = await adapter.run({ ...input, generation });
+
+  assert.equal(run.ui.outcome, 'Passed');
+  assert.equal(run.matrix[0]?.status, 'Passed');
+  assert.equal(run.matrix[0]?.reason, null);
 });
