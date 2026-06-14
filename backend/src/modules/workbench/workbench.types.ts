@@ -134,6 +134,8 @@ export interface PlanAction {
   action: 'add' | 'update' | 'delete' | 'run';
   label: string;
   count: number | null;
+  /** Behavior titles covered by this action group. */
+  items?: string[];
 }
 
 export interface BehaviorRunConstraints {

@@ -30,10 +30,13 @@ test('buildTestPlan derives actions risk and files from isolation', () => {
 
   assert.equal(plan.proposedActions.length, 2);
   assert.equal(plan.proposedActions[0]?.action, 'add');
+  assert.deepEqual(plan.proposedActions[0]?.items, ['Apply coupon at checkout']);
+  assert.deepEqual(plan.proposedActions[1]?.items, ['Show payment errors']);
   assert.equal(plan.risk.browserAutomationRequired, true);
   assert.equal(plan.risk.productionCodeChanges, 'none');
   assert.ok(plan.filesToChange[0]?.includes('checkout'));
   assert.deepEqual(plan.questions, []);
+  assert.equal(plan.runConstraints?.length, 2);
 });
 
 test('buildTestPlan merges optional model questions', () => {
