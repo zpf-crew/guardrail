@@ -1,5 +1,9 @@
 import { spawn } from 'node:child_process';
 import type { UiBrowserAgentAction } from '../../validation/workbench-validators.js';
+import {
+  agentBrowserCommandArgs,
+  isExecutableAgentBrowserCommand,
+} from './agent-browser-command-policy.js';
 
 export interface AgentExecuteResult {
   exitCode: number;
@@ -10,27 +14,12 @@ export interface AgentExecuteResult {
 export type AgentExecutor = (args: string[], signal: AbortSignal) => Promise<AgentExecuteResult>;
 
 export function agentCommandArgs(baseUrl: string, action: UiBrowserAgentAction): string[] | null {
-  switch (action.kind) {
-    case 'open':
-      return ['open', new URL(action.path, baseUrl).toString()];
-    case 'wait':
-      return ['wait', '--load', action.load];
-    case 'click':
-      return ['click', action.ref];
-    case 'fill':
-      return ['fill', action.ref, action.value];
-    case 'screenshot':
-      return ['screenshot'];
-    case 'stepComplete':
-    case 'assertThen':
-    case 'stepFailed':
-    case 'scenarioComplete':
-      return null;
-  }
+  if (!isExecutableAgentBrowserCommand(action)) return null;
+  return agentBrowserCommandArgs(baseUrl, action);
 }
 
 export function isSnapshotAction(action: UiBrowserAgentAction): boolean {
-  return action.kind === 'click' || action.kind === 'fill';
+  return isExecutableAgentBrowserCommand(action);
 }
 
 export async function executeAgentAction(

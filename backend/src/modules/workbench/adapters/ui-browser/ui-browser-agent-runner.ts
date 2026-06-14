@@ -31,6 +31,7 @@ export interface RunScenarioArgs {
   constraints: BehaviorRunConstraints;
   defaultRoute: string;
   signal: AbortSignal;
+  onScreenshot?: (evidence: Evidence) => Promise<Evidence>;
   onProgress?: (message: string) => void;
   onThinking?: (message: string) => void;
 }
@@ -50,6 +51,7 @@ export class UiBrowserAgentRunner {
     let currentStepIndex = 0;
     let iterationsUsed = 0;
     const startedAt = Date.now();
+    let currentStepStartedAt = startedAt;
     const completedSteps: Array<{ index: number; note: string }> = [];
     const thenVerdicts: ScenarioRunResult['thenVerdicts'] = [];
     const actionHistory: AgentActionHistoryEntry[] = [];
@@ -60,12 +62,14 @@ export class UiBrowserAgentRunner {
       outcome: RunOutcome = 'Failed',
       screenshotLabel?: string,
     ): Promise<ScenarioRunResult> => {
-      await appendFailureScreenshot(
-        evidence,
+      const screenshot = await captureScreenshotEvidence(
         this.#execute,
         args.signal,
         screenshotLabel ?? truncateLabel(reason),
       );
+      if (screenshot) {
+        evidence.push(await emitScreenshot(screenshot, args.onScreenshot));
+      }
       return {
         outcome,
         durationMs: Date.now() - startedAt,
@@ -82,8 +86,8 @@ export class UiBrowserAgentRunner {
       if (iterationsUsed >= args.constraints.maxSteps) {
         return fail(`Exceeded max ${args.constraints.maxSteps} agent steps`);
       }
-      if (Date.now() - startedAt >= args.constraints.maxDurationMs) {
-        return fail(`Exceeded max duration (${args.constraints.maxDurationMs}ms)`);
+      if (Date.now() - currentStepStartedAt >= args.constraints.maxStepDurationMs) {
+        return fail(stepTimeoutReason(steps, currentStepIndex, args.constraints.maxStepDurationMs));
       }
 
       const snapshot = await captureSnapshot(this.#execute, args.signal);
@@ -136,15 +140,22 @@ export class UiBrowserAgentRunner {
       }
 
       if (action.kind === 'stepComplete') {
+        if (Date.now() - currentStepStartedAt >= args.constraints.maxStepDurationMs) {
+          return fail(stepTimeoutReason(steps, currentStepIndex, args.constraints.maxStepDurationMs));
+        }
         if (action.stepIndex !== currentStepIndex) {
           return fail(`stepComplete index mismatch: expected ${currentStepIndex}, got ${action.stepIndex}`);
         }
         completedSteps.push({ index: action.stepIndex, note: action.note });
         currentStepIndex = Math.min(currentStepIndex + 1, Math.max(steps.length - 1, 0));
+        currentStepStartedAt = Date.now();
         continue;
       }
 
       if (action.kind === 'assertThen') {
+        if (Date.now() - currentStepStartedAt >= args.constraints.maxStepDurationMs) {
+          return fail(stepTimeoutReason(steps, currentStepIndex, args.constraints.maxStepDurationMs));
+        }
         const step = steps[action.stepIndex];
         if (!step || step.effectiveKind !== 'Then') {
           return fail(`assertThen targeted non-Then step ${action.stepIndex}`);
@@ -159,6 +170,7 @@ export class UiBrowserAgentRunner {
           return fail(action.reason, 'Failed', `Failed check — ${step.text}`);
         }
         currentStepIndex = Math.min(action.stepIndex + 1, Math.max(steps.length - 1, 0));
+        currentStepStartedAt = Date.now();
         continue;
       }
 
@@ -166,13 +178,20 @@ export class UiBrowserAgentRunner {
         return fail(action.reason);
       }
 
-      const result = await executeAgentAction(args.baseUrl, action, this.#execute, args.signal);
+      let result: Awaited<ReturnType<typeof executeAgentAction>>;
+      try {
+        result = await executeAgentAction(args.baseUrl, action, this.#execute, args.signal);
+      } catch (error) {
+        return fail(`agent-browser command rejected: ${error instanceof Error ? error.message : String(error)}`);
+      }
       if (result && result.exitCode !== 0) {
+        const detail = result.stderr || result.stdout || `exit ${result.exitCode}`;
+        args.onProgress?.(`Browser action failed — ${formatActionForHistory(action)}: ${truncateDetail(detail)}`);
         actionHistory.push({
           iteration: iterationsUsed,
           action: formatActionForHistory(action),
           result: 'failed',
-          detail: result.stderr || result.stdout,
+          detail,
         });
         continue;
       }
@@ -183,32 +202,55 @@ export class UiBrowserAgentRunner {
         result: 'ok',
       });
 
-      if (action.kind === 'screenshot' && result) {
-        evidence.push(screenshotEvidence(action.label, screenshotPathFromStdout(result.stdout)));
+      if (action.kind === 'agentBrowserCommand' && action.command === 'screenshot' && result) {
+        const screenshot = screenshotEvidence(action.reason, screenshotPathFromStdout(result.stdout));
+        evidence.push(await emitScreenshot(screenshot, args.onScreenshot));
       }
     }
   }
 }
 
-async function appendFailureScreenshot(
-  evidence: Evidence[],
+async function captureScreenshotEvidence(
   execute: AgentExecutor,
   signal: AbortSignal,
   label: string,
-): Promise<void> {
+): Promise<Evidence | null> {
   try {
     const result = await execute(['screenshot'], signal);
-    if (result.exitCode !== 0) return;
+    if (result.exitCode !== 0) return null;
     const href = screenshotPathFromStdout(result.stdout);
-    if (!href) return;
-    evidence.push(screenshotEvidence(label, href));
+    if (!href) return null;
+    return screenshotEvidence(label, href);
   } catch {
     // Best-effort evidence on failure.
+    return null;
   }
+}
+
+async function emitScreenshot(
+  evidence: Evidence,
+  onScreenshot: RunScenarioArgs['onScreenshot'],
+): Promise<Evidence> {
+  return onScreenshot ? onScreenshot(evidence) : evidence;
 }
 
 function truncateLabel(value: string, max = 72): string {
   const trimmed = value.trim();
   if (trimmed.length <= max) return `Failure — ${trimmed}`;
   return `Failure — ${trimmed.slice(0, max - 1)}…`;
+}
+
+function stepTimeoutReason(
+  steps: ReturnType<typeof parseGherkinSteps>,
+  stepIndex: number,
+  maxStepDurationMs: number,
+): string {
+  const step = steps[stepIndex];
+  if (!step) return `Exceeded max step duration (${maxStepDurationMs}ms)`;
+  return `Exceeded max step duration (${maxStepDurationMs}ms) on step ${stepIndex + 1}/${steps.length}: ${step.effectiveKind} ${step.text}`;
+}
+
+function truncateDetail(value: string, max = 180): string {
+  const clean = value.replace(/\s+/g, ' ').trim();
+  return clean.length <= max ? clean : `${clean.slice(0, max - 1)}…`;
 }
