@@ -769,16 +769,97 @@ test('drops weak generated scenarios before browser execution', async () => {
 
   const result = await adapter.run({ ...input, generation });
 
+  assert.equal(result.ui.outcome, 'Skipped');
   assert.equal(result.matrix[0]?.status, 'Skipped');
   assert.equal(result.matrix[0]?.reason, 'Dropped before execution: Toast-only assertion is transient.');
 });
 
+test('reports failed UI outcome when flow planning fails before execution', async () => {
+  const adapter = createAdapter({
+    agentRunner: {
+      runScenario: async () => {
+        throw new Error('runner should not execute when flow planning fails');
+      },
+    },
+  });
+  const input = await buildInput({
+    modelConnect: flowPlanningModelConnect([
+      {
+        behaviorTitle: '',
+        acceptedFlows: [],
+        droppedScenarios: [],
+      },
+    ]),
+  });
+  const generation = generationWithUiChange({
+    title: 'Add product to cart from homepage',
+    diffText: [
+      'Feature: Cart',
+      'Scenario: Add product',
+      '  Given the homepage is loaded',
+      '  When I click "Add to Cart"',
+      '  Then the cart should contain 1 item',
+    ],
+  });
+
+  const result = await adapter.run({ ...input, generation });
+
+  assert.equal(result.ui.outcome, 'Failed');
+  assert.equal(result.matrix[0]?.status, 'Failed');
+  assert.match(result.matrix[0]?.reason ?? '', /Flow planning failed/);
+});
+
+test('skips accepted flows that cite no existing source scenario', async () => {
+  const adapter = createAdapter({
+    agentRunner: {
+      runScenario: async () => {
+        throw new Error('runner should not execute ungrounded accepted flow');
+      },
+    },
+  });
+  const input = await buildInput({
+    modelConnect: flowPlanningModelConnect([
+      {
+        behaviorTitle: 'Add product to cart from homepage',
+        acceptedFlows: [
+          {
+            id: 'flow-1',
+            title: 'Ungrounded add to cart flow',
+            sourceScenarioIndexes: [99],
+            userGoal: 'A shopper adds a product to cart.',
+            durableOutcome: 'The cart count shows one item.',
+            priority: 'high',
+          },
+        ],
+        droppedScenarios: [],
+      },
+    ]),
+  });
+  const generation = generationWithUiChange({
+    title: 'Add product to cart from homepage',
+    diffText: [
+      'Feature: Cart',
+      'Scenario: Add product',
+      '  Given the homepage is loaded',
+      '  When I click "Add to Cart"',
+      '  Then the cart should contain 1 item',
+    ],
+  });
+
+  const result = await adapter.run({ ...input, generation });
+
+  assert.equal(result.ui.outcome, 'Skipped');
+  assert.equal(result.matrix[0]?.status, 'Skipped');
+  assert.match(result.matrix[0]?.reason ?? '', /unknown source scenario index 99/);
+});
+
 test('executes accepted user flows instead of raw scenarios', async () => {
-  const seen: string[] = [];
+  const seenPlans: Array<{ title?: string; steps?: Array<{ instruction: string; successCriteria: string }> }> = [];
   const adapter = createAdapter({
     agentRunner: {
       runScenario: async args => {
-        seen.push((args as { executionPlan?: { title?: string } }).executionPlan?.title ?? args.gherkinText);
+        const executionPlan = (args as { executionPlan?: { title?: string; steps?: Array<{ instruction: string; successCriteria: string }> } }).executionPlan;
+        seenPlans.push(executionPlan ?? { title: args.gherkinText });
         return defaultAgentScenarioResult();
       },
     },
@@ -821,7 +902,7 @@ test('executes accepted user flows instead of raw scenarios', async () => {
         steps: [
           { id: 'step-1', kind: 'setup', instruction: 'Open the homepage.', successCriteria: 'Homepage loaded.' },
           { id: 'step-2', kind: 'action', instruction: 'Click Add to Cart.', successCriteria: 'Click completes.' },
-          { id: 'step-3', kind: 'assert', instruction: 'Verify cart count is one.', successCriteria: 'Cart shows one item.' },
+          { id: 'step-3', kind: 'assert', instruction: 'Verify success toast.', successCriteria: 'A success toast appears.' },
         ],
       },
     ]),
@@ -829,7 +910,9 @@ test('executes accepted user flows instead of raw scenarios', async () => {
 
   const result = await adapter.run({ ...input, generation });
 
-  assert.deepEqual(seen, ['Add one product to cart']);
+  assert.deepEqual(seenPlans.map(plan => plan.title), ['Add one product to cart']);
+  assert.equal(seenPlans[0]?.steps?.[2]?.instruction, 'Verify that the cart count shows one item.');
+  assert.equal(seenPlans[0]?.steps?.[2]?.successCriteria, 'The cart count shows one item.');
   assert.equal(result.matrix.some(row => row.status === 'Skipped'), true);
 });
 

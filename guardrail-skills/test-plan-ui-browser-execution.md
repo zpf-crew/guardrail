@@ -26,7 +26,9 @@ Return only one valid `UiBrowserExecutionPlan` JSON object.
 - Do not create screenshot steps; the runner captures evidence automatically.
 - Do not split "fill search and submit" unless the UI clearly requires separate user actions.
 - Assertions must be durable and decisive after at most one observation.
-- Do not include toast, loading, animation, cleanup, or exploratory checks unless the accepted flow specifically exists to test that behavior.
+- Do not include toast, snackbar, notification, loading, spinner, animation, fade, disappears, cleanup, or exploratory checks in any `instruction` or `successCriteria` unless the accepted flow specifically exists to test that transient behavior.
+- Action `successCriteria` must be mechanical and brief, such as "The click completes", "The route changes", "The results load", or "The page state is ready for the next assertion".
+- Assertion `successCriteria` must be durable, such as cart count, cart contents, route, heading, persisted field value, search result text, table row, or saved state.
 - Include natural scroll guidance when a control may be below the fold.
 - Do not include selectors, accessibility refs, or private knowledge about a specific test repository.
 

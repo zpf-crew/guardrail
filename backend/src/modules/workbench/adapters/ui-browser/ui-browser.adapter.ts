@@ -41,6 +41,7 @@ import {
   buildDroppedScenarioRows,
   buildExecutionPlanTraceEvidence,
   indexedScenariosFromChange,
+  sanitizeExecutionPlan,
   sourceScenariosForFlow,
   type IndexedUiScenario,
 } from './ui-browser-flow-plan.js';
@@ -87,14 +88,11 @@ interface UiRunOutcome {
   matrix: TestResultRow[];
 }
 
-function worstRunOutcome(current: RunOutcome, next: RunOutcome): RunOutcome {
-  if (next === 'Failed' || current === 'Failed') {
-    return 'Failed';
-  }
-  if (next === 'Flaky' || current === 'Flaky') {
-    return 'Flaky';
-  }
-  return current;
+function runOutcomeFromMatrix(matrix: TestResultRow[]): RunOutcome {
+  if (matrix.some(row => row.status === 'Failed')) return 'Failed';
+  if (matrix.some(row => row.status === 'Flaky')) return 'Flaky';
+  if (matrix.some(row => row.status === 'Passed')) return 'Passed';
+  return 'Skipped';
 }
 
 function matrixEvidenceLabelFromItems(evidence: Array<{ kind: string }>): string | null {
@@ -501,7 +499,6 @@ export class UiBrowserAdapter implements TestTypeAdapter {
     const matrix: TestResultRow[] = [];
     const allEvidence: ScenarioRunResult['evidence'] = [];
     let totalDuration = 0;
-    let worstOutcome: RunOutcome = 'Passed';
     const pendingFlowRuns: PendingFlowRun[] = [];
     let completedFlowRunCount = 0;
 
@@ -551,9 +548,10 @@ export class UiBrowserAdapter implements TestTypeAdapter {
         }
 
         for (const flow of flowPlan.acceptedFlows) {
-          const sourceScenarios = sourceScenariosForFlow(scenarios, flow.sourceScenarioIndexes);
+          let sourceScenarios: IndexedUiScenario[];
           let executionPlan: UiBrowserExecutionPlan;
           try {
+            sourceScenarios = sourceScenariosForFlow(scenarios, flow.sourceScenarioIndexes);
             executionPlan = await this.#planExecution(input, flow, sourceScenarios, defaultRoute);
           } catch (error) {
             rethrowIfAbort(error, input.signal);
@@ -600,7 +598,6 @@ export class UiBrowserAdapter implements TestTypeAdapter {
 
           const changeEvidence = await collectScenarioEvidence(input, scenarioResult, liveScreenshotHrefs);
           totalDuration += scenarioResult.durationMs;
-          worstOutcome = worstRunOutcome(worstOutcome, scenarioResult.outcome);
           allEvidence.push(...changeEvidence);
           matrix.push({
             title: flow.title,
@@ -623,7 +620,7 @@ export class UiBrowserAdapter implements TestTypeAdapter {
 
       return {
         result: {
-          outcome: worstOutcome,
+          outcome: runOutcomeFromMatrix(matrix),
           durationMs: totalDuration,
           evidence: allEvidence,
         },
@@ -725,7 +722,7 @@ export class UiBrowserAdapter implements TestTypeAdapter {
   ): Promise<UiBrowserExecutionPlan> {
     const agentModel = new AgentModelRunner({ modelConnect: input.modelConnect });
     const skill = await input.skills.load('test-plan-ui-browser-execution');
-    return agentModel.planUiBrowserExecution({
+    const plan = await agentModel.planUiBrowserExecution({
       profile: 'coder',
       skill,
       context: {
@@ -737,6 +734,7 @@ export class UiBrowserAdapter implements TestTypeAdapter {
       },
       signal: input.signal,
     });
+    return sanitizeExecutionPlan(plan, flow);
   }
 
   #createAgentRunner(input: AdapterInput, sessionName?: string): AgentRunnerLike {
