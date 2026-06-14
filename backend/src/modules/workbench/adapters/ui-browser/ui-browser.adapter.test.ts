@@ -833,3 +833,110 @@ test('executes accepted user flows instead of raw scenarios', async () => {
   assert.deepEqual(seen, ['Add one product to cart']);
   assert.equal(result.matrix.some(row => row.status === 'Skipped'), true);
 });
+
+test('end-to-end smoke test reduces duplicate and toast drafts before execution', async () => {
+  const cartDiff = [
+    'Feature: Cart',
+    'Scenario: Add product to cart',
+    '  Given the homepage is loaded',
+    '  When I click "Add to Cart"',
+    '  Then the cart should contain 1 item',
+    'Scenario: Add product to cart again',
+    '  Given the homepage is loaded',
+    '  When I click "Add to Cart"',
+    '  Then the cart should contain 1 item',
+    'Scenario: Toast appears',
+    '  Given the homepage is loaded',
+    '  When I click "Add to Cart"',
+    '  Then I should see a success toast',
+  ];
+  const searchDiff = [
+    'Feature: Search',
+    'Scenario: Search for products',
+    '  Given the homepage is loaded',
+    '  When I search for "shoes"',
+    '  Then search results are shown',
+  ];
+  const generation: GenerationResult = {
+    timeline: [{ label: 'Generate', status: 'done' }],
+    changes: [
+      {
+        ...generationWithUiChange({ title: 'Add product to cart', diffText: cartDiff }).changes[0]!,
+        id: 'change-cart',
+        file: 'guardrail-tests/ui/cart.feature',
+        feature: 'Cart',
+      },
+      {
+        ...generationWithUiChange({ title: 'Search for products', diffText: searchDiff }).changes[0]!,
+        id: 'change-search',
+        file: 'guardrail-tests/ui/search.feature',
+        feature: 'Search',
+      },
+    ],
+    beforeAfter: { before: [], after: [] },
+  };
+  const adapter = createAdapter({
+    agentRunner: {
+      runScenario: async () => defaultAgentScenarioResult(),
+    },
+  });
+  const input = await buildInput({
+    generation,
+    modelConnect: flowPlanningModelConnect([
+      {
+        behaviorTitle: 'Add product to cart',
+        acceptedFlows: [{
+          id: 'flow-1',
+          title: 'Add one product to cart',
+          sourceScenarioIndexes: [0],
+          userGoal: 'A shopper adds a product to cart.',
+          durableOutcome: 'The cart count shows one item.',
+          priority: 'high',
+        }],
+        droppedScenarios: [
+          { sourceScenarioIndex: 1, reason: 'Duplicate of durable cart scenario.' },
+          { sourceScenarioIndex: 2, reason: 'Toast-only assertion is transient.' },
+        ],
+      },
+      {
+        flowId: 'flow-1',
+        title: 'Add one product to cart',
+        steps: [
+          { id: 'step-1', kind: 'setup', instruction: 'Open the homepage.', successCriteria: 'Homepage loaded.' },
+          { id: 'step-2', kind: 'action', instruction: 'Click Add to Cart.', successCriteria: 'Click completes.' },
+          { id: 'step-3', kind: 'assert', instruction: 'Verify cart count is one.', successCriteria: 'Cart shows one item.' },
+        ],
+      },
+      {
+        behaviorTitle: 'Search for products',
+        acceptedFlows: [{
+          id: 'flow-2',
+          title: 'Search for products',
+          sourceScenarioIndexes: [0],
+          userGoal: 'A shopper searches for products.',
+          durableOutcome: 'Search results are shown.',
+          priority: 'high',
+        }],
+        droppedScenarios: [],
+      },
+      {
+        flowId: 'flow-2',
+        title: 'Search for products',
+        steps: [
+          { id: 'step-1', kind: 'setup', instruction: 'Open the homepage.', successCriteria: 'Homepage loaded.' },
+          { id: 'step-2', kind: 'action', instruction: 'Search for shoes.', successCriteria: 'Search completes.' },
+          { id: 'step-3', kind: 'assert', instruction: 'Verify search results appear.', successCriteria: 'Results are shown.' },
+        ],
+      },
+    ]),
+  });
+
+  const result = await adapter.run(input);
+
+  assert.equal(result.ui.outcome, 'Passed');
+  assert.equal(result.ui.passed, 2);
+  assert.equal(result.matrix.filter(row => row.status === 'Passed').length, 2);
+  assert.equal(result.matrix.filter(row => row.status === 'Skipped').length, 2);
+  assert.equal(result.matrix.some(row => row.reason?.includes('Toast-only')), true);
+  assert.equal(result.matrix.some(row => row.reason?.includes('Duplicate')), true);
+});
