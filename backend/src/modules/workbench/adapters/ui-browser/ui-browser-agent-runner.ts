@@ -196,10 +196,15 @@ export class UiBrowserAgentRunner {
         continue;
       }
 
+      const successDetail = result && shouldKeepCommandOutput(action)
+        ? truncateDetail(result.stdout || result.stderr || `exit ${result.exitCode}`)
+        : undefined;
+
       actionHistory.push({
         iteration: iterationsUsed,
         action: formatActionForHistory(action),
         result: 'ok',
+        ...(successDetail ? { detail: successDetail } : {}),
       });
 
       if (action.kind === 'agentBrowserCommand' && action.command === 'screenshot' && result) {
@@ -253,4 +258,9 @@ function stepTimeoutReason(
 function truncateDetail(value: string, max = 180): string {
   const clean = value.replace(/\s+/g, ' ').trim();
   return clean.length <= max ? clean : `${clean.slice(0, max - 1)}…`;
+}
+
+function shouldKeepCommandOutput(action: UiBrowserAgentAction): boolean {
+  return action.kind === 'agentBrowserCommand'
+    && ['get', 'is', 'find'].includes(action.command);
 }

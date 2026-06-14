@@ -208,6 +208,38 @@ test('agent runner allows total scenario duration to exceed one step budget afte
   assert.ok(result.durationMs >= 20);
 });
 
+test('agent runner records informative command output in action history context', async () => {
+  const observedHistory: string[] = [];
+  let call = 0;
+  const scripted: UiBrowserAgentAction[] = [
+    { kind: 'agentBrowserCommand', command: 'get', args: ['url'], reason: 'Check current URL' },
+    { kind: 'stepFailed', stepIndex: 0, reason: 'Stop after observing history' },
+  ];
+
+  const runner = new UiBrowserAgentRunner({
+    decideNext: async context => {
+      observedHistory.push(context.actionHistory[0]?.detail ?? '');
+      return scripted[call++] ?? { kind: 'stepFailed', stepIndex: 0, reason: 'done' };
+    },
+    execute: async args => {
+      if (args[0] === 'snapshot') return { exitCode: 0, stdout: '@e1', stderr: '' };
+      if (args[0] === 'get') return { exitCode: 0, stdout: 'http://127.0.0.1:5555/products', stderr: '' };
+      if (args[0] === 'screenshot') return { exitCode: 0, stdout: 'Screenshot saved to /tmp/failure.png', stderr: '' };
+      return { exitCode: 0, stdout: 'ok', stderr: '' };
+    },
+  });
+
+  await runner.runScenario({
+    baseUrl: 'http://127.0.0.1:5555',
+    gherkinText: scenario,
+    constraints: { behavior: 'Shop now', maxStepDurationMs: 20_000, maxSteps: 15 },
+    defaultRoute: '/',
+    signal: new AbortController().signal,
+  });
+
+  assert.deepEqual(observedHistory, ['', 'http://127.0.0.1:5555/products']);
+});
+
 function delay(ms: number): Promise<void> {
   return new Promise(resolve => setTimeout(resolve, ms));
 }
