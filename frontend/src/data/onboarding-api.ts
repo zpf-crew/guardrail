@@ -8,7 +8,7 @@ import type {
   UploadedFile,
 } from '@/types/testlens';
 
-const API_BASE = import.meta.env.VITE_API_BASE_URL?.trim();
+const API_BASE = import.meta.env.VITE_API_BASE_URL?.trim() ?? '';
 const LATEST_DASHBOARD_PREFIX = 'tl.latestDashboard.';
 
 export type KnowledgeDocWithSnippet = KnowledgeDoc & {
@@ -30,9 +30,6 @@ export class OnboardingApiError extends Error {
 }
 
 function requireApiBase(): string {
-  if (!API_BASE) {
-    throw new OnboardingApiError('VITE_API_BASE_URL is not configured.');
-  }
   return API_BASE;
 }
 

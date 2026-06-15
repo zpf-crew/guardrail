@@ -262,7 +262,11 @@ test('workbench run job emits screenshot event with served artifact URL', async 
   })).json();
   const analyzeSnapshot = await waitForJob(app, session.id, analyzeJob.jobId, ['succeeded']);
   assert.equal(analyzeSnapshot.session.isolation?.target.feature, 'Checkout');
-  assert.ok((analyzeSnapshot.session.isolation?.classifications.length ?? 0) > 0);
+  const classifications = 'classifications' in analyzeSnapshot.session.isolation
+    ? analyzeSnapshot.session.isolation.classifications
+    : [];
+  assert.ok(Array.isArray(classifications));
+  assert.ok(classifications.length > 0);
 
   const planJob = (await app.inject({
     method: 'POST',

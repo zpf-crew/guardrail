@@ -5,7 +5,7 @@ import type { ScanLogEntry, ScanSummary } from '@/types/testlens';
  * Triggers a repository scan via `POST /api/repos/:repoId/scan`.
  */
 
-const API_BASE = import.meta.env.VITE_API_BASE_URL?.trim();
+const API_BASE = import.meta.env.VITE_API_BASE_URL?.trim() ?? '';
 
 export class ScanApiError extends Error {
   constructor(message: string) {
@@ -15,9 +15,6 @@ export class ScanApiError extends Error {
 }
 
 function requireApiBase(): string {
-  if (!API_BASE) {
-    throw new ScanApiError('VITE_API_BASE_URL is not configured.');
-  }
   return API_BASE;
 }
 
