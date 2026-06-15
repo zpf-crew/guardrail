@@ -1,6 +1,8 @@
 import * as React from 'react';
+import { useNavigate } from 'react-router-dom';
 import { cn } from '@/lib/cn';
 import { BrandIcon, GithubIcon, GitBranchIcon } from '@/components/icons';
+import { ConfirmModal } from '@/components/ui/confirm-modal';
 
 export interface TopBarProps {
   repo?: string;
@@ -16,6 +18,9 @@ export interface TopBarProps {
 }
 
 export function TopBar({ repo, branch, scanTime, actions, contentClassName, user, onLogout }: TopBarProps) {
+  const navigate = useNavigate();
+  const [switchRepoOpen, setSwitchRepoOpen] = React.useState(false);
+
   return (
     <header className="sticky top-0 z-[50] bg-[rgba(11,13,19,0.78)] backdrop-blur-[18px] saturate-[140%] border-b border-[rgba(255,255,255,0.07)]">
       <div className={cn('flex items-center gap-[22px] px-[26px] py-[12px] w-full', contentClassName)}>
@@ -28,10 +33,15 @@ export function TopBar({ repo, branch, scanTime, actions, contentClassName, user
       </div>
       {repo && (
         <div className="flex items-center gap-[8px] flex-wrap">
-          <span className="inline-flex items-center gap-[7px] bg-[#161a24] border border-[rgba(255,255,255,0.07)] px-[11px] py-[6px] rounded-[8px] font-mono text-[12.5px] text-[#e8ebf2]">
+          <button
+            type="button"
+            onClick={() => setSwitchRepoOpen(true)}
+            title="Switch repository"
+            className="inline-flex items-center gap-[7px] bg-[#161a24] border border-[rgba(255,255,255,0.07)] px-[11px] py-[6px] rounded-[8px] font-mono text-[12.5px] text-[#e8ebf2] cursor-pointer transition-colors hover:bg-[#1c2130] hover:border-[rgba(255,255,255,0.14)]"
+          >
             <GithubIcon className="w-[14px] h-[14px] opacity-[0.7]" />
             <span className="text-[#6b7488]">repo</span>&nbsp;{repo}
-          </span>
+          </button>
           {branch && (
             <span className="inline-flex items-center gap-[7px] bg-[#161a24] border border-[rgba(255,255,255,0.07)] px-[11px] py-[6px] rounded-[8px] font-mono text-[12.5px] text-[#818cf8]">
               <GitBranchIcon className="w-[14px] h-[14px]" />
@@ -73,6 +83,18 @@ export function TopBar({ repo, branch, scanTime, actions, contentClassName, user
         </div>
       )}
       </div>
+      <ConfirmModal
+        open={switchRepoOpen}
+        title="Switch repository?"
+        message="You'll go back to onboarding to connect or pick a different repository. Your current dashboard stays available until you scan a new one."
+        confirmLabel="Switch repository"
+        cancelLabel="Stay here"
+        onConfirm={() => {
+          setSwitchRepoOpen(false);
+          navigate('/onboarding');
+        }}
+        onCancel={() => setSwitchRepoOpen(false)}
+      />
     </header>
   );
 }
