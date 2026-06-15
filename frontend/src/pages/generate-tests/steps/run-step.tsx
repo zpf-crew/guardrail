@@ -2,9 +2,9 @@ import { Fragment, useState, type ReactNode } from 'react';
 import type { Evidence, TestRunResult, RunOutcome, TestType, TestResultRow } from '@/types/testlens';
 import { Button } from '@/components/ui/button';
 import { ProgressBar } from '@/components/ui/progress-bar';
-import { RunResultIcon, MicIcon, MonitorIcon, SmartphoneIcon, EyeIcon, LoaderIcon } from '@/components/icons';
+import { RunResultIcon, MonitorIcon, EyeIcon, LoaderIcon } from '@/components/icons';
 import { StepHeader, BlockHeader } from '../shared';
-import { RUN_OUTCOME_STYLE, showsMobileRunSuite, showsUiRunSuite, showsUnitRunSuite } from '../workbench-presentation';
+import { RUN_OUTCOME_STYLE, showsUiRunSuite } from '../workbench-presentation';
 import { EvidencePanel } from '../evidence-panel';
 import type { RunProgressEvent } from '../use-workbench';
 
@@ -64,9 +64,6 @@ export function RunStep({ run, activeTestType, ranTests, running, progress, evid
 
       {complete && (
         <div className="flex flex-col gap-[18px] mb-[18px]">
-          {showsUnitRunSuite(activeTestType) && (
-            <SuiteHeader icon={<MicIcon className="w-[16px] h-[16px]" />} title="Unit Tests" command={run.unit.command} pass={`${run.unit.passed}/${run.unit.passed + (run.unit.failed ?? 0)} pass`} duration={fmt(run.unit.durationMs)} ok={run.unit.outcome === 'Passed'} />
-          )}
           {showsUiRunSuite(activeTestType) && (
             <div>
               <SuiteHeader icon={<MonitorIcon className="w-[16px] h-[16px]" />} title="UI/Browser Tests" command={run.ui.command} pass={`${run.ui.passed} pass`} duration={fmt(run.ui.durationMs)} ok={run.ui.outcome === 'Passed'} />
@@ -77,30 +74,6 @@ export function RunStep({ run, activeTestType, ranTests, running, progress, evid
               )}
             </div>
           )}
-          {showsMobileRunSuite(activeTestType) && (
-            <SuiteHeader icon={<SmartphoneIcon className="w-[16px] h-[16px]" />} title="Mobile Tests" command={run.mobile.command} pass={`${run.mobile.passed}/${run.mobile.devices.length} pass`} duration={fmt(run.mobile.durationMs)} ok={run.mobile.outcome === 'Passed'} />
-          )}
-        </div>
-      )}
-
-      {complete && showsUnitRunSuite(activeTestType) && run.coverage.length > 0 && (
-        <div className="mb-[18px]">
-          <BlockHeader label="Coverage comparison" />
-          <div className="grid grid-cols-4 gap-[12px]">
-            {run.coverage.map(c => (
-              <div key={c.metric} className="bg-[#0d0f16] border border-[rgba(255,255,255,0.07)] rounded-[11px] p-[14px]">
-                <div className="text-[11.5px] text-[#98a1b3] mb-[9px]">{c.metric}</div>
-                <div className="flex items-baseline gap-[8px]">
-                  <span className="font-mono text-[15px] text-[#6b7488] line-through">{c.before}%</span>
-                  <span className="font-mono text-[24px] font-bold tracking-[-0.5px] text-white">{c.after}%</span>
-                  <span className="text-[11px] font-bold text-[#3ddc97] ml-auto">+{c.after - c.before}%</span>
-                </div>
-                <div className="h-[6px] rounded-full bg-[rgba(255,255,255,0.06)] mt-[11px] overflow-hidden relative">
-                  <div className="absolute left-0 top-0 bottom-0 rounded-full bg-[#818cf8]" style={{ width: `${c.after}%` }} />
-                </div>
-              </div>
-            ))}
-          </div>
         </div>
       )}
 

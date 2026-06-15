@@ -57,7 +57,8 @@ const DEFAULT_TEST_TYPE: TestType = 'UI / Browser';
 
 /** Workbench runs one adapter at a time — use the first selected test type. */
 export function primaryTestType(testTypes: TestType[] | undefined): TestType {
-  return testTypes?.[0] ?? DEFAULT_TEST_TYPE;
+  const selected = testTypes?.[0];
+  return selected === DEFAULT_TEST_TYPE ? selected : DEFAULT_TEST_TYPE;
 }
 
 export function showsUnitRunSuite(testType: TestType): boolean {

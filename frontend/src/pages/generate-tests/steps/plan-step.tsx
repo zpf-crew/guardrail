@@ -16,10 +16,8 @@ const ACTION_BG: Record<PlanAction['action'], string> = {
 /** Flatten the structured risk assessment into labeled rows for display. */
 function riskRows(risk: PlanRiskAssessment): { item: string; level: RiskLevel }[] {
   return [
-    { item: 'Production code changes', level: risk.productionCodeChanges === 'expected' ? 'high' : 'low' },
     { item: 'Test data changes', level: risk.testDataChanges ? 'medium' : 'low' },
     { item: 'Browser automation required', level: risk.browserAutomationRequired ? 'medium' : 'low' },
-    { item: 'Mobile simulator', level: risk.mobileSimulatorRequired === 'required' ? 'medium' : 'low' },
     { item: 'External API mocking', level: risk.externalApiMocking === 'required' ? 'medium' : 'low' },
   ];
 }
@@ -167,7 +165,7 @@ export function PlanStep({ plan, generating, generateProgress, onBack, onApprove
             autoFocus
             value={editText}
             onChange={e => setEditText(e.target.value)}
-            placeholder="e.g., Skip the mobile tests, and add a case for negative discount amounts..."
+            placeholder="e.g., Add a UI browser case for negative discount amounts..."
             className="w-full bg-[#0d0f16] border border-[rgba(255,255,255,0.07)] rounded-[8px] p-[10px_12px] text-[13px] text-[#e8ebf2] outline-none resize-none min-h-[72px] leading-[1.5] focus:border-[rgba(129,140,248,0.4)]"
           />
           <div className="flex gap-[8px] mt-[10px] justify-end">

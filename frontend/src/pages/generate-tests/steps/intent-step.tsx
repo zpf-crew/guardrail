@@ -1,43 +1,46 @@
 import * as React from 'react';
-import type { IntentInput, QuickAction, TestType, FeatureModule } from '@/types/testlens';
+import type { IntentInput, TestType, FeatureModule } from '@/types/testlens';
 import { Button } from '@/components/ui/button';
-import { SearchIcon, CheckIcon, ZapIcon } from '@/components/icons';
-import { StepHeader, BlockHeader } from '../shared';
+import { SearchIcon, CheckIcon } from '@/components/icons';
+import { StepHeader } from '../shared';
 import { primaryTestType } from '../workbench-presentation';
 import { WorkbenchProgressPanel } from '../workbench-progress-panel';
 import type { AnalyzeProgressEvent } from '../use-workbench';
 
-const TEST_TYPE_OPTIONS: TestType[] = ['Unit', 'Integration', 'UI / Browser', 'Mobile'];
+const DEMO_TEST_TYPE: TestType = 'UI / Browser';
+const TEST_TYPE_OPTIONS: { type: TestType; disabled: boolean }[] = [
+  { type: 'Unit', disabled: true },
+  { type: 'Integration', disabled: true },
+  { type: DEMO_TEST_TYPE, disabled: false },
+  { type: 'Mobile', disabled: true },
+];
 
 interface IntentStepProps {
   intent: IntentInput;
-  quickActions: QuickAction[];
   featureOptions: FeatureModule[];
   analyzing: boolean;
   analyzeProgress: AnalyzeProgressEvent[];
   onUpdateIntent: (patch: Partial<IntentInput>) => void;
   onAnalyze: () => void;
-  onApplyQuickAction: (qa: QuickAction) => void;
 }
 
 export function IntentStep({
   intent,
-  quickActions,
   featureOptions,
   analyzing,
   analyzeProgress,
   onUpdateIntent,
   onAnalyze,
-  onApplyQuickAction,
 }: IntentStepProps) {
   const selectedType = primaryTestType(intent.testTypes);
 
   React.useEffect(() => {
-    if (intent.testTypes.length === 1) return;
-    onUpdateIntent({ testTypes: [primaryTestType(intent.testTypes)] });
-  }, [intent.testTypes, onUpdateIntent]);
+    if (intent.testTypes.length === 1 && selectedType === DEMO_TEST_TYPE) return;
+    onUpdateIntent({ testTypes: [DEMO_TEST_TYPE] });
+  }, [intent.testTypes, onUpdateIntent, selectedType]);
 
   const selectType = (type: TestType) => {
+    if (type !== DEMO_TEST_TYPE) return;
     if (selectedType === type) return;
     onUpdateIntent({ testTypes: [type] });
   };
@@ -84,49 +87,28 @@ export function IntentStep({
       <div className="mb-[16px]">
         <div className="text-[11.5px] font-semibold text-[#6b7488] uppercase tracking-[0.5px] mb-[10px]">Test type</div>
         <div className="flex flex-wrap gap-[8px]">
-          {TEST_TYPE_OPTIONS.map(type => {
+          {TEST_TYPE_OPTIONS.map(({ type, disabled }) => {
             const active = selectedType === type;
             return (
-              <button
-                key={type}
-                onClick={() => selectType(type)}
-                className={`inline-flex items-center gap-[7px] text-[12.5px] font-medium px-[13px] py-[7px] rounded-[8px] cursor-pointer transition-all border ${
-                  active ? 'bg-[rgba(129,140,248,0.14)] border-[rgba(129,140,248,0.4)] text-[#c7cdf5]' : 'bg-[#161a24] border-[rgba(255,255,255,0.07)] text-[#98a1b3] hover:text-[#e8ebf2]'
-                }`}
-              >
-                {active && <CheckIcon strokeWidth={2.5} className="w-[15px] h-[15px]" />}
-                {type}
-              </button>
+              <span key={type} title={disabled ? 'Coming soon' : undefined}>
+                <button
+                  type="button"
+                  disabled={disabled}
+                  aria-disabled={disabled}
+                  onClick={() => selectType(type)}
+                  className={`inline-flex items-center gap-[7px] text-[12.5px] font-medium px-[13px] py-[7px] rounded-[8px] transition-all border ${
+                    active ? 'bg-[rgba(129,140,248,0.14)] border-[rgba(129,140,248,0.4)] text-[#c7cdf5] cursor-pointer' :
+                    disabled ? 'bg-[#11141c] border-[rgba(255,255,255,0.06)] text-[#596174] cursor-not-allowed opacity-70' :
+                    'bg-[#161a24] border-[rgba(255,255,255,0.07)] text-[#98a1b3] hover:text-[#e8ebf2] cursor-pointer'
+                  }`}
+                >
+                  {active && <CheckIcon strokeWidth={2.5} className="w-[15px] h-[15px]" />}
+                  {type}
+                </button>
+              </span>
             );
           })}
         </div>
-      </div>
-
-      <div className="mb-[26px] mt-[26px]">
-        <BlockHeader label="Quick actions from dashboard insights" />
-        {quickActions.length === 0 ? (
-          <p className="text-[13px] text-[#6b7488] leading-[1.5]">
-            No dashboard insights yet. Complete onboarding and run a repository scan first.
-          </p>
-        ) : (
-        <div className="grid grid-cols-[repeat(auto-fill,minmax(248px,1fr))] gap-[12px]">
-          {quickActions.map(action => (
-            <div
-              key={action.id}
-              className="flex gap-[12px] p-[14px] rounded-[12px] bg-[#11141c] border border-[rgba(255,255,255,0.07)] cursor-pointer transition-all hover:border-[rgba(129,140,248,0.35)] hover:translate-y-[-2px] hover:shadow-[0_8px_24px_rgba(0,0,0,0.35)]"
-              onClick={() => onApplyQuickAction(action)}
-            >
-              <div className="w-[34px] h-[34px] rounded-[9px] flex-shrink-0 grid place-items-center bg-[rgba(129,140,248,0.14)] text-[#818cf8]">
-                <ZapIcon className="w-[17px] h-[17px]" />
-              </div>
-              <div>
-                <div className="text-[13px] font-semibold text-[#e8ebf2] leading-[1.35] mb-[4px]">{action.label}</div>
-                <div className="text-[11.5px] text-[#6b7488]">{action.feature} · {action.severity} · {primaryTestType(action.testTypes)}</div>
-              </div>
-            </div>
-          ))}
-        </div>
-        )}
       </div>
     </div>
   );

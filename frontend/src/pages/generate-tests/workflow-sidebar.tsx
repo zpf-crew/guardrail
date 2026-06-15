@@ -1,5 +1,3 @@
-import { ShieldCheckIcon } from '@/components/icons';
-
 export const WORKFLOW_STEPS = [
   { title: 'Intent' },
   { title: 'Isolation' },
@@ -57,10 +55,6 @@ export function WorkflowSidebar({ currentStep, applied = false, onSelect }: Work
             </div>
           );
         })}
-      </div>
-      <div className="mt-[22px] p-[12px] bg-[rgba(34,211,238,0.05)] border border-[rgba(34,211,238,0.18)] rounded-[11px] text-[11px] text-[#98a1b3] leading-[1.5]">
-        <ShieldCheckIcon className="w-[14px] h-[14px] text-[#22d3ee] mb-[6px]" />
-        <b className="text-[#e8ebf2]">Production code changes require approval.</b> Test file changes are fully reviewable before apply.
       </div>
     </div>
   );

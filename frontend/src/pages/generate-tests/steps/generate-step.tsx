@@ -7,7 +7,7 @@ import { CheckIcon, ChevronRightIcon, ChangeTypeIcon, TrashIcon, LoaderIcon } fr
 import { StepHeader, BlockHeader } from '../shared';
 import { RISK_BADGE, CHANGE_ACTION_STYLE } from '../workbench-presentation';
 
-const FILTERS = ['All', 'Add', 'Update', 'Delete', 'Unit', 'UI / Browser', 'Mobile'] as const;
+const FILTERS = ['All', 'Add', 'Update', 'Delete', 'UI / Browser'] as const;
 
 function matchesFilter(change: GeneratedChange, filter: string): boolean {
   if (filter === 'All') return true;

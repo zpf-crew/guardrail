@@ -39,7 +39,8 @@ function buildInitialIntent(
   const qa = state.insightId ? quickActions.find(q => q.sourceInsightId === state.insightId) : undefined;
   return {
     prompt: qa?.label ?? state.action ?? '',
-    ...(qa ? { feature: qa.feature, testTypes: [primaryTestType(qa.testTypes)] } : {}),
+    ...(qa ? { feature: qa.feature } : {}),
+    testTypes: ['UI / Browser'],
   };
 }
 
@@ -52,10 +53,7 @@ function hasScreenshotHref(evidence: Evidence[]): boolean {
 function evidenceWithScreenshotFallback(streamedEvidence: Evidence[], run?: TestRunResult | null): Evidence[] {
   if (hasScreenshotHref(streamedEvidence) || !run) return streamedEvidence;
 
-  const finalScreenshots = [
-    ...run.ui.evidence,
-    ...run.mobile.evidence,
-  ].filter(item => item.kind === 'screenshot' && item.href);
+  const finalScreenshots = run.ui.evidence.filter(item => item.kind === 'screenshot' && item.href);
 
   return finalScreenshots.length ? [...streamedEvidence, ...finalScreenshots] : streamedEvidence;
 }
@@ -112,7 +110,6 @@ export function GenerateTestsPage() {
       restoreSessionId={restoreSessionId}
       onStartNewSession={() => setWorkbenchKey(key => key + 1)}
       initialIntent={buildInitialIntent(handoffState, quickActions)}
-      quickActions={quickActions}
       featureOptions={featureOptions}
     />
   );
@@ -122,7 +119,6 @@ interface GenerateTestsWorkbenchProps {
   restoreSessionId: string | null;
   onStartNewSession: () => void;
   initialIntent?: Partial<IntentInput>;
-  quickActions: QuickAction[];
   featureOptions: FeatureModule[];
 }
 
@@ -130,7 +126,6 @@ function GenerateTestsWorkbench({
   restoreSessionId,
   onStartNewSession,
   initialIntent,
-  quickActions,
   featureOptions,
 }: GenerateTestsWorkbenchProps) {
   const navigate = useNavigate();
@@ -192,11 +187,6 @@ function GenerateTestsWorkbench({
 
   const activeTestType = primaryTestType(session.intent.testTypes);
 
-  const applyQuickAction = (qa: QuickAction) => {
-    wb.updateIntent({ prompt: qa.label, feature: qa.feature, testTypes: [primaryTestType(qa.testTypes)] });
-    toast('Prompt filled from insight', 'success');
-  };
-
   return (
     <div className="min-h-screen" style={shellStyle}>
       <TopBar
@@ -234,13 +224,11 @@ function GenerateTestsWorkbench({
           {currentStep === 0 && (
             <IntentStep
               intent={session.intent}
-              quickActions={quickActions}
               featureOptions={featureOptions}
               analyzing={pending === 'analyze'}
               analyzeProgress={wb.analyzeProgress}
               onUpdateIntent={wb.updateIntent}
               onAnalyze={wb.analyze}
-              onApplyQuickAction={applyQuickAction}
             />
           )}
           {currentStep === 1 && session.isolation && (
