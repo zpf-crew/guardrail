@@ -18,6 +18,27 @@ test('loads a supported skill contract by name', async () => {
   });
 });
 
+test('loads unit workbench skill contracts by name', async () => {
+  const skillsDir = await mkdtemp(path.join(os.tmpdir(), 'guardrail-skills-'));
+  const names = [
+    'test-isolation-unit',
+    'test-plan-unit',
+    'test-generate-unit',
+    'test-run-unit',
+    'test-review-unit',
+  ];
+  for (const name of names) {
+    await writeFile(path.join(skillsDir, `${name}.md`), `# ${name}\n`);
+  }
+
+  const loader = new SkillContractLoader({ skillsDir });
+  for (const name of names) {
+    const contract = await loader.load(name);
+    assert.equal(contract.name, name);
+    assert.equal(contract.content, `# ${name}\n`);
+  }
+});
+
 test('rejects unsafe skill names', async () => {
   const skillsDir = await mkdtemp(path.join(os.tmpdir(), 'guardrail-skills-'));
   const loader = new SkillContractLoader({ skillsDir });

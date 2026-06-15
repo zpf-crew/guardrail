@@ -31,6 +31,9 @@ export function buildReviewSummary(
   if (input.run.ui.outcome === 'Failed') {
     remainingRisk.push({ label: 'UI run', value: input.run.ui.command, sentiment: 'bad' });
   }
+  if (input.run.unit.outcome === 'Failed') {
+    remainingRisk.push({ label: 'Unit run', value: input.run.unit.command, sentiment: 'bad' });
+  }
   if (input.run.ui.evidence.some(item => item.kind === 'screenshot')) {
     remainingRisk.push({ label: 'Evidence', value: 'Screenshot captured for manual review', sentiment: 'neutral' });
   }

@@ -14,7 +14,7 @@ test('local provider returns Guardrail onboarding context with schema-shaped QC 
   assert.equal(context.repo.name, 'guardrail');
   assert.match(context.repo.path, /guardrail$/);
   assert.ok(context.frontend);
-  assert.equal(context.frontend.url, 'http://localhost:5173/onboarding');
+  assert.equal(context.frontend.url, 'http://127.0.0.1:5173/onboarding');
   assert.ok(context.relatedFiles.some(file => file.path === 'frontend/src/pages/OnboardingPage.tsx'));
   assert.ok(context.sourceSnippets.some(snippet => snippet.path === 'frontend/src/pages/OnboardingPage.tsx'));
   assert.equal(context.qcCases[0]?.feature, 'Onboarding');

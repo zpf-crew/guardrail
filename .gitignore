@@ -2,6 +2,7 @@ node_modules
 .pnpm-store/
 coverage
 .env
+.env.local
 .guardrail-workspaces/
 backend/.guardrail-workspaces/
 *.log

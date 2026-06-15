@@ -613,6 +613,8 @@ export interface GeneratedChange {
   reason: string;
   /** Mock/real unified-diff preview. */
   diff: DiffLine[];
+  /** Complete generated file content when the backend can materialize this change. */
+  content?: string;
   status: 'staged' | 'applied' | 'reverted';
 }
 

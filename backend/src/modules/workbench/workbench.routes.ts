@@ -32,6 +32,10 @@ interface GenerateJobBody {
   approval?: PlanApproval;
 }
 
+interface ApplyBody {
+  allowFailing?: boolean;
+}
+
 export function buildWorkbenchRoutes(service: WorkbenchService) {
   return async function workbenchRoutes(app: FastifyInstance) {
     app.addHook('preHandler', requireAuth);
@@ -112,6 +116,17 @@ export function buildWorkbenchRoutes(service: WorkbenchService) {
 
     app.post('/:sessionId/review/jobs', async (request: FastifyRequest<{ Params: SessionParams }>, reply) => {
       return startJob(reply, () => service.startJob(request.params.sessionId, 'review'));
+    });
+
+    app.post('/:sessionId/apply', async (request: FastifyRequest<{ Params: SessionParams; Body: ApplyBody }>, reply) => {
+      try {
+        const user = request.user!;
+        return await service.applySessionChanges(request.params.sessionId, user.id, {
+          allowFailing: request.body?.allowFailing === true,
+        });
+      } catch (error) {
+        return routeError(reply, error);
+      }
     });
 
     app.get('/:sessionId/jobs/:jobId', async (request: FastifyRequest<{ Params: JobParams }>, reply) => {

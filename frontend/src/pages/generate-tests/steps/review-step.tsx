@@ -20,6 +20,7 @@ interface ReviewStepProps {
   changes: GeneratedChange[];
   activeTestType: TestType;
   applied: boolean;
+  applying: boolean;
   progress: RunProgressEvent[];
   evidence: Evidence[];
   onBack: () => void;
@@ -28,7 +29,7 @@ interface ReviewStepProps {
   onExport: () => void;
 }
 
-export function ReviewStep({ review, changes, activeTestType, applied, progress, evidence, onBack, onApply, onCreatePR, onExport }: ReviewStepProps) {
+export function ReviewStep({ review, changes, activeTestType, applied, applying, progress, evidence, onBack, onApply, onCreatePR, onExport }: ReviewStepProps) {
   const [expanded, setExpanded] = React.useState<Set<string>>(new Set());
 
   const scopedChanges = React.useMemo(
@@ -165,7 +166,9 @@ export function ReviewStep({ review, changes, activeTestType, applied, progress,
             Changes Applied
           </Button>
         ) : (
-          <Button variant="primary" size="lg" onClick={onApply}>Apply Changes</Button>
+          <Button variant="primary" size="lg" onClick={onApply} disabled={applying}>
+            {applying ? 'Applying…' : 'Apply Changes'}
+          </Button>
         )}
       </div>
     </div>

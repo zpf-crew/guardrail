@@ -1,6 +1,7 @@
 import type { FastifyInstance } from 'fastify';
 import type { Pool } from 'pg';
 import { UiBrowserAdapter } from './adapters/ui-browser/ui-browser.adapter.js';
+import { UnitAdapter } from './adapters/unit/unit.adapter.js';
 import { WorkbenchArtifactStore } from './artifacts/workbench-artifact-store.js';
 import { WorkbenchJobEventBus } from './jobs/job-events.js';
 import { WorkbenchJobQueue } from './jobs/job-queue.js';
@@ -19,7 +20,7 @@ export function createWorkbenchService(db: Pool): WorkbenchService {
     new WorkbenchJobEventBus(),
     new WorkbenchArtifactStore(),
     ClonedRepoRepositoryProvider.fromDb(db),
-    [new UiBrowserAdapter()],
+    [new UiBrowserAdapter(), new UnitAdapter()],
   );
 }
 

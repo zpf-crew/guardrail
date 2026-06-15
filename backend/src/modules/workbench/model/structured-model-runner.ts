@@ -18,6 +18,20 @@ interface RunStepArgs {
   signal: AbortSignal;
 }
 
+const MAX_TOKENS_BY_SCHEMA: Record<WorkbenchSchemaName, number> = {
+  IsolationResult: 4_000,
+  IsolationClassifications: 4_000,
+  TestPlan: 4_000,
+  TestPlanQuestions: 2_000,
+  GenerationResult: 12_000,
+  GenerationChanges: 12_000,
+  TestRunResult: 4_000,
+  ReviewSummary: 3_000,
+  ReviewRecommendation: 2_000,
+  UnitRunPlan: 2_000,
+  UiBrowserScenarioPlan: 3_000,
+};
+
 export class StructuredModelRunner {
   readonly #modelConnect: ModelConnect | null;
 
@@ -57,8 +71,7 @@ export class StructuredModelRunner {
 
 function parseJsonObject(content: string): unknown {
   const trimmed = content.trim();
-  const fenced = trimmed.match(/^```(?:json)?\s*([\s\S]*?)\s*```$/i);
-  const json = fenced ? fenced[1] : trimmed;
+  const json = extractFirstJsonObject(trimmed);
   try {
     return JSON.parse(json);
   } catch (error) {
@@ -66,4 +79,38 @@ function parseJsonObject(content: string): unknown {
       `Model returned invalid JSON: ${error instanceof Error ? error.message : String(error)}`,
     );
   }
+}
+
+function extractFirstJsonObject(value: string): string {
+  if (value.startsWith('{')) return value;
+
+  const start = value.indexOf('{');
+  if (start < 0) return value;
+
+  let depth = 0;
+  let inString = false;
+  let escaped = false;
+  for (let index = start; index < value.length; index += 1) {
+    const char = value[index];
+    if (escaped) {
+      escaped = false;
+      continue;
+    }
+    if (char === '\\') {
+      escaped = true;
+      continue;
+    }
+    if (char === '"') {
+      inString = !inString;
+      continue;
+    }
+    if (inString) continue;
+    if (char === '{') depth += 1;
+    if (char === '}') {
+      depth -= 1;
+      if (depth === 0) return value.slice(start, index + 1);
+    }
+  }
+
+  return value;
 }

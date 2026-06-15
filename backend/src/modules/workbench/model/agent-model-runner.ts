@@ -59,7 +59,7 @@ export class AgentModelRunner {
           { role: 'system', content: args.skill.content },
           { role: 'user', content: userContent },
         ],
-        { temperature: 0, maxTokens: 1500, signal: args.signal },
+        { temperature: 0, maxTokens: 200000, signal: args.signal },
       );
 
       try {
@@ -101,7 +101,7 @@ export class AgentModelRunner {
           { role: 'system', content: args.skill.content },
           { role: 'user', content: userContent },
         ],
-        { temperature: 0, maxTokens: 4000, signal: args.signal },
+        { temperature: 0, maxTokens: 200000, signal: args.signal },
       );
 
       try {
