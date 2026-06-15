@@ -34,6 +34,7 @@ type Snapshot = {
     isolation?: {
       target: { feature: string };
       sourceFiles: Array<{ path: string }>;
+      classifications: Array<{ behavior: string }>;
     };
     run?: {
       ui: {
