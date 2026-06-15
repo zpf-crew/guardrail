@@ -7,8 +7,9 @@ import type {
   ScanSummary,
   UploadedFile,
 } from '@/types/testlens';
+import { getApiBase } from './api-base';
 
-const API_BASE = import.meta.env.VITE_API_BASE_URL?.trim() ?? '';
+const API_BASE = getApiBase();
 const LATEST_DASHBOARD_PREFIX = 'tl.latestDashboard.';
 
 export type KnowledgeDocWithSnippet = KnowledgeDoc & {

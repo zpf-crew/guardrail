@@ -11,7 +11,7 @@ import {
   runSession,
   reviewSession,
 } from '@/data/workbench-api';
-import type { JobEvent } from '@/data/workbench-api';
+import type { JobEvent, RunOptions } from '@/data/workbench-api';
 
 export type WorkbenchStatus = 'loading' | 'error' | 'ready';
 export type PendingTransition = null | 'analyze' | 'plan' | 'generate' | 'run' | 'review';
@@ -56,7 +56,7 @@ export interface UseWorkbenchResult {
   analyze: () => Promise<void>;
   generatePlan: () => Promise<void>;
   approvePlan: (approval: PlanApproval) => void;
-  runTests: () => void;
+  runTests: (options?: RunOptions) => void;
 }
 
 export interface UseWorkbenchOptions {
@@ -249,7 +249,7 @@ export function useWorkbench(initialIntent?: Partial<IntentInput>, options?: Use
     intervalRef.current = id;
   }), []);
 
-  const runTests = React.useCallback(() => {
+  const runTests = React.useCallback((options: RunOptions = {}) => {
     if (!session) return;
     const runId = runIdRef.current + 1;
     runIdRef.current = runId;
@@ -268,7 +268,7 @@ export function useWorkbench(initialIntent?: Partial<IntentInput>, options?: Use
         const run = await runSession(session.id, event => {
           if (!isCurrentRun()) return;
           setRunEvents(events => [...events, event]);
-        });
+        }, options);
         if (!isCurrentRun()) return;
 
         setSession(s => (s ? { ...s, run } : s));

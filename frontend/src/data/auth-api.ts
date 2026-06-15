@@ -1,6 +1,7 @@
 import type { AuthMeResponse } from '@/types/testlens';
+import { getApiBase } from './api-base';
 
-const API_BASE = import.meta.env.VITE_API_BASE_URL?.trim() ?? '';
+const API_BASE = getApiBase();
 
 export class AuthApiError extends Error {
   constructor(message: string) {

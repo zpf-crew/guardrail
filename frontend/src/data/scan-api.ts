@@ -1,11 +1,12 @@
 import { getActiveRepoId } from './dashboard-api';
 import type { ScanLogEntry, ScanSummary } from '@/types/testlens';
+import { getApiBase } from './api-base';
 
 /**
  * Triggers a repository scan via `POST /api/repos/:repoId/scan`.
  */
 
-const API_BASE = import.meta.env.VITE_API_BASE_URL?.trim() ?? '';
+const API_BASE = getApiBase();
 
 export class ScanApiError extends Error {
   constructor(message: string) {

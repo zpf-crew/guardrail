@@ -1,10 +1,11 @@
 import type { DashboardPayload } from '@/types/testlens';
+import { getApiBase } from './api-base';
 
 /**
  * Seam between the Dashboard UI and `GET /api/repos/:repoId/dashboard`.
  */
 
-const API_BASE = import.meta.env.VITE_API_BASE_URL?.trim() ?? '';
+const API_BASE = getApiBase();
 
 /** localStorage key the onboarding flow writes the chosen repo id to. */
 const ACTIVE_REPO_KEY = 'tl.activeRepoId';

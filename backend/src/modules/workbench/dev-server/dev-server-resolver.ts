@@ -3,7 +3,16 @@ import { readFile, readdir, stat } from 'node:fs/promises';
 import { join } from 'node:path';
 
 export type DevServerTarget =
-  | { kind: 'subprocess'; command: string; args: string[]; cwd: string; port: number; healthPath: string }
+  | {
+      kind: 'subprocess';
+      command: string;
+      args: string[];
+      cwd: string;
+      port: number;
+      healthPath: string;
+      installCommand?: string;
+      installArgs?: string[];
+    }
   | { kind: 'docker'; composeFile: string; service: string; port: number; healthPath: string; projectName: string };
 
 type PackageManager = 'pnpm' | 'yarn' | 'npm';
@@ -58,6 +67,12 @@ function buildDevArgs(packageManager: PackageManager, packageDir: string | null,
     : ['run', 'dev', '--', ...portArgs];
 }
 
+function buildInstallArgs(packageManager: PackageManager, hasPackageLock: boolean): string[] {
+  if (packageManager === 'pnpm') return ['install', '--frozen-lockfile'];
+  if (packageManager === 'yarn') return ['install', '--frozen-lockfile'];
+  return hasPackageLock ? ['ci'] : ['install'];
+}
+
 function subprocessCommand(packageManager: PackageManager, packageDir: string | null): string {
   if (packageDir) {
     if (packageManager === 'pnpm') return `${packageManager} --dir ${packageDir}`;
@@ -103,6 +118,7 @@ export async function resolveDevServerTarget(
 ): Promise<DevServerTarget | null> {
   const port = await pickEphemeralPort();
   const packageManager = await detectPackageManager(clonePath);
+  const hasPackageLock = await fileExists(join(clonePath, 'package-lock.json'));
 
   const frontendPackageJson = join(clonePath, 'frontend', 'package.json');
   if (await fileExists(frontendPackageJson)) {
@@ -115,6 +131,8 @@ export async function resolveDevServerTarget(
         cwd: clonePath,
         port,
         healthPath: '/',
+        installCommand: packageManager,
+        installArgs: buildInstallArgs(packageManager, hasPackageLock),
       };
     }
   }
@@ -130,6 +148,8 @@ export async function resolveDevServerTarget(
         cwd: clonePath,
         port,
         healthPath: '/',
+        installCommand: packageManager,
+        installArgs: buildInstallArgs(packageManager, hasPackageLock),
       };
     }
     if (scripts.start) {
@@ -141,6 +161,8 @@ export async function resolveDevServerTarget(
         cwd: clonePath,
         port,
         healthPath: '/',
+        installCommand: packageManager,
+        installArgs: buildInstallArgs(packageManager, hasPackageLock),
       };
     }
   }

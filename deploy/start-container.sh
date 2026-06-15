@@ -26,6 +26,36 @@ fi
 export NODE_ENV="${NODE_ENV:-production}"
 export PORT="${PORT:-3000}"
 
+if [ -n "${GREENNODE_ENDPOINT_URL:-}" ]; then
+  export FRONTEND_URL="${FRONTEND_URL:-$GREENNODE_ENDPOINT_URL}"
+  export BACKEND_URL="${BACKEND_URL:-$GREENNODE_ENDPOINT_URL}"
+  export GITHUB_CALLBACK_URL="${GITHUB_CALLBACK_URL:-${GREENNODE_ENDPOINT_URL%/}/api/auth/github/callback}"
+fi
+
+echo "Runtime environment diagnostics:"
+echo "  NODE_ENV=${NODE_ENV}"
+echo "  PORT=${PORT}"
+echo "  GREENNODE_ENDPOINT_URL=${GREENNODE_ENDPOINT_URL:-<unset>}"
+echo "  FRONTEND_URL=${FRONTEND_URL:-<unset>}"
+echo "  BACKEND_URL=${BACKEND_URL:-<unset>}"
+echo "  GITHUB_CALLBACK_URL=${GITHUB_CALLBACK_URL:-<unset>}"
+if [ -n "${GITHUB_CLIENT_ID:-}" ]; then
+  echo "  GITHUB_CLIENT_ID=<set>"
+else
+  echo "  GITHUB_CLIENT_ID=<unset>"
+fi
+if [ -n "${GITHUB_CLIENT_SECRET:-}" ]; then
+  echo "  GITHUB_CLIENT_SECRET=<set>"
+else
+  echo "  GITHUB_CLIENT_SECRET=<unset>"
+fi
+
+runtime_api_base="${BACKEND_URL:-}"
+runtime_config_file="/usr/share/nginx/html/runtime-config.js"
+runtime_config_json="$(RUNTIME_API_BASE="$runtime_api_base" node -e 'process.stdout.write(JSON.stringify({ apiBaseUrl: process.env.RUNTIME_API_BASE || "" }))')"
+printf 'window.__GUARDRAIL_CONFIG__ = %s;\n' "$runtime_config_json" > "$runtime_config_file"
+echo "  Runtime frontend apiBaseUrl=${runtime_api_base:-<same-origin>}"
+
 cd /app/backend
 
 node dist/db/migrate.js

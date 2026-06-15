@@ -30,7 +30,7 @@ import {
   type UiBrowserExecutionPlan,
   type UiBrowserUserFlowPlan,
 } from '../../validation/workbench-validators.js';
-import { DevServerOrchestrator, type DevServerLease } from '../../dev-server/dev-server-orchestrator.js';
+import { DevServerOrchestrator, type DevServerLease, type DevServerLogEvent } from '../../dev-server/dev-server-orchestrator.js';
 import {
   resolveDevServerTarget,
   type DevServerTarget,
@@ -68,7 +68,12 @@ interface PendingFlowRun {
 
 interface DevServerLike {
   resolve: (clonePath: string, sessionId?: string) => Promise<DevServerTarget | null>;
-  start: (target: DevServerTarget, signal: AbortSignal, route?: string) => Promise<DevServerLease>;
+  start: (
+    target: DevServerTarget,
+    signal: AbortSignal,
+    route?: string,
+    onLog?: (event: DevServerLogEvent) => void,
+  ) => Promise<DevServerLease>;
   stop: (lease: DevServerLease) => Promise<void>;
 }
 
@@ -101,6 +106,33 @@ function matrixEvidenceLabelFromItems(evidence: Array<{ kind: string }>): string
 
 function uiCommandFor(targetUrl: string | null): string {
   return targetUrl ? `agent-browser open ${targetUrl}` : 'agent-browser open (dev server unavailable)';
+}
+
+function sanitizeLogChunk(text: string): string {
+  return text.replace(/https?:\/\/x-access-token:[^@\s]+@/g, 'https://x-access-token:<redacted>@');
+}
+
+function shortLogChunk(text: string): string {
+  const compact = sanitizeLogChunk(text).trim().replace(/\s+/g, ' ');
+  return compact.length > 220 ? `${compact.slice(0, 220)}…` : compact;
+}
+
+function resolveManualTarget(manualBaseUrl: string | undefined, defaultRoute: string): { baseUrl: string; route: string; targetUrl: string } | null {
+  const raw = manualBaseUrl?.trim();
+  if (!raw) return null;
+  let url: URL;
+  try {
+    url = new URL(raw);
+  } catch {
+    throw new Error('Manual app URL must be a valid http:// or https:// URL.');
+  }
+  if (url.protocol !== 'http:' && url.protocol !== 'https:') {
+    throw new Error('Manual app URL must use http:// or https://.');
+  }
+  const route = url.pathname === '/' && !url.search && !url.hash
+    ? defaultRoute
+    : `${url.pathname}${url.search}${url.hash}`;
+  return { baseUrl: url.origin, route, targetUrl: `${url.origin}${route}` };
 }
 
 function durationLabel(durationMs: number): string {
@@ -392,7 +424,7 @@ export class UiBrowserAdapter implements TestTypeAdapter {
     return validateWorkbenchStepResult('GenerationResult', result);
   }
 
-  async run(input: AdapterInput & { generation: GenerationResult }): Promise<TestRunResult> {
+  async run(input: AdapterInput & { generation: GenerationResult; runOptions?: { manualBaseUrl?: string } }): Promise<TestRunResult> {
     input.signal.throwIfAborted();
     await input.emit({ type: 'progress', message: 'Running UI Browser tests.', percent: 75 });
 
@@ -467,9 +499,9 @@ export class UiBrowserAdapter implements TestTypeAdapter {
     return validateWorkbenchStepResult('ReviewSummary', result);
   }
 
-  async #runUi(input: AdapterInput & { generation: GenerationResult }): Promise<UiRunOutcome> {
+  async #runUi(input: AdapterInput & { generation: GenerationResult; runOptions?: { manualBaseUrl?: string } }): Promise<UiRunOutcome> {
     const uiChanges = input.generation.changes.filter(change => change.testType === 'UI / Browser');
-    const defaultRoute = input.repository.frontend?.route ?? '/';
+    let defaultRoute = input.repository.frontend?.route ?? '/';
     const isolation = input.session.isolation;
     if (!isolation) throw new Error('Cannot run UI Browser tests without isolation result.');
 
@@ -503,19 +535,44 @@ export class UiBrowserAdapter implements TestTypeAdapter {
     let completedFlowRunCount = 0;
 
     try {
-      const target = await this.#devServer.resolve(clonePath, sessionId);
-      if (!target) {
-        return failedMatrix('No dev server could be resolved for this repository.');
-      }
+      const manualTarget = resolveManualTarget(input.runOptions?.manualBaseUrl, defaultRoute);
+      if (manualTarget) {
+        await input.emit({
+          type: 'progress',
+          message: `Using provided app URL for UI Browser run: ${manualTarget.targetUrl}`,
+          percent: 76,
+        });
+        defaultRoute = manualTarget.route;
+        lease = {
+          baseUrl: manualTarget.baseUrl,
+          route: manualTarget.route,
+          stop: async () => {},
+        };
+        targetUrl = manualTarget.targetUrl;
+      } else {
+        const target = await this.#devServer.resolve(clonePath, sessionId);
+        if (!target) {
+          return failedMatrix('No dev server could be resolved for this repository. Provide a running app URL to continue UI Browser tests.');
+        }
 
-      await input.emit({ type: 'progress', message: 'Starting managed dev server.', percent: 76 });
-      lease = await this.#devServer.start(target, input.signal, defaultRoute);
-      targetUrl = `${lease.baseUrl}${lease.route}`;
-      await input.emit({
-        type: 'progress',
-        message: `Dev server ready at ${targetUrl}.`,
-        percent: 77,
-      });
+        await input.emit({ type: 'progress', message: 'Installing target repository dependencies.', percent: 75 });
+        await input.emit({ type: 'progress', message: 'Starting managed dev server.', percent: 76 });
+        lease = await this.#devServer.start(target, input.signal, defaultRoute, event => {
+          const chunk = shortLogChunk(event.text);
+          if (!chunk) return;
+          void input.emit({
+            type: 'progress',
+            message: `[dev-server:${event.source}:${event.stream}] ${chunk}`,
+            percent: 76,
+          });
+        });
+        targetUrl = `${lease.baseUrl}${lease.route}`;
+        await input.emit({
+          type: 'progress',
+          message: `Dev server ready at ${targetUrl}.`,
+          percent: 77,
+        });
+      }
 
       for (const [changeIndex, change] of uiChanges.entries()) {
         input.signal.throwIfAborted();
@@ -634,7 +691,10 @@ export class UiBrowserAdapter implements TestTypeAdapter {
         message: `Warning: UI Browser runner failed. ${error instanceof Error ? error.message : String(error)}`,
         percent: 80,
       });
-      const errorMessage = error instanceof Error ? error.message : String(error);
+      const rawErrorMessage = error instanceof Error ? error.message : String(error);
+      const errorMessage = input.runOptions?.manualBaseUrl
+        ? rawErrorMessage
+        : `${rawErrorMessage} Provide a running app URL to continue UI Browser tests.`;
       for (const pending of pendingFlowRuns.slice(completedFlowRunCount)) {
         matrix.push({
           title: pending.flow.title,
@@ -645,6 +705,17 @@ export class UiBrowserAdapter implements TestTypeAdapter {
           reason: errorMessage,
           file: pending.change.file,
         });
+      }
+      if (matrix.length === 0) {
+        matrix.push(...uiChanges.map(change => ({
+          title: change.title,
+          type: 'UI / Browser' as const,
+          status: 'Failed' as const,
+          duration: null,
+          evidence: null,
+          reason: errorMessage,
+          file: change.file,
+        })));
       }
       const runTrace = await buildUiBrowserRunTraceEvidence(allEvidence);
       if (runTrace) allEvidence.push(runTrace);

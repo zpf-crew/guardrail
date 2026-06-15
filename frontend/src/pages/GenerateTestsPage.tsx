@@ -280,6 +280,7 @@ function GenerateTestsWorkbench({
               progress={wb.runProgress}
               evidence={runEvidence}
               onBack={() => wb.setStep(3)}
+              onRunWithUrl={manualBaseUrl => wb.runTests({ manualBaseUrl })}
               onReview={() => wb.setStep(5)}
             />
           )}

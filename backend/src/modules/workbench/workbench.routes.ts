@@ -9,7 +9,7 @@ import { createPullRequest } from './pr/create-pull-request.service.js';
 import { buildPullRequestBody } from './pr/build-pr-body.js';
 import { formatSse } from './jobs/job-events.js';
 import type { WorkbenchService } from './workbench.service.js';
-import type { IntentInput, PlanApproval, WorkbenchJob, WorkbenchJobEvent } from './workbench.types.js';
+import type { IntentInput, PlanApproval, RunOptions, WorkbenchJob, WorkbenchJobEvent } from './workbench.types.js';
 
 interface SessionParams {
   sessionId: string;
@@ -35,6 +35,8 @@ interface UpdateSessionBody {
 interface GenerateJobBody {
   approval?: PlanApproval;
 }
+
+interface RunJobBody extends RunOptions {}
 
 export function buildWorkbenchRoutes(service: WorkbenchService) {
   return async function workbenchRoutes(app: FastifyInstance) {
@@ -110,9 +112,12 @@ export function buildWorkbenchRoutes(service: WorkbenchService) {
       },
     );
 
-    app.post('/:sessionId/run/jobs', async (request: FastifyRequest<{ Params: SessionParams }>, reply) => {
-      return startJob(reply, () => service.startJob(request.params.sessionId, 'run'));
-    });
+    app.post(
+      '/:sessionId/run/jobs',
+      async (request: FastifyRequest<{ Params: SessionParams; Body: RunJobBody }>, reply) => {
+        return startJob(reply, () => service.startJob(request.params.sessionId, 'run', undefined, request.body ?? {}));
+      },
+    );
 
     app.post('/:sessionId/review/jobs', async (request: FastifyRequest<{ Params: SessionParams }>, reply) => {
       return startJob(reply, () => service.startJob(request.params.sessionId, 'review'));

@@ -9,6 +9,7 @@ import type {
   ReviewSummary,
   Evidence,
 } from '@/types/testlens';
+import { getApiBase } from './api-base';
 import { getActiveRepoId } from './dashboard-api';
 import {
   isMockMode,
@@ -26,13 +27,14 @@ import {
  * All steps call the real API and stream SSE job events.
  */
 
-const configuredApiBase = import.meta.env.VITE_API_BASE_URL?.trim();
-const API_BASE = configuredApiBase && configuredApiBase.length > 0
-  ? configuredApiBase
-  : '';
+const API_BASE = getApiBase();
 
 export type JobStep = 'isolation' | 'plan' | 'generate' | 'run' | 'review';
 export type JobStatus = 'queued' | 'running' | 'succeeded' | 'failed' | 'timeout';
+
+export interface RunOptions {
+  manualBaseUrl?: string;
+}
 
 export interface JobStartResponse {
   jobId: string;
@@ -287,9 +289,9 @@ export async function generateSession(
 }
 
 /** S5 — run the generated tests. */
-export async function runSession(id: string, onEvent?: (event: JobEvent) => void): Promise<TestRunResult> {
+export async function runSession(id: string, onEvent?: (event: JobEvent) => void, options: RunOptions = {}): Promise<TestRunResult> {
   if (isMockMode()) { await mockStream(onEvent, 'run', ['Starting dev server…', 'Running UI flows…', 'Summarizing evidence…']); return mockRun(); }
-  return runJob<TestRunResult>(id, 'run', onEvent);
+  return runJob<TestRunResult>(id, 'run', onEvent, options);
 }
 
 /** S6 — summarize the generated changes and remaining risk. */
