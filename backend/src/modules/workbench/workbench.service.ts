@@ -1,6 +1,7 @@
 import { basename, join } from 'node:path';
-import { modelConnect } from '../model-connect/index.js';
+import { ModelConnect } from '../model-connect/model-connect.service.js';
 import { StructuredModelRunner } from './model/structured-model-runner.js';
+import { createWorkbenchModelDiagnosticFetch } from './model/workbench-model-diagnostics.js';
 import { SkillContractLoader, type SkillContract } from './skills/skill-contract-loader.js';
 import type { TestTypeAdapter } from './adapters/test-type-adapter.js';
 import { materializeGeneratedChanges } from './generation/generated-change-writer.js';
@@ -37,6 +38,10 @@ type ArtifactAdapterEvent = AdapterEvent & {
   type: 'artifact' | 'screenshot';
   artifact: TestRunResult['ui']['evidence'][number];
 };
+
+const workbenchModelConnect = ModelConnect.fromEnv({
+  fetchImpl: createWorkbenchModelDiagnosticFetch({ source: 'workbench' }),
+});
 
 export interface WorkbenchServiceTestHooks {
   structuredModel?: Pick<StructuredModelRunner, 'runStep'>;
@@ -118,11 +123,11 @@ export class WorkbenchService {
         const skills = (this.testHooks?.skills
           ?? new SkillContractLoader({ skillsDir: join(repoRoot, 'guardrail-skills') })) as SkillContractLoader;
         const structuredModel = (this.testHooks?.structuredModel
-          ?? new StructuredModelRunner({ modelConnect })) as StructuredModelRunner;
+          ?? new StructuredModelRunner({ modelConnect: workbenchModelConnect })) as StructuredModelRunner;
         const baseInput = {
           session: currentSession,
           repository,
-          modelConnect,
+          modelConnect: workbenchModelConnect,
           skills,
           structuredModel,
           signal,

@@ -290,7 +290,7 @@ async function analyzeModuleWithModel(module: ModuleScanTarget, facts: RepoScanF
   ];
 
   try {
-    const result = await modelConnect.getThinker().chat(messages, { temperature: 0.2, maxTokens: 1800 });
+    const result = await modelConnect.getThinker().chat(messages, { temperature: 0.2, maxTokens: 200000 });
     const reasoning = parseJsonObject(result.content);
     if (!reasoning) {
       return {
@@ -377,7 +377,7 @@ async function aggregateWithModel(facts: RepoScanFacts, draft: OnboardingDraftIn
   ];
 
   try {
-    const result = await modelConnect.getThinker().chat(messages, { temperature: 0.15, maxTokens: 2000 });
+    const result = await modelConnect.getThinker().chat(messages, { temperature: 0.15, maxTokens: 200000 });
     const reasoning = parseJsonObject(result.content);
     if (!reasoning) {
       return {

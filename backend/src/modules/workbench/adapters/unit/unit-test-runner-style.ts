@@ -1,5 +1,6 @@
 import { readFile } from 'node:fs/promises';
 import { join } from 'node:path';
+import ts from 'typescript';
 import type { RepositoryContext } from '../../repositories/repository-context-provider.js';
 
 export type ExpectedUnitRunner = 'node:test' | 'vitest' | 'jest' | 'unknown';
@@ -75,11 +76,30 @@ function localProductionBindings(content: string): string[] {
   return [...new Set(bindings)];
 }
 
+function validateTypeScriptSyntax(content: string, file: string): void {
+  const scriptKind = /\.[cm]?jsx$/i.test(file)
+    ? ts.ScriptKind.JSX
+    : /\.[cm]?tsx$/i.test(file)
+      ? ts.ScriptKind.TSX
+      : /\.[cm]?js$/i.test(file)
+        ? ts.ScriptKind.JS
+        : ts.ScriptKind.TS;
+  const source = ts.createSourceFile(file, content, ts.ScriptTarget.Latest, true, scriptKind);
+  const diagnostic = source.parseDiagnostics[0];
+  if (!diagnostic) return;
+  const message = ts.flattenDiagnosticMessageText(diagnostic.messageText, ' ');
+  const position = diagnostic.start === undefined
+    ? ''
+    : ` at ${source.getLineAndCharacterOfPosition(diagnostic.start).line + 1}:${source.getLineAndCharacterOfPosition(diagnostic.start).character + 1}`;
+  throw new Error(`Generated unit test has invalid TypeScript syntax${position}: ${message} (${file})`);
+}
+
 export function validateGeneratedUnitContent(
   content: string,
   runner: ExpectedUnitRunner,
   file: string,
 ): void {
+  validateTypeScriptSyntax(content, file);
   if (!/\b(?:describe|it|test)\s*\(/.test(content)) {
     throw new Error(`Generated unit test has no test suite or test case: ${file}`);
   }

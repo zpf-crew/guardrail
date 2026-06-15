@@ -53,3 +53,21 @@ test('accepts tests that exercise local production code and assert its result', 
     'src/cart.test.ts',
   ));
 });
+
+test('rejects generated TypeScript with parser errors before the run step', () => {
+  assert.throws(
+    () => validateGeneratedUnitContent(
+      [
+        "import { expect, it } from 'vitest';",
+        "import { submitCheckout } from './checkout';",
+        "it('submits checkout', () => {",
+        "  const result = submitCheckout() unexpectedIdentifier",
+        "  expect(result).toBeDefined();",
+        '});',
+      ].join('\n'),
+      'vitest',
+      'src/checkout.test.ts',
+    ),
+    /invalid TypeScript syntax/i,
+  );
+});

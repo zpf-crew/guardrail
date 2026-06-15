@@ -42,6 +42,8 @@ interface UnitAdapterOptions {
   runCommand?: typeof runUnitTestCommand;
 }
 
+const UNIT_GENERATION_CONCURRENCY = 2;
+
 function isAbortLike(error: unknown): boolean {
   if (error instanceof DOMException && error.name === 'AbortError') return true;
   if (!error || typeof error !== 'object') return false;
@@ -57,6 +59,16 @@ function rethrowIfAbort(error: unknown, signal: AbortSignal): void {
 
 function durationLabel(durationMs: number): string {
   return `${(durationMs / 1000).toFixed(1)}s`;
+}
+
+function errorMessage(error: unknown): string {
+  return error instanceof Error ? error.message : String(error);
+}
+
+function isModelResponseError(message: string): boolean {
+  return /LLM response did not contain assistant content/i.test(message)
+    || /Model returned invalid JSON/i.test(message)
+    || /LLM is not configured/i.test(message);
 }
 
 function noOpRun(): TestRunResult {
@@ -90,17 +102,20 @@ function normalizeUnitChanges(
   scoped: ReturnType<typeof deriveUnitGenerationScope>,
   fallbackFeature: string,
   runner: ExpectedUnitRunner,
+  includeUnmatched = true,
 ): GeneratedChange[] {
   const used = new Set<number>();
   const resolved: GeneratedChange[] = [];
 
   for (const scope of scoped) {
-    const index = modelChanges.findIndex((change, i) =>
-      !used.has(i) && (
-        change.title.toLowerCase() === scope.behavior.toLowerCase()
-        || change.title.toLowerCase().includes(scope.behavior.toLowerCase())
-        || scope.behavior.toLowerCase().includes(change.title.toLowerCase())
-      ));
+    const index = scoped.length === 1 && !includeUnmatched
+      ? (modelChanges.length > 0 ? 0 : -1)
+      : modelChanges.findIndex((change, i) =>
+        !used.has(i) && (
+          change.title.toLowerCase() === scope.behavior.toLowerCase()
+          || change.title.toLowerCase().includes(scope.behavior.toLowerCase())
+          || scope.behavior.toLowerCase().includes(change.title.toLowerCase())
+        ));
     const base = index >= 0 ? modelChanges[index] : undefined;
     if (!base) {
       throw new Error(`Unit generation did not return a change for scoped behavior: ${scope.behavior}`);
@@ -113,10 +128,10 @@ function normalizeUnitChanges(
       ...base,
       action: scope.action,
       testType: 'Unit' as const,
-      title: base.title.trim() || scope.behavior,
-      file: base.file.trim() || scope.file,
+      title: scoped.length === 1 && !includeUnmatched ? scope.behavior : (base.title.trim() || scope.behavior),
+      file: scoped.length === 1 && !includeUnmatched ? scope.file : (base.file.trim() || scope.file),
       feature: base.feature || fallbackFeature,
-      risk: base.risk || scope.risk,
+      risk: scoped.length === 1 && !includeUnmatched ? scope.risk : (base.risk || scope.risk),
       content: base.content,
       status: 'staged' as const,
     };
@@ -128,6 +143,8 @@ function normalizeUnitChanges(
         : normalized.content.split('\n').map(text => ({ kind: 'add' as const, text })),
     });
   }
+
+  if (!includeUnmatched) return resolved;
 
   for (let index = 0; index < modelChanges.length; index += 1) {
     if (used.has(index)) continue;
@@ -145,6 +162,24 @@ function normalizeUnitChanges(
   }
 
   return resolved;
+}
+
+async function mapWithConcurrency<T, R>(
+  items: T[],
+  concurrency: number,
+  worker: (item: T, index: number) => Promise<R>,
+): Promise<R[]> {
+  const results = new Array<R>(items.length);
+  let nextIndex = 0;
+  const runners = Array.from({ length: Math.min(concurrency, items.length) }, async () => {
+    while (nextIndex < items.length) {
+      const index = nextIndex;
+      nextIndex += 1;
+      results[index] = await worker(items[index]!, index);
+    }
+  });
+  await Promise.all(runners);
+  return results;
 }
 
 export class UnitAdapter implements TestTypeAdapter {
@@ -234,48 +269,103 @@ export class UnitAdapter implements TestTypeAdapter {
     if (scoped.length === 0) {
       throw new Error('Unit generation has no approved behaviors to generate.');
     }
+    await input.emit({
+      type: 'progress',
+      message: `Unit generation scope ready — ${scoped.length} behavior(s), ${scoped.map(item => item.file).join(', ')}`,
+      percent: 56,
+    });
     const expectedRunner = await detectExpectedUnitRunner(input.repository);
+    await input.emit({
+      type: 'progress',
+      message: `Detected unit runner style: ${expectedRunner.importSource}`,
+      percent: 58,
+    });
     const skill = await input.skills.load('test-generate-unit');
     await input.emit({ type: 'progress', message: 'Generating unit test file content from approved plan…', percent: 62 });
-    let resolvedChanges: GeneratedChange[] | null = null;
-    let validationErrors: string[] = [];
-    for (let attempt = 1; attempt <= 2; attempt += 1) {
-      try {
-        const modelResult = await input.structuredModel.runStep({
-          profile: 'coder',
-          skill,
-          schemaName: 'GenerationChanges',
-          context: buildUnitGenerationContext(
+    const generated = await mapWithConcurrency(
+      scoped,
+      UNIT_GENERATION_CONCURRENCY,
+      async (scope, index) => {
+        let validationErrors: string[] = [];
+        for (let attempt = 1; attempt <= 2; attempt += 1) {
+          const generationContext = buildUnitGenerationContext(
             isolation,
             input.plan,
             input.repository,
             input.session.intent,
             input.approval,
-            scoped,
+            [scope],
             expectedRunner,
             validationErrors,
-          ),
-          signal: input.signal,
-        });
-        resolvedChanges = normalizeUnitChanges(modelResult.changes, scoped, feature, expectedRunner);
-        break;
-      } catch (error) {
-        rethrowIfAbort(error, input.signal);
-        validationErrors = [error instanceof Error ? error.message : String(error)];
-        if (attempt === 2) {
-          throw new Error(`Unit test generation failed validation after 2 attempts: ${validationErrors[0]}`);
-        }
-      }
-      await input.emit({
-        type: 'progress',
-        message: `Generated unit tests were invalid; retrying with validation feedback. ${validationErrors[0]}`,
-        percent: 68,
-      });
-    }
+          );
+          let modelResult: { changes: GeneratedChange[] };
+          let modelLabel = 'Coder';
+          await input.emit({
+            type: 'progress',
+            message: `Generating unit test ${index + 1}/${scoped.length}: ${scope.behavior} (attempt ${attempt}/2)…`,
+            percent: Math.min(70, 63 + Math.round((index / scoped.length) * 6)),
+          });
+          try {
+            modelResult = await input.structuredModel.runStep({
+              profile: 'coder',
+              skill,
+              schemaName: 'GenerationChanges',
+              context: generationContext,
+              signal: input.signal,
+            });
+          } catch (error) {
+            rethrowIfAbort(error, input.signal);
+            const message = errorMessage(error);
+            if (!isModelResponseError(message)) throw error;
+            await input.emit({
+              type: 'progress',
+              message: `Coder model response failed for "${scope.behavior}"; falling back to thinker model. ${message}`,
+              percent: 67,
+            });
+            modelLabel = 'Thinker fallback';
+            try {
+              modelResult = await input.structuredModel.runStep({
+                profile: 'thinker',
+                skill,
+                schemaName: 'GenerationChanges',
+                context: generationContext,
+                signal: input.signal,
+              });
+            } catch (fallbackError) {
+              rethrowIfAbort(fallbackError, input.signal);
+              throw new Error(
+                `Unit generation model response failed for "${scope.behavior}". Coder: ${message}. Thinker fallback: ${errorMessage(fallbackError)}`,
+              );
+            }
+          }
 
-    if (!resolvedChanges) {
-      throw new Error('Unit test generation did not produce validated changes.');
-    }
+          try {
+            const resolved = normalizeUnitChanges(modelResult.changes, [scope], feature, expectedRunner, false);
+            await input.emit({
+              type: 'progress',
+              message: `${modelLabel} validated unit test ${index + 1}/${scoped.length}: ${scope.behavior}`,
+              percent: Math.min(72, 66 + Math.round(((index + 1) / scoped.length) * 6)),
+            });
+            return resolved[0]!;
+          } catch (error) {
+            rethrowIfAbort(error, input.signal);
+            validationErrors = [errorMessage(error)];
+            if (attempt === 2) {
+              throw new Error(
+                `Unit test generation failed validation for "${scope.behavior}" after 2 attempts: ${validationErrors[0]}`,
+              );
+            }
+            await input.emit({
+              type: 'progress',
+              message: `Generated unit test for "${scope.behavior}" was invalid; retrying with validation feedback. ${validationErrors[0]}`,
+              percent: 68,
+            });
+          }
+        }
+        throw new Error(`Unit test generation did not produce a validated change for "${scope.behavior}".`);
+      },
+    );
+    const resolvedChanges = generated;
     const result: GenerationResult = {
       timeline: [
         { label: 'Map plan actions to unit test files', status: 'done' },

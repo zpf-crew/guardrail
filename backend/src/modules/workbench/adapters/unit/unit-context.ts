@@ -11,6 +11,65 @@ export const GUARDRAIL_UNIT_TEST_DESIGN = {
   notUsed: ['Browser automation', 'Screenshots', 'Managed dev server', 'Production code generation'],
 } as const;
 
+const MAX_GENERATION_SNIPPETS = 8;
+const MAX_SNIPPET_CHARS = 6_000;
+const MAX_TOTAL_SNIPPET_CHARS = 24_000;
+const GENERIC_SEARCH_TERMS = new Set([
+  'src', 'test', 'tests', 'spec', 'unit', 'file', 'with', 'from', 'include',
+]);
+
+function searchTerms(values: string[]): string[] {
+  return [...new Set(values
+    .flatMap(value => value.toLowerCase().split(/[^a-z0-9]+/))
+    .filter(term => term.length >= 3 && !GENERIC_SEARCH_TERMS.has(term)))];
+}
+
+function includesTerm(value: string, terms: string[]): boolean {
+  const normalized = value.toLowerCase();
+  return terms.some(term => normalized.includes(term));
+}
+
+function scopedGenerationRepository(
+  repository: RepositoryContext,
+  isolation: IsolationResult,
+  behaviorsToStage: Array<{ behavior: string; file: string }>,
+) {
+  const feature = isolation.target.feature;
+  const terms = searchTerms([
+    feature,
+    ...behaviorsToStage.map(item => item.behavior),
+    ...behaviorsToStage.map(item => item.file),
+  ]);
+  const relevantPaths = new Set([
+    ...isolation.sourceFiles.map(file => file.path),
+    ...isolation.existingTestFiles.map(file => file.path),
+    ...behaviorsToStage.map(item => item.file),
+  ]);
+  const snippets = repository.sourceSnippets.filter(snippet =>
+    relevantPaths.has(snippet.path)
+    || includesTerm(snippet.path, terms)
+    || includesTerm(snippet.summary, terms));
+  let totalChars = 0;
+  const sourceSnippets = snippets.slice(0, MAX_GENERATION_SNIPPETS).flatMap(snippet => {
+    const remaining = MAX_TOTAL_SNIPPET_CHARS - totalChars;
+    if (remaining <= 0) return [];
+    const text = snippet.text.slice(0, Math.min(MAX_SNIPPET_CHARS, remaining));
+    totalChars += text.length;
+    return [{ ...snippet, text }];
+  });
+
+  return {
+    repo: repository.repo,
+    relatedFiles: repository.relatedFiles.filter(file =>
+      relevantPaths.has(file.path) || includesTerm(file.path, terms)),
+    specDocs: repository.specDocs.filter(file => includesTerm(file.path, terms)).slice(0, 5),
+    qcCases: repository.qcCases.filter(item =>
+      includesTerm(`${item.feature} ${item.scenario} ${item.expectedResult}`, terms)).slice(0, 10),
+    sourceSnippets,
+    existingTestSnippets: sourceSnippets.filter(snippet => /\.(test|spec)\.[cm]?[jt]sx?$/i.test(snippet.path)),
+  };
+}
+
 export function buildUnitIsolationContext(intent: unknown, repository: RepositoryContext) {
   return {
     intent,
@@ -82,20 +141,26 @@ export function buildUnitGenerationContext(
   expectedRunner: ExpectedUnitRunner,
   validationErrors: string[] = [],
 ) {
+  const scopedBehaviors = new Set(behaviorsToStage.map(item => item.behavior.toLowerCase()));
+  const scopedIsolation = {
+    ...isolation,
+    classifications: isolation.classifications.filter(item =>
+      scopedBehaviors.has(item.behavior.toLowerCase())),
+  };
   return {
     intent,
-    isolation,
+    isolation: scopedIsolation,
     plan,
     approval,
-    repository: {
-      repo: repository.repo,
-      relatedFiles: repository.relatedFiles,
-      specDocs: repository.specDocs,
-      qcCases: repository.qcCases,
-      sourceSnippets: repository.sourceSnippets,
-      existingTestSnippets: repository.sourceSnippets.filter(snippet => /\.(test|spec)\.[cm]?[jt]sx?$/i.test(snippet.path)),
+    repository: scopedGenerationRepository(repository, isolation, behaviorsToStage),
+    onboarding: {
+      health: repository.onboarding.health,
+      coverage: repository.onboarding.coverage,
+      testCases: repository.onboarding.testCases.filter(item =>
+        item.feature.toLowerCase() === isolation.target.feature.toLowerCase()).slice(0, 10),
+      insights: repository.onboarding.insights.filter(item =>
+        item.title.toLowerCase().includes(isolation.target.feature.toLowerCase())).slice(0, 5),
     },
-    onboarding: repository.onboarding,
     unitTestDesign: GUARDRAIL_UNIT_TEST_DESIGN,
     unitRunner: {
       expectedRunner,

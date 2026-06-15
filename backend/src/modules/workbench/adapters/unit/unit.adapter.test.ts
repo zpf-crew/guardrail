@@ -162,3 +162,195 @@ test('unit generation retries invalid tautology and accepts a meaningful product
   assert.match(generation.changes[0]?.content ?? '', /calculateCartTotal/);
   assert.match(JSON.stringify(contexts[1]), /tautological assertion/i);
 });
+
+test('unit generation falls back to thinker when coder returns no assistant content', async () => {
+  const repoRoot = await createRepo({
+    scripts: { test: 'vitest run' },
+    devDependencies: { vitest: '^2.0.0' },
+  });
+  const session = buildSession(repoRoot);
+  const repository = buildRepository(repoRoot);
+  const events: string[] = [];
+  const profiles: string[] = [];
+  const input: AdapterInput = {
+    session,
+    repository,
+    emit: async event => {
+      if (event.type === 'progress') events.push(event.message);
+      return event;
+    },
+    modelConnect: null,
+    skills: { load: async name => ({ name, content: `# ${name}` }) } as AdapterInput['skills'],
+    structuredModel: {
+      runStep: async ({ profile }: { profile: string }) => {
+        profiles.push(profile);
+        if (profile === 'coder') {
+          throw new Error('LLM response did not contain assistant content');
+        }
+        const content = "import { expect, it } from 'vitest';\nimport { calculateCartTotal } from './cart';\nit('multiplies item price by quantity', () => expect(calculateCartTotal([{ price: 5, quantity: 2 }])).toBe(10));\n";
+        return {
+          changes: [{
+            id: 'cart-total',
+            action: 'Add',
+            testType: 'Unit',
+            title: 'Cart totals include item quantity',
+            file: 'src/cart.test.ts',
+            feature: 'Cart',
+            risk: 'High',
+            reason: 'Covers cart quantity totals.',
+            diff: [{ kind: 'add', text: content }],
+            content,
+            status: 'staged',
+          }],
+        };
+      },
+    } as unknown as AdapterInput['structuredModel'],
+    signal: new AbortController().signal,
+  };
+
+  const result = await new UnitAdapter().generate({
+    ...input,
+    plan: buildPlan(),
+    approval: { decision: 'approve', answers: {} },
+  });
+
+  assert.deepEqual(profiles, ['coder', 'thinker']);
+  assert.equal(result.changes.length, 1);
+  assert.match(result.changes[0]?.content ?? '', /calculateCartTotal/);
+  assert.ok(events.some(message => /Generating unit test 1\/1: Cart totals include item quantity \(attempt 1\/2\)/.test(message)));
+  assert.ok(events.some(message => /Coder model response failed for "Cart totals include item quantity".*falling back to thinker model/i.test(message)));
+  assert.ok(!events.some(message => /retrying with validation feedback/i.test(message)));
+});
+
+test('unit generation fans out one request per behavior with concurrency limited to two', async () => {
+  const repoRoot = await createRepo({
+    scripts: { test: 'vitest run' },
+    devDependencies: { vitest: '^2.0.0' },
+  });
+  const session = buildSession(repoRoot);
+  session.isolation!.classifications = [
+    ...session.isolation!.classifications,
+    {
+      behavior: 'Cart removes an item',
+      status: 'Missing',
+      suggestedTypes: ['Unit'],
+      risk: 'Medium',
+      explanation: 'No removal test.',
+    },
+    {
+      behavior: 'Cart clears all items',
+      status: 'Missing',
+      suggestedTypes: ['Unit'],
+      risk: 'Medium',
+      explanation: 'No clear test.',
+    },
+  ];
+  const repository = buildRepository(repoRoot);
+  const requestedBehaviors: string[][] = [];
+  let active = 0;
+  let maxActive = 0;
+  const input: AdapterInput = {
+    session,
+    repository,
+    emit: async event => event,
+    modelConnect: null,
+    skills: { load: async name => ({ name, content: `# ${name}` }) } as AdapterInput['skills'],
+    structuredModel: {
+      runStep: async ({ context }: { context: { generationScope: { behaviorsToStage: Array<{ behavior: string; file: string; risk: string }> } } }) => {
+        active += 1;
+        maxActive = Math.max(maxActive, active);
+        const scoped = context.generationScope.behaviorsToStage;
+        requestedBehaviors.push(scoped.map(item => item.behavior));
+        await new Promise(resolve => setTimeout(resolve, 10));
+        active -= 1;
+        const item = scoped[0]!;
+        const symbol = item.behavior.includes('removes')
+          ? 'removeCartItem'
+          : item.behavior.includes('clears')
+            ? 'clearCart'
+            : 'calculateCartTotal';
+        const content = `import { expect, it } from 'vitest';\nimport { ${symbol} } from './cart';\nit('${item.behavior}', () => expect(${symbol}()).toBeDefined());\n`;
+        return {
+          changes: [{
+            id: item.behavior,
+            action: 'Add',
+            testType: 'Unit',
+            title: item.behavior,
+            file: item.file,
+            feature: 'Cart',
+            risk: item.risk,
+            reason: 'Generated per behavior.',
+            diff: [{ kind: 'add', text: content }],
+            content,
+            status: 'staged',
+          }],
+        };
+      },
+    } as unknown as AdapterInput['structuredModel'],
+    signal: new AbortController().signal,
+  };
+
+  const result = await new UnitAdapter().generate({
+    ...input,
+    plan: { ...buildPlan(), proposedActions: [{ action: 'add', label: 'Add missing unit tests', count: 3 }] },
+    approval: { decision: 'approve', answers: {} },
+  });
+
+  assert.equal(result.changes.length, 3);
+  assert.equal(maxActive, 2);
+  assert.equal(requestedBehaviors.length, 3);
+  assert.ok(requestedBehaviors.every(behaviors => behaviors.length === 1));
+});
+
+test('unit generation accepts a paraphrased title for a single scoped behavior', async () => {
+  const repoRoot = await createRepo({
+    scripts: { test: 'vitest run' },
+    devDependencies: { vitest: '^2.0.0' },
+  });
+  const session = buildSession(repoRoot);
+  session.isolation!.classifications = [{
+    behavior: 'Checkout submission flow (cart empty check, order number generation, and localStorage persistence)',
+    status: 'Missing',
+    suggestedTypes: ['Unit'],
+    risk: 'High',
+    explanation: 'Missing checkout submission coverage.',
+  }];
+  const repository = buildRepository(repoRoot);
+  const content = "import { expect, it } from 'vitest';\nimport { submitCheckout } from './cart';\nit('submits checkout', () => expect(submitCheckout()).toBeDefined());\n";
+  const input: AdapterInput = {
+    session,
+    repository,
+    emit: async event => event,
+    modelConnect: null,
+    skills: { load: async name => ({ name, content: `# ${name}` }) } as AdapterInput['skills'],
+    structuredModel: {
+      runStep: async () => ({
+        changes: [{
+          id: 'checkout-submission',
+          action: 'Add',
+          testType: 'Unit',
+          title: 'Checkout submission behavior',
+          file: 'src/generated-checkout.test.ts',
+          feature: 'Cart',
+          risk: 'Medium',
+          reason: 'Covers checkout submission.',
+          diff: [{ kind: 'add', text: content }],
+          content,
+          status: 'staged',
+        }],
+      }),
+    } as unknown as AdapterInput['structuredModel'],
+    signal: new AbortController().signal,
+  };
+
+  const result = await new UnitAdapter().generate({
+    ...input,
+    plan: buildPlan(),
+    approval: { decision: 'approve', answers: {} },
+  });
+
+  assert.equal(result.changes.length, 1);
+  assert.equal(result.changes[0]?.title, session.isolation.classifications[0]!.behavior);
+  assert.equal(result.changes[0]?.file, 'src/cart.test.ts');
+  assert.equal(result.changes[0]?.risk, 'High');
+});
