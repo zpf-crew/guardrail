@@ -61,11 +61,7 @@ export class StructuredModelRunner {
           ),
         },
       ],
-      {
-        temperature: 0,
-        maxTokens: MAX_TOKENS_BY_SCHEMA[args.schemaName],
-        signal: args.signal,
-      },
+      { temperature: 0, maxTokens: 8000, signal: args.signal },
     );
 
     const parsed = parseJsonObject(response.content);

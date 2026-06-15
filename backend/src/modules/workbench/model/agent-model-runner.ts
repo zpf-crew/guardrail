@@ -6,7 +6,8 @@ import {
   validateWorkbenchStepResult,
   validateUiBrowserAgentAction,
   type UiBrowserAgentAction,
-  type UiBrowserScenarioPlan,
+  type UiBrowserExecutionPlan,
+  type UiBrowserUserFlowPlan,
 } from '../validation/workbench-validators.js';
 import { normalizeAgentActionInput } from './normalize-ui-browser-agent-action.js';
 
@@ -74,9 +75,12 @@ export class AgentModelRunner {
     throw new Error(lastError ?? 'Agent decision failed.');
   }
 
-  async planScenario(args: PlanScenarioArgs): Promise<UiBrowserScenarioPlan> {
+  async #runValidatedPlan<T>(
+    args: PlanScenarioArgs,
+    schemaName: 'UiBrowserUserFlowPlan' | 'UiBrowserExecutionPlan',
+  ): Promise<T> {
     if (!this.#modelConnect) {
-      throw new Error('LLM is not configured for UI browser scenario planning.');
+      throw new Error('LLM is not configured for UI browser planning.');
     }
 
     const client = this.#modelConnect.getClient(args.profile);
@@ -85,12 +89,12 @@ export class AgentModelRunner {
     for (let attempt = 0; attempt < 2; attempt += 1) {
       const userContent = lastError
         ? JSON.stringify({
-          schemaName: 'UiBrowserScenarioPlan',
+          schemaName,
           context: args.context,
           validationError: lastError,
-          retryHint: 'Return only one valid UiBrowserScenarioPlan JSON object. Do not include analysis, prose, markdown, or code fences.',
+          retryHint: `Return only one valid ${schemaName} JSON object. Do not include analysis, prose, markdown, or code fences.`,
         }, null, 2)
-        : JSON.stringify({ schemaName: 'UiBrowserScenarioPlan', context: args.context }, null, 2);
+        : JSON.stringify({ schemaName, context: args.context }, null, 2);
 
       const response = await client.chat(
         [
@@ -102,14 +106,22 @@ export class AgentModelRunner {
 
       try {
         const parsed = parseJsonObject(response.content);
-        return validateWorkbenchStepResult('UiBrowserScenarioPlan', parsed);
+        return validateWorkbenchStepResult(schemaName, parsed) as T;
       } catch (error) {
         lastError = error instanceof Error ? error.message : String(error);
         if (attempt === 1) throw error;
       }
     }
 
-    throw new Error(lastError ?? 'Scenario planning failed.');
+    throw new Error(lastError ?? `${schemaName} planning failed.`);
+  }
+
+  async planUiBrowserFlows(args: PlanScenarioArgs): Promise<UiBrowserUserFlowPlan> {
+    return this.#runValidatedPlan<UiBrowserUserFlowPlan>(args, 'UiBrowserUserFlowPlan');
+  }
+
+  async planUiBrowserExecution(args: PlanScenarioArgs): Promise<UiBrowserExecutionPlan> {
+    return this.#runValidatedPlan<UiBrowserExecutionPlan>(args, 'UiBrowserExecutionPlan');
   }
 }
 
@@ -127,8 +139,6 @@ function parseJsonObject(content: string): unknown {
 }
 
 function extractFirstJsonObject(value: string): string {
-  if (value.startsWith('{')) return value;
-
   const start = value.indexOf('{');
   if (start < 0) return value;
 

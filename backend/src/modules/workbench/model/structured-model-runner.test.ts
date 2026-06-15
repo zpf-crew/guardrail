@@ -3,11 +3,15 @@ import assert from 'node:assert/strict';
 import { StructuredModelRunner } from './structured-model-runner.js';
 
 test('parses fenced json and validates output', async () => {
+  let capturedOptions: unknown;
   const thinkerClient = {
-    chat: async () => ({
-      content:
-        '```json\n{"proposedActions":[],"risk":{"productionCodeChanges":"none","testDataChanges":false,"browserAutomationRequired":true,"mobileSimulatorRequired":"no","externalApiMocking":"no"},"filesToChange":[],"questions":[]}\n```',
-    }),
+    chat: async (_messages: unknown, options: unknown) => {
+      capturedOptions = options;
+      return {
+        content:
+          '```json\n{"proposedActions":[],"risk":{"productionCodeChanges":"none","testDataChanges":false,"browserAutomationRequired":true,"mobileSimulatorRequired":"no","externalApiMocking":"no"},"filesToChange":[],"questions":[]}\n```',
+      };
+    },
   };
 
   const runner = new StructuredModelRunner({
@@ -27,6 +31,7 @@ test('parses fenced json and validates output', async () => {
   });
 
   assert.equal(result.risk.browserAutomationRequired, true);
+  assert.equal((capturedOptions as { maxTokens?: number }).maxTokens, 8000);
 });
 
 test('extracts the first JSON object from fenced output with trailing prose', async () => {

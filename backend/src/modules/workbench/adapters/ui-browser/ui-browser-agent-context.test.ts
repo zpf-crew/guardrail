@@ -1,6 +1,10 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { formatActionForHistory, formatActionForProgress } from './ui-browser-agent-context.js';
+import {
+  buildAgentIterationContext,
+  formatActionForHistory,
+  formatActionForProgress,
+} from './ui-browser-agent-context.js';
 import type { GherkinStep } from './gherkin-step-parser.js';
 
 const steps: GherkinStep[] = [
@@ -56,4 +60,86 @@ test('formatActionForProgress redacts typed values from browser commands', () =>
     }),
     'keyboard inserttext [redacted]',
   );
+});
+
+test('buildAgentIterationContext marks Then turns as observation-allowed before any observation', () => {
+  const context = buildAgentIterationContext({
+    scenarioTitle: 'Add to cart',
+    gherkinSteps: steps,
+    currentStepIndex: 2,
+    completedSteps: [{ index: 0, note: 'Home open' }, { index: 1, note: 'Clicked' }],
+    thenVerdicts: [],
+    pageSnapshot: '- link "Shopping cart 1" @e4',
+    actionHistory: [],
+    constraints: { behavior: 'Add to cart', maxStepDurationMs: 60_000, maxSteps: 15 },
+    startedAt: Date.now(),
+    iterationsUsed: 3,
+    observationOnlyActionsForCurrentStep: 0,
+  });
+
+  assert.equal(context.currentStep.effectiveKind, 'Then');
+  assert.equal(context.currentStep.observationOnlyActionsUsed, 0);
+  assert.equal(context.currentStep.verdictRequiredNow, false);
+  assert.deepEqual(context.allowedActionKinds, ['agentBrowserCommand', 'assertThen', 'stepFailed']);
+  assert.deepEqual(context.allowedCommands, ['snapshot', 'get', 'is']);
+});
+
+test('buildAgentIterationContext requires verdict after a Then observation', () => {
+  const context = buildAgentIterationContext({
+    scenarioTitle: 'Add to cart',
+    gherkinSteps: steps,
+    currentStepIndex: 2,
+    completedSteps: [{ index: 0, note: 'Home open' }, { index: 1, note: 'Clicked' }],
+    thenVerdicts: [],
+    pageSnapshot: '- link "Shopping cart 1" @e4',
+    actionHistory: [{ iteration: 3, action: 'snapshot -i', result: 'ok' }],
+    constraints: { behavior: 'Add to cart', maxStepDurationMs: 60_000, maxSteps: 15 },
+    startedAt: Date.now(),
+    iterationsUsed: 4,
+    observationOnlyActionsForCurrentStep: 1,
+  });
+
+  assert.equal(context.currentStep.verdictRequiredNow, true);
+  assert.deepEqual(context.allowedActionKinds, ['assertThen', 'stepFailed']);
+  assert.deepEqual(context.allowedCommands, []);
+});
+
+test('buildAgentIterationContext allows scenario completion when all Then steps are satisfied', () => {
+  const context = buildAgentIterationContext({
+    scenarioTitle: 'Add to cart',
+    gherkinSteps: steps,
+    currentStepIndex: 2,
+    completedSteps: [{ index: 0, note: 'Home open' }, { index: 1, note: 'Clicked' }],
+    thenVerdicts: [{
+      stepIndex: 2,
+      text: 'the products page is displayed',
+      satisfied: true,
+      reason: 'Products page is displayed',
+    }],
+    pageSnapshot: '- heading "Products" @e4',
+    actionHistory: [{ iteration: 4, action: 'assertThen 2 true', result: 'ok' }],
+    constraints: { behavior: 'Add to cart', maxStepDurationMs: 60_000, maxSteps: 15 },
+    startedAt: Date.now(),
+    iterationsUsed: 5,
+    observationOnlyActionsForCurrentStep: 1,
+  });
+
+  assert.deepEqual(context.allowedActionKinds, ['assertThen', 'stepFailed', 'scenarioComplete']);
+  assert.deepEqual(context.allowedCommands, []);
+});
+
+test('ui browser run skill describes verdict-only Then turns without screenshot loops', async () => {
+  const { readFile } = await import('node:fs/promises');
+  const skill = await readFile(new URL('../../../../../../guardrail-skills/test-run-ui-browser-agent.md', import.meta.url), 'utf8');
+
+  assert.match(skill, /verdictRequiredNow/);
+  assert.match(skill, /allowedActionKinds/);
+  assert.match(skill, /allowedCommands/);
+  assert.match(skill, /If `currentStep\.verdictRequiredNow` is true/);
+  assert.match(skill, /Screenshots are runner-owned evidence\./);
+  const skillWithoutRunnerEvidence = skill.replace(/Screenshots are runner-owned evidence\./g, '');
+  assert.doesNotMatch(skillWithoutRunnerEvidence, /\bscreenshots?\b/i);
+  assert.doesNotMatch(skill, /command `screenshot`/);
+  assert.doesNotMatch(skill, /"command": "screenshot"/);
+  assert.doesNotMatch(skill, /\bscreenshot\b.*allowed output/i);
 });

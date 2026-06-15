@@ -9,10 +9,20 @@ export interface AgentActionHistoryEntry {
   detail?: string;
 }
 
+export interface AgentIterationCurrentStep {
+  index: number;
+  kind: string;
+  effectiveKind: string;
+  text: string;
+  observationOnlyActionsUsed: number;
+  verdictRequiredNow: boolean;
+}
+
 export interface AgentIterationContext {
   scenarioTitle: string;
   gherkinSteps: GherkinStep[];
   currentStepIndex: number;
+  currentStep: AgentIterationCurrentStep;
   completedSteps: Array<{ index: number; note: string }>;
   thenVerdicts: ThenVerdict[];
   pageSnapshot: string;
@@ -20,6 +30,8 @@ export interface AgentIterationContext {
   constraints: BehaviorRunConstraints;
   elapsedMs: number;
   iterationsUsed: number;
+  allowedActionKinds: Array<UiBrowserAgentAction['kind']>;
+  allowedCommands: string[];
 }
 
 export function buildAgentIterationContext(input: {
@@ -33,11 +45,26 @@ export function buildAgentIterationContext(input: {
   constraints: BehaviorRunConstraints;
   startedAt: number;
   iterationsUsed: number;
+  observationOnlyActionsForCurrentStep: number;
 }): AgentIterationContext {
+  const step = input.gherkinSteps[input.currentStepIndex];
+  const effectiveKind = step?.effectiveKind ?? 'Then';
+  const observationOnlyActionsUsed = input.observationOnlyActionsForCurrentStep;
+  const verdictRequiredNow = effectiveKind === 'Then' && observationOnlyActionsUsed >= 1;
+  const scenarioCompleteAllowed = allThenStepsSatisfied(input.gherkinSteps, input.thenVerdicts);
+
   return {
     scenarioTitle: input.scenarioTitle,
     gherkinSteps: input.gherkinSteps,
     currentStepIndex: input.currentStepIndex,
+    currentStep: {
+      index: input.currentStepIndex,
+      kind: step?.kind ?? effectiveKind,
+      effectiveKind,
+      text: step?.text ?? '',
+      observationOnlyActionsUsed,
+      verdictRequiredNow,
+    },
     completedSteps: input.completedSteps,
     thenVerdicts: input.thenVerdicts,
     pageSnapshot: input.pageSnapshot,
@@ -45,7 +72,38 @@ export function buildAgentIterationContext(input: {
     constraints: input.constraints,
     elapsedMs: Date.now() - input.startedAt,
     iterationsUsed: input.iterationsUsed,
+    allowedActionKinds: allowedActionKindsForStep(effectiveKind, verdictRequiredNow, scenarioCompleteAllowed),
+    allowedCommands: allowedCommandsForStep(effectiveKind, verdictRequiredNow),
   };
+}
+
+function allThenStepsSatisfied(steps: GherkinStep[], thenVerdicts: ThenVerdict[]): boolean {
+  const thenIndexes = steps
+    .map((step, index) => step.effectiveKind === 'Then' ? index : null)
+    .filter((index): index is number => index !== null);
+  return thenIndexes.length > 0
+    && thenIndexes.every(index => thenVerdicts.some(verdict => verdict.stepIndex === index && verdict.satisfied));
+}
+
+function allowedActionKindsForStep(
+  effectiveKind: string,
+  verdictRequiredNow: boolean,
+  scenarioCompleteAllowed: boolean,
+): Array<UiBrowserAgentAction['kind']> {
+  const completionAction = scenarioCompleteAllowed ? ['scenarioComplete' as const] : [];
+  if (effectiveKind === 'Then') {
+    return verdictRequiredNow
+      ? ['assertThen', 'stepFailed', ...completionAction]
+      : ['agentBrowserCommand', 'assertThen', 'stepFailed', ...completionAction];
+  }
+  return ['agentBrowserCommand', 'stepComplete', 'stepFailed', ...completionAction];
+}
+
+function allowedCommandsForStep(effectiveKind: string, verdictRequiredNow: boolean): string[] {
+  if (effectiveKind === 'Then') {
+    return verdictRequiredNow ? [] : ['snapshot', 'get', 'is'];
+  }
+  return ['open', 'snapshot', 'click', 'find', 'fill', 'press', 'scroll', 'scrollintoview', 'get', 'is', 'wait'];
 }
 
 function stepPositionLabel(steps: GherkinStep[], stepIndex: number): string {

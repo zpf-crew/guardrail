@@ -38,9 +38,10 @@ test('agent runner opens the managed default route before first snapshot', async
 
 test('agent runner passes when model completes all Then steps', async () => {
   let call = 0;
+  const streamedLabels: string[] = [];
   const scripted: UiBrowserAgentAction[] = [
     { kind: 'agentBrowserCommand', command: 'open', args: ['/'], reason: 'Open home page' },
-    { kind: 'agentBrowserCommand', command: 'screenshot', args: [], reason: 'Home loaded' },
+    { kind: 'agentBrowserCommand', command: 'snapshot', args: ['-i'], reason: 'Home loaded' },
     { kind: 'stepComplete', stepIndex: 0, note: 'Home open' },
     { kind: 'agentBrowserCommand', command: 'click', args: ['@e3'], reason: 'Click Shop Now' },
     { kind: 'stepComplete', stepIndex: 1, note: 'Clicked Shop Now' },
@@ -54,6 +55,9 @@ test('agent runner passes when model completes all Then steps', async () => {
       if (args[0] === 'snapshot') {
         return { exitCode: 0, stdout: '- button "Shop Now" @e3', stderr: '' };
       }
+      if (args[0] === 'screenshot') {
+        return { exitCode: 0, stdout: 'Screenshot saved to /tmp/products-verified.png', stderr: '' };
+      }
       if (args[0] === 'get' && args[1] === 'url') return { exitCode: 0, stdout: 'http://127.0.0.1:5555/', stderr: '' };
       return { exitCode: 0, stdout: 'ok', stderr: '' };
     },
@@ -65,11 +69,17 @@ test('agent runner passes when model completes all Then steps', async () => {
     constraints: { behavior: 'Shop now', maxStepDurationMs: 20_000, maxSteps: 15 },
     defaultRoute: '/',
     signal: new AbortController().signal,
+    onScreenshot: async evidence => {
+      streamedLabels.push(evidence.label);
+      return { ...evidence, href: `/api/workbench/wb-test/artifacts/${streamedLabels.length}.png` };
+    },
   });
 
   assert.equal(result.outcome, 'Passed');
   assert.equal(result.thenVerdicts.length, 1);
   assert.equal(result.thenVerdicts[0]?.satisfied, true);
+  assert.deepEqual(streamedLabels, ['Verified — the products page is displayed']);
+  assert.equal(result.evidence[0]?.href, '/api/workbench/wb-test/artifacts/1.png');
 });
 
 test('agent runner fails fast on assertThen satisfied false', async () => {
@@ -107,7 +117,7 @@ test('agent runner fails fast on assertThen satisfied false', async () => {
   assert.ok(result.evidence.some(item => item.kind === 'trace'));
 });
 
-test('agent runner streams screenshot evidence from command envelope', async () => {
+test('agent runner rejects model-controlled screenshot commands', async () => {
   let call = 0;
   const streamedLabels: string[] = [];
   const scripted: UiBrowserAgentAction[] = [
@@ -142,8 +152,10 @@ test('agent runner streams screenshot evidence from command envelope', async () 
     },
   });
 
-  assert.deepEqual(streamedLabels, ['Home loaded']);
-  assert.equal(result.evidence[0]?.href, '/api/workbench/wb-test/artifacts/1.png');
+  assert.equal(result.outcome, 'Failed');
+  assert.match(result.reason ?? '', /not allowed for current step/);
+  assert.match(result.reason ?? '', /screenshot/);
+  assert.equal(streamedLabels.includes('Home loaded'), false);
   assert.ok(result.evidence.some(item => item.kind === 'trace'));
 });
 
@@ -185,7 +197,7 @@ test('agent runner auto-completes action steps after primary action when model a
   const scripted: UiBrowserAgentAction[] = [
     { kind: 'stepComplete', stepIndex: 0, note: 'Home open' },
     { kind: 'agentBrowserCommand', command: 'click', args: ['@e3'], reason: 'Click Shop Now' },
-    { kind: 'agentBrowserCommand', command: 'screenshot', args: [], reason: 'Extra evidence that belongs to a later Then' },
+    { kind: 'agentBrowserCommand', command: 'snapshot', args: ['-i'], reason: 'Extra evidence that belongs to a later Then' },
     { kind: 'assertThen', stepIndex: 2, satisfied: true, reason: 'Products heading visible' },
     { kind: 'scenarioComplete' },
   ];
@@ -210,7 +222,7 @@ test('agent runner auto-completes action steps after primary action when model a
 
   assert.equal(result.outcome, 'Passed');
   assert.ok(executed.some(args => args[0] === 'click'));
-  assert.equal(executed.some(args => args[0] === 'screenshot'), false);
+  assert.equal(executed.some(args => args[0] === 'snapshot'), true);
 });
 
 test('agent runner scrolls direct refs into view before primary actions', async () => {
@@ -219,7 +231,7 @@ test('agent runner scrolls direct refs into view before primary actions', async 
   const scripted: UiBrowserAgentAction[] = [
     { kind: 'stepComplete', stepIndex: 0, note: 'Home open' },
     { kind: 'agentBrowserCommand', command: 'click', args: ['@e41'], reason: 'Click Add to Cart' },
-    { kind: 'agentBrowserCommand', command: 'screenshot', args: [], reason: 'Extra evidence' },
+    { kind: 'agentBrowserCommand', command: 'snapshot', args: ['-i'], reason: 'Extra evidence' },
     { kind: 'assertThen', stepIndex: 2, satisfied: true, reason: 'Cart count updated' },
     { kind: 'scenarioComplete' },
   ];
@@ -298,7 +310,7 @@ test('agent runner executes concise planned steps instead of raw transient Gherk
   const scripted: UiBrowserAgentAction[] = [
     { kind: 'stepComplete', stepIndex: 0, note: 'Home open' },
     { kind: 'agentBrowserCommand', command: 'click', args: ['@e41'], reason: 'Click Add to Cart' },
-    { kind: 'agentBrowserCommand', command: 'screenshot', args: [], reason: 'Extra evidence' },
+    { kind: 'agentBrowserCommand', command: 'snapshot', args: ['-i'], reason: 'Extra evidence' },
     { kind: 'assertThen', stepIndex: 2, satisfied: true, reason: 'Cart count is 1' },
     { kind: 'scenarioComplete' },
   ];
@@ -362,21 +374,31 @@ Scenario: Add to cart
   assert.ok(progress.some(message => /Step 3\/3/.test(message)));
 });
 
-test('agent runner fails a Then step after repeated observation without assertion', async () => {
+test('agent runner tells the model to return a verdict after one Then observation', async () => {
+  const thenContextValues: Array<{ effectiveKind: string; verdictRequiredNow: boolean }> = [];
   let call = 0;
   const scripted: UiBrowserAgentAction[] = [
     { kind: 'stepComplete', stepIndex: 0, note: 'Home open' },
     { kind: 'agentBrowserCommand', command: 'click', args: ['@e3'], reason: 'Click Add to Cart' },
-    { kind: 'agentBrowserCommand', command: 'screenshot', args: [], reason: 'Check cart count' },
-    { kind: 'agentBrowserCommand', command: 'screenshot', args: [], reason: 'Check cart count again' },
-    { kind: 'agentBrowserCommand', command: 'screenshot', args: [], reason: 'Check cart count a third time' },
+    { kind: 'stepComplete', stepIndex: 1, note: 'Clicked Add to Cart' },
+    { kind: 'agentBrowserCommand', command: 'snapshot', args: ['-i'], reason: 'Check cart count' },
+    { kind: 'assertThen', stepIndex: 2, satisfied: true, reason: 'Shopping cart shows 1 item' },
+    { kind: 'scenarioComplete' },
   ];
 
   const runner = new UiBrowserAgentRunner({
-    decideNext: async () => scripted[call++] ?? { kind: 'scenarioComplete' },
+    decideNext: async context => {
+      if (context.currentStep.effectiveKind === 'Then') {
+        thenContextValues.push({
+          effectiveKind: context.currentStep.effectiveKind,
+          verdictRequiredNow: context.currentStep.verdictRequiredNow,
+        });
+      }
+      return scripted[call++] ?? { kind: 'scenarioComplete' };
+    },
     execute: async args => {
-      if (args[0] === 'snapshot') return { exitCode: 0, stdout: '- button "Add to Cart" @e3\n- link "Shopping cart" @e4', stderr: '' };
-      if (args[0] === 'screenshot') return { exitCode: 0, stdout: 'Screenshot saved to /tmp/repeated-then.png', stderr: '' };
+      if (args[0] === 'snapshot') return { exitCode: 0, stdout: '- button "Add to Cart" @e3\n- link "Shopping cart 1" @e4', stderr: '' };
+      if (args[0] === 'screenshot') return { exitCode: 0, stdout: 'Screenshot saved to /tmp/asserted-cart.png', stderr: '' };
       if (args[0] === 'get' && args[1] === 'url') return { exitCode: 0, stdout: 'http://127.0.0.1:5555/', stderr: '' };
       return { exitCode: 0, stdout: 'ok', stderr: '' };
     },
@@ -390,15 +412,92 @@ Scenario: Add to cart
   When the user clicks Add to Cart
   Then the product should be added to the cart
 `,
-    constraints: { behavior: 'Add to cart', maxStepDurationMs: 20_000, maxSteps: 15 },
+    constraints: { behavior: 'Add to cart', maxStepDurationMs: 60_000, maxSteps: 15 },
+    defaultRoute: '/',
+    signal: new AbortController().signal,
+  });
+
+  assert.equal(result.outcome, 'Passed');
+  assert.deepEqual(thenContextValues, [
+    { effectiveKind: 'Then', verdictRequiredNow: false },
+    { effectiveKind: 'Then', verdictRequiredNow: true },
+  ]);
+  assert.equal(result.thenVerdicts[0]?.satisfied, true);
+});
+
+test('agent runner fails clearly when model ignores verdict-only Then turn', async () => {
+  let call = 0;
+  const scripted: UiBrowserAgentAction[] = [
+    { kind: 'stepComplete', stepIndex: 0, note: 'Home open' },
+    { kind: 'agentBrowserCommand', command: 'click', args: ['@e3'], reason: 'Click Add to Cart' },
+    { kind: 'stepComplete', stepIndex: 1, note: 'Clicked Add to Cart' },
+    { kind: 'agentBrowserCommand', command: 'snapshot', args: ['-i'], reason: 'Check cart count' },
+    { kind: 'agentBrowserCommand', command: 'screenshot', args: [], reason: 'Keep looking instead of asserting' },
+  ];
+
+  const runner = new UiBrowserAgentRunner({
+    decideNext: async () => scripted[call++] ?? { kind: 'scenarioComplete' },
+    execute: async args => {
+      if (args[0] === 'snapshot') return { exitCode: 0, stdout: '- button "Add to Cart" @e3\n- link "Shopping cart 1" @e4', stderr: '' };
+      if (args[0] === 'screenshot') return { exitCode: 0, stdout: 'Screenshot saved to /tmp/ignored-contract.png', stderr: '' };
+      if (args[0] === 'get' && args[1] === 'url') return { exitCode: 0, stdout: 'http://127.0.0.1:5555/', stderr: '' };
+      return { exitCode: 0, stdout: 'ok', stderr: '' };
+    },
+  });
+
+  const result = await runner.runScenario({
+    baseUrl: 'http://127.0.0.1:5555',
+    gherkinText: `
+Scenario: Add to cart
+  Given the user is on the home page
+  When the user clicks Add to Cart
+  Then the product should be added to the cart
+`,
+    constraints: { behavior: 'Add to cart', maxStepDurationMs: 60_000, maxSteps: 15 },
     defaultRoute: '/',
     signal: new AbortController().signal,
   });
 
   assert.equal(result.outcome, 'Failed');
-  assert.match(result.reason ?? '', /Then step was observed repeatedly without an assertion on step 3\/3/);
-  assert.ok(result.evidence.some(item => item.kind === 'screenshot'));
-  assert.ok(result.evidence.some(item => item.kind === 'trace'));
+  assert.match(result.reason ?? '', /Verdict required now/);
+  assert.match(result.reason ?? '', /assertThen or stepFailed/);
+});
+
+test('agent runner rejects screenshot commands on Then steps', async () => {
+  let call = 0;
+  const scripted: UiBrowserAgentAction[] = [
+    { kind: 'stepComplete', stepIndex: 0, note: 'Home open' },
+    { kind: 'agentBrowserCommand', command: 'click', args: ['@e3'], reason: 'Click Add to Cart' },
+    { kind: 'stepComplete', stepIndex: 1, note: 'Clicked Add to Cart' },
+    { kind: 'agentBrowserCommand', command: 'screenshot', args: [], reason: 'Try screenshot instead of verdict' },
+  ];
+
+  const runner = new UiBrowserAgentRunner({
+    decideNext: async () => scripted[call++] ?? { kind: 'scenarioComplete' },
+    execute: async args => {
+      if (args[0] === 'snapshot') return { exitCode: 0, stdout: '- button "Add to Cart" @e3\n- link "Shopping cart 1" @e4', stderr: '' };
+      if (args[0] === 'screenshot') return { exitCode: 0, stdout: 'Screenshot saved to /tmp/then-screenshot.png', stderr: '' };
+      if (args[0] === 'get' && args[1] === 'url') return { exitCode: 0, stdout: 'http://127.0.0.1:5555/', stderr: '' };
+      return { exitCode: 0, stdout: 'ok', stderr: '' };
+    },
+  });
+
+  const result = await runner.runScenario({
+    baseUrl: 'http://127.0.0.1:5555',
+    gherkinText: `
+Scenario: Add to cart
+  Given the user is on the home page
+  When the user clicks Add to Cart
+  Then the product should be added to the cart
+`,
+    constraints: { behavior: 'Add to cart', maxStepDurationMs: 60_000, maxSteps: 15 },
+    defaultRoute: '/',
+    signal: new AbortController().signal,
+  });
+
+  assert.equal(result.outcome, 'Failed');
+  assert.match(result.reason ?? '', /not allowed for current step/);
+  assert.match(result.reason ?? '', /screenshot/);
 });
 
 test('agent runner rejects unsafe commands before progress logging', async () => {
@@ -603,6 +702,87 @@ test('agent runner records informative command output in action history context'
 
   assert.deepEqual(observedHistory, ['', 'http://127.0.0.1:5555/products']);
 });
+
+test('uses execution plan steps instead of raw Gherkin when provided', async () => {
+  const actions: UiBrowserAgentAction[] = [
+    { kind: 'stepComplete', stepIndex: 0, note: 'Homepage loaded.' },
+    { kind: 'agentBrowserCommand', command: 'click', args: ['@e1'], reason: 'Click Add to Cart.' },
+    { kind: 'agentBrowserCommand', command: 'snapshot', args: ['-i'], reason: 'Extra evidence that should be skipped.' },
+    { kind: 'assertThen', stepIndex: 2, satisfied: true, reason: 'Cart shows one item.' },
+    { kind: 'scenarioComplete' },
+  ];
+
+  const runner = new UiBrowserAgentRunner({
+    decideNext: async context => {
+      assert.match(context.gherkinSteps[1].text, /Click Add to Cart/);
+      return actions.shift()!;
+    },
+    execute: fakeExecutor({
+      snapshot: 'button "Add to Cart" @e1\ntext "Cart 1" @e2',
+      screenshotPath: '/tmp/cart.png',
+    }),
+  });
+
+  const result = await runner.runScenario({
+    baseUrl: 'http://127.0.0.1:5173',
+    gherkinText: 'Scenario: Raw scenario\nThen raw text should not drive execution',
+    executionPlan: {
+      flowId: 'flow-1',
+      title: 'Add one product to cart',
+      steps: [
+        { id: 'step-1', kind: 'setup', instruction: 'Open the homepage.', successCriteria: 'Homepage loaded.' },
+        { id: 'step-2', kind: 'action', instruction: 'Click Add to Cart.', successCriteria: 'Click completes.' },
+        { id: 'step-3', kind: 'assert', instruction: 'Verify cart contains one item.', successCriteria: 'Cart shows one item.' },
+      ],
+    },
+    constraints: { behavior: 'Cart', maxStepDurationMs: 60000, maxSteps: 15 },
+    defaultRoute: '/',
+    signal: new AbortController().signal,
+  });
+
+  assert.equal(result.outcome, 'Passed');
+});
+
+test('rejects mutating browser commands during assert steps', async () => {
+  const runner = new UiBrowserAgentRunner({
+    decideNext: async () => ({ kind: 'agentBrowserCommand', command: 'click', args: ['@e1'], reason: 'Do not mutate during assert.' }),
+    execute: fakeExecutor({ snapshot: 'button "Cart" @e1' }),
+  });
+
+  const result = await runner.runScenario({
+    baseUrl: 'http://127.0.0.1:5173',
+    gherkinText: 'Scenario: Assert only',
+    executionPlan: {
+      flowId: 'flow-1',
+      title: 'Assert cart',
+      steps: [
+        { id: 'step-1', kind: 'assert', instruction: 'Verify cart has one item.', successCriteria: 'Cart shows one item.' },
+      ],
+    },
+    constraints: { behavior: 'Cart', maxStepDurationMs: 60000, maxSteps: 15 },
+    defaultRoute: '/',
+    signal: new AbortController().signal,
+  });
+
+  assert.equal(result.outcome, 'Failed');
+  assert.match(result.reason ?? '', /agent-browser command click is not allowed for current step/);
+});
+
+function fakeExecutor(options: { snapshot?: string; screenshotPath?: string }) {
+  return async (args: string[]) => {
+    if (args[0] === 'snapshot') {
+      return { exitCode: 0, stdout: options.snapshot ?? '@e1', stderr: '' };
+    }
+    if (args[0] === 'screenshot') {
+      const path = options.screenshotPath ?? '/tmp/screenshot.png';
+      return { exitCode: 0, stdout: `Screenshot saved to ${path}`, stderr: '' };
+    }
+    if (args[0] === 'get' && args[1] === 'url') {
+      return { exitCode: 0, stdout: 'http://127.0.0.1:5173/', stderr: '' };
+    }
+    return { exitCode: 0, stdout: 'ok', stderr: '' };
+  };
+}
 
 function delay(ms: number): Promise<void> {
   return new Promise(resolve => setTimeout(resolve, ms));

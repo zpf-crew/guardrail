@@ -4,6 +4,7 @@ import os from 'node:os';
 import path from 'node:path';
 import type { AdapterInput, TestTypeAdapter } from '../test-type-adapter.js';
 import type {
+  GeneratedChange,
   GenerationResult,
   IsolationResult,
   PlanApproval,
@@ -23,7 +24,12 @@ import { filterPlanQuestions } from '../../plan/plan-questions-filter.js';
 import { buildGenerationResult } from '../../generation/generation-result-builder.js';
 import { buildReviewContext } from '../../review/review-context.js';
 import { buildReviewSummary } from '../../review/review-summary-builder.js';
-import { validateWorkbenchStepResult, type UiBrowserScenarioPlan } from '../../validation/workbench-validators.js';
+import {
+  validateWorkbenchStepResult,
+  type UiBrowserAcceptedFlow,
+  type UiBrowserExecutionPlan,
+  type UiBrowserUserFlowPlan,
+} from '../../validation/workbench-validators.js';
 import { DevServerOrchestrator, type DevServerLease } from '../../dev-server/dev-server-orchestrator.js';
 import {
   resolveDevServerTarget,
@@ -31,8 +37,14 @@ import {
 } from '../../dev-server/dev-server-resolver.js';
 import { lookupRunConstraints } from '../../plan/run-constraints.js';
 import { AgentModelRunner } from '../../model/agent-model-runner.js';
-import { scenarioTextFromChange, splitScenarioTexts } from './ui-browser-scenario.js';
-import { assertScenarioPlanGrounded } from './ui-browser-scenario-plan.js';
+import {
+  buildDroppedScenarioRows,
+  buildExecutionPlanTraceEvidence,
+  indexedScenariosFromChange,
+  sanitizeExecutionPlan,
+  sourceScenariosForFlow,
+  type IndexedUiScenario,
+} from './ui-browser-flow-plan.js';
 import { UiBrowserAgentRunner, type RunScenarioArgs } from './ui-browser-agent-runner.js';
 import { defaultAgentExecutor, sessionAgentExecutor } from './ui-browser-agent-executor.js';
 import {
@@ -40,8 +52,18 @@ import {
   loadAgentBrowserCoreGuide,
 } from './agent-browser-core-guide.js';
 
+type RunScenarioWithExecutionPlanArgs = RunScenarioArgs & {
+  executionPlan?: UiBrowserExecutionPlan;
+};
+
 interface AgentRunnerLike {
-  runScenario(args: RunScenarioArgs): Promise<ScenarioRunResult>;
+  runScenario(args: RunScenarioWithExecutionPlanArgs): Promise<ScenarioRunResult>;
+}
+
+interface PendingFlowRun {
+  change: GeneratedChange;
+  flow: UiBrowserAcceptedFlow;
+  sourceScenarios: IndexedUiScenario[];
 }
 
 interface DevServerLike {
@@ -66,14 +88,11 @@ interface UiRunOutcome {
   matrix: TestResultRow[];
 }
 
-function worstRunOutcome(current: RunOutcome, next: RunOutcome): RunOutcome {
-  if (next === 'Failed' || current === 'Failed') {
-    return 'Failed';
-  }
-  if (next === 'Flaky' || current === 'Flaky') {
-    return 'Flaky';
-  }
-  return current;
+function runOutcomeFromMatrix(matrix: TestResultRow[]): RunOutcome {
+  if (matrix.some(row => row.status === 'Failed')) return 'Failed';
+  if (matrix.some(row => row.status === 'Flaky')) return 'Flaky';
+  if (matrix.some(row => row.status === 'Passed')) return 'Passed';
+  return 'Skipped';
 }
 
 function matrixEvidenceLabelFromItems(evidence: Array<{ kind: string }>): string | null {
@@ -86,6 +105,27 @@ function uiCommandFor(targetUrl: string | null): string {
 
 function durationLabel(durationMs: number): string {
   return `${(durationMs / 1000).toFixed(1)}s`;
+}
+
+async function collectScenarioEvidence(
+  input: AdapterInput,
+  scenarioResult: ScenarioRunResult,
+  liveScreenshotHrefs: Set<string>,
+): Promise<ScenarioRunResult['evidence']> {
+  const changeEvidence: ScenarioRunResult['evidence'] = [];
+  for (const item of scenarioResult.evidence) {
+    if (item.kind === 'screenshot') {
+      if (item.href && (liveScreenshotHrefs.has(item.href) || item.href.startsWith('/api/workbench/'))) {
+        changeEvidence.push(item);
+      } else {
+        const emitted = await input.emit({ type: 'screenshot', artifact: item });
+        if (emitted.type === 'screenshot') changeEvidence.push(emitted.artifact);
+      }
+    } else {
+      changeEvidence.push(item);
+    }
+  }
+  return changeEvidence;
 }
 
 async function buildUiBrowserRunTraceEvidence(
@@ -459,11 +499,8 @@ export class UiBrowserAdapter implements TestTypeAdapter {
     const matrix: TestResultRow[] = [];
     const allEvidence: ScenarioRunResult['evidence'] = [];
     let totalDuration = 0;
-    let worstOutcome: RunOutcome = 'Passed';
-    const scenarios = uiChanges.flatMap(change => {
-      const texts = splitScenarioTexts(scenarioTextFromChange(change));
-      return texts.map((scenarioText, scenarioIndex) => ({ change, scenarioText, scenarioIndex, scenarioCount: texts.length }));
-    });
+    const pendingFlowRuns: PendingFlowRun[] = [];
+    let completedFlowRunCount = 0;
 
     try {
       const target = await this.#devServer.resolve(clonePath, sessionId);
@@ -480,61 +517,102 @@ export class UiBrowserAdapter implements TestTypeAdapter {
         percent: 77,
       });
 
-      for (const [scenarioRunIndex, scenario] of scenarios.entries()) {
+      for (const [changeIndex, change] of uiChanges.entries()) {
         input.signal.throwIfAborted();
-        const { change, scenarioText } = scenario;
-        const constraints = lookupRunConstraints(input.session.plan?.runConstraints, change.title);
-        const sessionName = uiBrowserSessionName(input.session.id, scenarioRunIndex);
-        const agentRunner = this.#agentRunner ?? this.#createAgentRunner(input, sessionName);
-        const scenarioPlan = this.#agentRunner ? undefined : await this.#planScenario(input, scenarioText, scenarioRunIndex, scenarios.length);
-        const liveScreenshotHrefs = new Set<string>();
-        const scenarioResult = await agentRunner.runScenario({
-          baseUrl: lease.baseUrl,
-          gherkinText: scenarioText,
-          ...(scenarioPlan ? { scenarioPlan } : {}),
-          constraints,
-          defaultRoute,
-          signal: input.signal,
-          onScreenshot: async artifact => {
-            const emitted = await input.emit({ type: 'screenshot', artifact });
-            if (emitted.type !== 'screenshot') return artifact;
-            if (emitted.artifact.href) liveScreenshotHrefs.add(emitted.artifact.href);
-            return emitted.artifact;
-          },
-          onProgress: message => input.emit({
-            type: 'progress',
-            message: `[Scenario ${scenarioRunIndex + 1}/${scenarios.length}] ${message}`,
-            percent: Math.min(90, 78 + Math.round(((scenarioRunIndex + 0.5) / scenarios.length) * 10)),
-          }),
-        });
-
-        const changeEvidence: ScenarioRunResult['evidence'] = [];
-        for (const item of scenarioResult.evidence) {
-          if (item.kind === 'screenshot') {
-            if (item.href && (liveScreenshotHrefs.has(item.href) || item.href.startsWith('/api/workbench/'))) {
-              changeEvidence.push(item);
-            } else {
-              const emitted = await input.emit({ type: 'screenshot', artifact: item });
-              if (emitted.type === 'screenshot') changeEvidence.push(emitted.artifact);
-            }
-          } else {
-            changeEvidence.push(item);
-          }
+        const scenarios = indexedScenariosFromChange(change);
+        let flowPlan: UiBrowserUserFlowPlan;
+        try {
+          flowPlan = await this.#planFlows(input, change, scenarios, changeIndex, uiChanges.length);
+        } catch (error) {
+          rethrowIfAbort(error, input.signal);
+          const message = error instanceof Error ? error.message : String(error);
+          matrix.push({
+            title: change.title,
+            type: 'UI / Browser',
+            status: 'Failed',
+            duration: null,
+            evidence: null,
+            reason: `Flow planning failed: ${message}`,
+            file: change.file,
+          });
+          continue;
         }
 
-        totalDuration += scenarioResult.durationMs;
-        worstOutcome = worstRunOutcome(worstOutcome, scenarioResult.outcome);
-        allEvidence.push(...changeEvidence);
-        matrix.push({
-          title: scenario.scenarioCount > 1 ? `${change.title} (${scenario.scenarioIndex + 1}/${scenario.scenarioCount})` : change.title,
-          type: 'UI / Browser',
-          status: scenarioResult.outcome,
-          duration: durationLabel(scenarioResult.durationMs),
-          evidence: matrixEvidenceLabelFromItems(changeEvidence),
-          evidenceItems: changeEvidence.length > 0 ? changeEvidence : undefined,
-          reason: scenarioResult.reason,
-          file: change.file,
-        });
+        const executionPlans: UiBrowserExecutionPlan[] = [];
+        matrix.push(...buildDroppedScenarioRows(change, scenarios, flowPlan.droppedScenarios));
+
+        if (flowPlan.acceptedFlows.length === 0) {
+          const trace = await buildExecutionPlanTraceEvidence({ flowPlan, executionPlans });
+          if (trace) allEvidence.push(trace);
+          continue;
+        }
+
+        for (const flow of flowPlan.acceptedFlows) {
+          let sourceScenarios: IndexedUiScenario[];
+          let executionPlan: UiBrowserExecutionPlan;
+          try {
+            sourceScenarios = sourceScenariosForFlow(scenarios, flow.sourceScenarioIndexes);
+            executionPlan = await this.#planExecution(input, flow, sourceScenarios, defaultRoute);
+          } catch (error) {
+            rethrowIfAbort(error, input.signal);
+            const message = error instanceof Error ? error.message : String(error);
+            matrix.push({
+              title: flow.title,
+              type: 'UI / Browser',
+              status: 'Skipped',
+              duration: null,
+              evidence: null,
+              reason: `Execution planning failed: ${message}`,
+              file: change.file,
+            });
+            continue;
+          }
+
+          executionPlans.push(executionPlan);
+          pendingFlowRuns.push({ change, flow, sourceScenarios });
+
+          const scenarioRunIndex = matrix.length;
+          const sessionName = uiBrowserSessionName(input.session.id, scenarioRunIndex);
+          const agentRunner = this.#agentRunner ?? this.#createAgentRunner(input, sessionName);
+          const liveScreenshotHrefs = new Set<string>();
+          const scenarioResult = await agentRunner.runScenario({
+            baseUrl: lease.baseUrl,
+            gherkinText: sourceScenarios.map(item => item.text).join('\n\n'),
+            executionPlan,
+            constraints: lookupRunConstraints(input.session.plan?.runConstraints, change.title),
+            defaultRoute,
+            signal: input.signal,
+            onScreenshot: async artifact => {
+              const emitted = await input.emit({ type: 'screenshot', artifact });
+              if (emitted.type !== 'screenshot') return artifact;
+              if (emitted.artifact.href) liveScreenshotHrefs.add(emitted.artifact.href);
+              return emitted.artifact;
+            },
+            onProgress: message => input.emit({
+              type: 'progress',
+              message: `[Flow ${flow.id}] ${message}`,
+              percent: Math.min(90, 78 + Math.round(((changeIndex + 0.5) / uiChanges.length) * 10)),
+            }),
+          });
+          completedFlowRunCount += 1;
+
+          const changeEvidence = await collectScenarioEvidence(input, scenarioResult, liveScreenshotHrefs);
+          totalDuration += scenarioResult.durationMs;
+          allEvidence.push(...changeEvidence);
+          matrix.push({
+            title: flow.title,
+            type: 'UI / Browser',
+            status: scenarioResult.outcome,
+            duration: durationLabel(scenarioResult.durationMs),
+            evidence: matrixEvidenceLabelFromItems(changeEvidence),
+            evidenceItems: changeEvidence.length > 0 ? changeEvidence : undefined,
+            reason: scenarioResult.reason,
+            file: change.file,
+          });
+        }
+
+        const trace = await buildExecutionPlanTraceEvidence({ flowPlan, executionPlans });
+        if (trace) allEvidence.push(trace);
       }
 
       const runTrace = await buildUiBrowserRunTraceEvidence(allEvidence);
@@ -542,7 +620,7 @@ export class UiBrowserAdapter implements TestTypeAdapter {
 
       return {
         result: {
-          outcome: worstOutcome,
+          outcome: runOutcomeFromMatrix(matrix),
           durationMs: totalDuration,
           evidence: allEvidence,
         },
@@ -557,17 +635,15 @@ export class UiBrowserAdapter implements TestTypeAdapter {
         percent: 80,
       });
       const errorMessage = error instanceof Error ? error.message : String(error);
-      const remainingScenarios = scenarios.slice(matrix.length);
-      for (const scenario of remainingScenarios) {
-        const { change } = scenario;
+      for (const pending of pendingFlowRuns.slice(completedFlowRunCount)) {
         matrix.push({
-          title: scenario.scenarioCount > 1 ? `${change.title} (${scenario.scenarioIndex + 1}/${scenario.scenarioCount})` : change.title,
+          title: pending.flow.title,
           type: 'UI / Browser',
           status: 'Failed',
           duration: null,
           evidence: null,
           reason: errorMessage,
-          file: change.file,
+          file: pending.change.file,
         });
       }
       const runTrace = await buildUiBrowserRunTraceEvidence(allEvidence);
@@ -609,44 +685,56 @@ export class UiBrowserAdapter implements TestTypeAdapter {
     };
   }
 
-  async #planScenario(
+  async #planFlows(
     input: AdapterInput,
-    scenarioText: string,
-    scenarioRunIndex: number,
-    scenarioCount: number,
-  ): Promise<UiBrowserScenarioPlan | undefined> {
+    change: GeneratedChange,
+    scenarios: IndexedUiScenario[],
+    changeIndex: number,
+    changeCount: number,
+  ): Promise<UiBrowserUserFlowPlan> {
     const agentModel = new AgentModelRunner({ modelConnect: input.modelConnect });
-    try {
-      const skill = await input.skills.load('test-plan-ui-browser-scenario');
-      await input.emit({
-        type: 'progress',
-        message: `[Scenario ${scenarioRunIndex + 1}/${scenarioCount}] Creating concise execution plan…`,
-        percent: Math.min(90, 78 + Math.round(((scenarioRunIndex + 0.25) / scenarioCount) * 10)),
-      });
-      const scenarioPlan = await agentModel.planScenario({
-        profile: 'coder',
-        skill,
-        context: {
-          gherkinText: scenarioText,
-          guidance: [
-            'Create a short human-QC plan before browser execution.',
-            'Prefer durable state assertions over transient toast/notification checks.',
-            'If a control may be below the fold, say to find it by scrolling if needed.',
-          ],
-        },
-        signal: input.signal,
-      });
-      assertScenarioPlanGrounded(scenarioPlan, scenarioText);
-      return scenarioPlan;
-    } catch (error) {
-      rethrowIfAbort(error, input.signal);
-      await input.emit({
-        type: 'progress',
-        message: `[Scenario ${scenarioRunIndex + 1}/${scenarioCount}] Scenario planning unavailable; running original Gherkin. ${error instanceof Error ? error.message : String(error)}`,
-        percent: Math.min(90, 78 + Math.round(((scenarioRunIndex + 0.25) / scenarioCount) * 10)),
-      });
-      return undefined;
-    }
+    const skill = await input.skills.load('test-plan-ui-browser-flows');
+    await input.emit({
+      type: 'progress',
+      message: `[Behavior ${changeIndex + 1}/${changeCount}] Reducing generated scenarios into user flows…`,
+      percent: Math.min(90, 78 + Math.round(((changeIndex + 0.25) / changeCount) * 10)),
+    });
+    return agentModel.planUiBrowserFlows({
+      profile: 'coder',
+      skill,
+      context: {
+        change,
+        gherkinText: scenarios.map(item => item.text).join('\n\n'),
+        scenarios,
+        intent: input.session.intent,
+        repositoryEvidence: input.repository,
+        resolvedPlanAnswers: input.session.approval?.answers ?? {},
+      },
+      signal: input.signal,
+    });
+  }
+
+  async #planExecution(
+    input: AdapterInput,
+    flow: UiBrowserAcceptedFlow,
+    sourceScenarios: IndexedUiScenario[],
+    defaultRoute: string,
+  ): Promise<UiBrowserExecutionPlan> {
+    const agentModel = new AgentModelRunner({ modelConnect: input.modelConnect });
+    const skill = await input.skills.load('test-plan-ui-browser-execution');
+    const plan = await agentModel.planUiBrowserExecution({
+      profile: 'coder',
+      skill,
+      context: {
+        flow,
+        sourceScenarios,
+        repositoryEvidence: input.repository,
+        defaultRoute,
+        agentBrowserGuidance: await loadAgentBrowserCoreGuide(),
+      },
+      signal: input.signal,
+    });
+    return sanitizeExecutionPlan(plan, flow);
   }
 
   #createAgentRunner(input: AdapterInput, sessionName?: string): AgentRunnerLike {

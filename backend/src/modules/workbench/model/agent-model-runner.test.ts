@@ -31,6 +31,14 @@ test('decideNext validates model JSON into UiBrowserAgentAction', async () => {
       scenarioTitle: 'Shop now',
       gherkinSteps: [],
       currentStepIndex: 1,
+      currentStep: {
+        index: 1,
+        kind: 'Given',
+        effectiveKind: 'Given',
+        text: '',
+        observationOnlyActionsUsed: 0,
+        verdictRequiredNow: false,
+      },
       completedSteps: [],
       thenVerdicts: [],
       pageSnapshot: '',
@@ -38,6 +46,8 @@ test('decideNext validates model JSON into UiBrowserAgentAction', async () => {
       constraints: { behavior: 'Shop now', maxStepDurationMs: 20_000, maxSteps: 15 },
       elapsedMs: 0,
       iterationsUsed: 0,
+      allowedActionKinds: ['agentBrowserCommand', 'stepComplete', 'stepFailed'],
+      allowedCommands: ['open', 'snapshot', 'click', 'find', 'fill', 'press', 'scroll', 'scrollintoview', 'get', 'is', 'wait'],
     },
     signal: new AbortController().signal,
   });
@@ -68,6 +78,14 @@ test('decideNext accepts agentBrowserCommand JSON', async () => {
         { index: 1, kind: 'When', effectiveKind: 'When', text: 'the user clicks Add to Cart' },
       ],
       currentStepIndex: 1,
+      currentStep: {
+        index: 1,
+        kind: 'When',
+        effectiveKind: 'When',
+        text: 'the user clicks Add to Cart',
+        observationOnlyActionsUsed: 0,
+        verdictRequiredNow: false,
+      },
       completedSteps: [{ index: 0, note: 'Home open' }],
       thenVerdicts: [],
       pageSnapshot: '- button "Add to Cart" @e8',
@@ -75,6 +93,8 @@ test('decideNext accepts agentBrowserCommand JSON', async () => {
       constraints: { behavior: 'Add to cart', maxStepDurationMs: 20_000, maxSteps: 15 },
       elapsedMs: 0,
       iterationsUsed: 1,
+      allowedActionKinds: ['agentBrowserCommand', 'stepComplete', 'stepFailed'],
+      allowedCommands: ['open', 'snapshot', 'click', 'find', 'fill', 'press', 'scroll', 'scrollintoview', 'get', 'is', 'wait'],
     },
     signal: new AbortController().signal,
   });
@@ -104,6 +124,14 @@ test('decideNext extracts JSON object from prose model output', async () => {
         { index: 0, kind: 'When', effectiveKind: 'When', text: 'the user searches for headphone' },
       ],
       currentStepIndex: 0,
+      currentStep: {
+        index: 0,
+        kind: 'When',
+        effectiveKind: 'When',
+        text: 'the user searches for headphone',
+        observationOnlyActionsUsed: 0,
+        verdictRequiredNow: false,
+      },
       completedSteps: [],
       thenVerdicts: [],
       pageSnapshot: '- searchbox "Search" @e2',
@@ -111,6 +139,8 @@ test('decideNext extracts JSON object from prose model output', async () => {
       constraints: { behavior: 'Search', maxStepDurationMs: 60_000, maxSteps: 15 },
       elapsedMs: 0,
       iterationsUsed: 1,
+      allowedActionKinds: ['agentBrowserCommand', 'stepComplete', 'stepFailed'],
+      allowedCommands: ['open', 'snapshot', 'click', 'find', 'fill', 'press', 'scroll', 'scrollintoview', 'get', 'is', 'wait'],
     },
     signal: new AbortController().signal,
   });
@@ -120,6 +150,52 @@ test('decideNext extracts JSON object from prose model output', async () => {
     command: 'fill',
     args: ['@e2', 'headphone'],
     reason: 'Enter search text',
+  });
+});
+
+test('decideNext extracts first JSON object when model appends trailing prose', async () => {
+  const runner = new AgentModelRunner({
+    modelConnect: fakeModelConnect({
+      content:
+        '{"kind":"agentBrowserCommand","command":"press","args":["Enter"],"reason":"Submit search"} The search field has been filled, so pressing Enter submits it.',
+    }),
+  });
+
+  const action = await runner.decideNext({
+    profile: 'coder',
+    skill: { name: 'test-run-ui-browser-agent', content: '# skill' },
+    context: {
+      scenarioTitle: 'Search',
+      gherkinSteps: [
+        { index: 0, kind: 'When', effectiveKind: 'When', text: 'the user searches for headphone' },
+      ],
+      currentStepIndex: 0,
+      currentStep: {
+        index: 0,
+        kind: 'When',
+        effectiveKind: 'When',
+        text: 'the user searches for headphone',
+        observationOnlyActionsUsed: 0,
+        verdictRequiredNow: false,
+      },
+      completedSteps: [],
+      thenVerdicts: [],
+      pageSnapshot: '- searchbox "Search products" @e67: headphone',
+      actionHistory: [{ iteration: 1, action: 'fill @e67 [redacted]', result: 'ok' }],
+      constraints: { behavior: 'Search', maxStepDurationMs: 60_000, maxSteps: 15 },
+      elapsedMs: 0,
+      iterationsUsed: 2,
+      allowedActionKinds: ['agentBrowserCommand', 'stepComplete', 'stepFailed'],
+      allowedCommands: ['open', 'snapshot', 'click', 'find', 'fill', 'press', 'scroll', 'scrollintoview', 'get', 'is', 'wait'],
+    },
+    signal: new AbortController().signal,
+  });
+
+  assert.deepEqual(action, {
+    kind: 'agentBrowserCommand',
+    command: 'press',
+    args: ['Enter'],
+    reason: 'Submit search',
   });
 });
 
@@ -140,6 +216,14 @@ test('decideNext retries prose-only output with stricter JSON instruction', asyn
         { index: 0, kind: 'When', effectiveKind: 'When', text: 'the user adds a product to cart' },
       ],
       currentStepIndex: 0,
+      currentStep: {
+        index: 0,
+        kind: 'When',
+        effectiveKind: 'When',
+        text: 'the user adds a product to cart',
+        observationOnlyActionsUsed: 0,
+        verdictRequiredNow: false,
+      },
       completedSteps: [],
       thenVerdicts: [],
       pageSnapshot: '- button "Add to Cart" @e8',
@@ -147,6 +231,8 @@ test('decideNext retries prose-only output with stricter JSON instruction', asyn
       constraints: { behavior: 'Add to cart', maxStepDurationMs: 60_000, maxSteps: 15 },
       elapsedMs: 0,
       iterationsUsed: 1,
+      allowedActionKinds: ['agentBrowserCommand', 'stepComplete', 'stepFailed'],
+      allowedCommands: ['open', 'snapshot', 'click', 'find', 'fill', 'press', 'scroll', 'scrollintoview', 'get', 'is', 'wait'],
     },
     signal: new AbortController().signal,
   });
@@ -161,11 +247,13 @@ test('decideNext retries prose-only output with stricter JSON instruction', asyn
 
 test('decideNext normalizes stepComplete missing required fields', async () => {
   let calls = 0;
+  let capturedMaxTokens: number | undefined;
   const runner = new AgentModelRunner({
     modelConnect: {
       getClient: () => ({
-        chat: async () => {
+        chat: async (_messages: unknown, options: { maxTokens?: number }) => {
           calls += 1;
+          capturedMaxTokens = options.maxTokens;
           return { content: '{"kind":"stepComplete"}' };
         },
       }),
@@ -179,6 +267,14 @@ test('decideNext normalizes stepComplete missing required fields', async () => {
       scenarioTitle: 'Shop now',
       gherkinSteps: [{ index: 0, kind: 'Given', effectiveKind: 'Given', text: 'the user is on the home page' }],
       currentStepIndex: 0,
+      currentStep: {
+        index: 0,
+        kind: 'Given',
+        effectiveKind: 'Given',
+        text: 'the user is on the home page',
+        observationOnlyActionsUsed: 0,
+        verdictRequiredNow: false,
+      },
       completedSteps: [],
       thenVerdicts: [],
       pageSnapshot: '',
@@ -186,6 +282,8 @@ test('decideNext normalizes stepComplete missing required fields', async () => {
       constraints: { behavior: 'Shop now', maxStepDurationMs: 20_000, maxSteps: 15 },
       elapsedMs: 0,
       iterationsUsed: 0,
+      allowedActionKinds: ['agentBrowserCommand', 'stepComplete', 'stepFailed'],
+      allowedCommands: ['open', 'snapshot', 'click', 'find', 'fill', 'press', 'scroll', 'scrollintoview', 'get', 'is', 'wait'],
     },
     signal: new AbortController().signal,
   });
@@ -194,47 +292,93 @@ test('decideNext normalizes stepComplete missing required fields', async () => {
   assert.equal(action.stepIndex, 0);
   assert.ok(action.note);
   assert.equal(calls, 1);
+  assert.equal(capturedMaxTokens, 1500);
 });
 
-test('planScenario validates concise UI browser scenario plan JSON', async () => {
+test('plans UI Browser user flows', async () => {
+  let capturedMaxTokens: number | undefined;
   const runner = new AgentModelRunner({
-    modelConnect: fakeModelConnect({
-      content: JSON.stringify({
-        title: 'Add to cart',
-        steps: [
-          {
-            id: 'step-1',
-            kind: 'setup',
-            sourceStepIndexes: [0],
-            instruction: 'Open the home page',
-            successCriteria: 'The home page is loaded',
-          },
-          {
-            id: 'step-2',
-            kind: 'action',
-            sourceStepIndexes: [1],
-            instruction: 'Find the first Add to Cart button, scrolling if needed, and click it',
-            successCriteria: 'The click completes',
-          },
-          {
-            id: 'step-3',
-            kind: 'assert',
-            sourceStepIndexes: [3],
-            instruction: 'Verify the cart count increased',
-            successCriteria: 'A durable cart count shows 1 item',
-          },
-        ],
+    modelConnect: {
+      getClient: () => ({
+        chat: async (_messages: unknown, options: { maxTokens?: number }) => {
+          capturedMaxTokens = options.maxTokens;
+          return {
+            content: JSON.stringify({
+              behaviorTitle: 'Add product to cart from homepage',
+              acceptedFlows: [
+                {
+                  id: 'flow-1',
+                  title: 'Add one product to cart',
+                  sourceScenarioIndexes: [0],
+                  userGoal: 'A shopper adds a product to the cart.',
+                  durableOutcome: 'The cart count shows one item.',
+                  priority: 'high',
+                },
+              ],
+              droppedScenarios: [],
+            }),
+          };
+        },
       }),
-    }),
+    } as never,
   });
 
-  const plan = await runner.planScenario({
+  const result = await runner.planUiBrowserFlows({
     profile: 'coder',
-    skill: { name: 'test-plan-ui-browser-scenario', content: '# skill' },
-    context: { gherkinText: 'Scenario: Add to cart' },
+    skill: { name: 'test-plan-ui-browser-flows', content: 'Return JSON only.' },
+    context: { schemaName: 'UiBrowserUserFlowPlan' },
     signal: new AbortController().signal,
   });
 
-  assert.equal(plan.title, 'Add to cart');
-  assert.deepEqual(plan.steps.map(step => step.kind), ['setup', 'action', 'assert']);
+  assert.equal(result.acceptedFlows[0].id, 'flow-1');
+  assert.equal(capturedMaxTokens, 4000);
+});
+
+test('plans UI Browser execution steps', async () => {
+  let capturedMaxTokens: number | undefined;
+  const runner = new AgentModelRunner({
+    modelConnect: {
+      getClient: () => ({
+        chat: async (_messages: unknown, options: { maxTokens?: number }) => {
+          capturedMaxTokens = options.maxTokens;
+          return {
+            content: JSON.stringify({
+              flowId: 'flow-1',
+              title: 'Add one product to cart',
+              steps: [
+                {
+                  id: 'step-1',
+                  kind: 'setup',
+                  instruction: 'Open the homepage.',
+                  successCriteria: 'The homepage is loaded.',
+                },
+                {
+                  id: 'step-2',
+                  kind: 'action',
+                  instruction: 'Click Add to Cart.',
+                  successCriteria: 'The click completes.',
+                },
+                {
+                  id: 'step-3',
+                  kind: 'assert',
+                  instruction: 'Verify the cart contains one item.',
+                  successCriteria: 'The cart shows one item.',
+                },
+              ],
+            }),
+          };
+        },
+      }),
+    } as never,
+  });
+
+  const result = await runner.planUiBrowserExecution({
+    profile: 'coder',
+    skill: { name: 'test-plan-ui-browser-execution', content: 'Return JSON only.' },
+    context: { schemaName: 'UiBrowserExecutionPlan' },
+    signal: new AbortController().signal,
+  });
+
+  assert.equal(result.steps[2].kind, 'assert');
+  assert.equal(capturedMaxTokens, 4000);
 });

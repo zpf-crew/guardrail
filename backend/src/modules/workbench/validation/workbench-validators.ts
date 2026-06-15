@@ -113,6 +113,39 @@ const uiBrowserScenarioPlanSchema = z.object({
   steps: z.array(uiBrowserScenarioPlanStepSchema).min(1).max(12),
 });
 
+const uiBrowserAcceptedFlowSchema = z.object({
+  id: z.string().min(1),
+  title: z.string().min(1),
+  sourceScenarioIndexes: z.array(z.number().int().nonnegative()).min(1),
+  userGoal: z.string().min(1),
+  durableOutcome: z.string().min(1),
+  priority: z.enum(['high', 'medium', 'low']),
+});
+
+const uiBrowserDroppedScenarioSchema = z.object({
+  sourceScenarioIndex: z.number().int().nonnegative(),
+  reason: z.string().min(1),
+});
+
+const uiBrowserUserFlowPlanSchema = z.object({
+  behaviorTitle: z.string().min(1),
+  acceptedFlows: z.array(uiBrowserAcceptedFlowSchema).max(3),
+  droppedScenarios: z.array(uiBrowserDroppedScenarioSchema),
+});
+
+const uiBrowserExecutionStepSchema = z.object({
+  id: z.string().min(1),
+  kind: z.enum(['setup', 'action', 'assert']),
+  instruction: z.string().min(1),
+  successCriteria: z.string().min(1),
+});
+
+const uiBrowserExecutionPlanSchema = z.object({
+  flowId: z.string().min(1),
+  title: z.string().min(1),
+  steps: z.array(uiBrowserExecutionStepSchema).min(1).max(5),
+});
+
 const planSchema = z.object({
   proposedActions: z.array(z.object({
     action: z.enum(['add', 'update', 'delete', 'run']),
@@ -290,6 +323,8 @@ const schemas = {
   ReviewRecommendation: reviewRecommendationSchema,
   UnitRunPlan: unitRunPlanSchema,
   UiBrowserScenarioPlan: uiBrowserScenarioPlanSchema,
+  UiBrowserUserFlowPlan: uiBrowserUserFlowPlanSchema,
+  UiBrowserExecutionPlan: uiBrowserExecutionPlanSchema,
 } as const;
 
 interface WorkbenchStepResultByName {
@@ -307,11 +342,18 @@ interface WorkbenchStepResultByName {
   ReviewRecommendation: { recommendation: string };
   UnitRunPlan: z.infer<typeof unitRunPlanSchema>;
   UiBrowserScenarioPlan: UiBrowserScenarioPlan;
+  UiBrowserUserFlowPlan: UiBrowserUserFlowPlan;
+  UiBrowserExecutionPlan: UiBrowserExecutionPlan;
 }
 
 export type WorkbenchSchemaName = keyof typeof schemas;
 export type UiBrowserAgentAction = z.infer<typeof uiBrowserAgentActionSchema>;
 export type UiBrowserScenarioPlan = z.infer<typeof uiBrowserScenarioPlanSchema>;
+export type UiBrowserAcceptedFlow = z.infer<typeof uiBrowserAcceptedFlowSchema>;
+export type UiBrowserDroppedScenario = z.infer<typeof uiBrowserDroppedScenarioSchema>;
+export type UiBrowserUserFlowPlan = z.infer<typeof uiBrowserUserFlowPlanSchema>;
+export type UiBrowserExecutionStep = z.infer<typeof uiBrowserExecutionStepSchema>;
+export type UiBrowserExecutionPlan = z.infer<typeof uiBrowserExecutionPlanSchema>;
 export type BehaviorRunConstraints = z.infer<typeof behaviorRunConstraintsSchema>;
 export type UnitRunPlan = z.infer<typeof unitRunPlanSchema>;
 
