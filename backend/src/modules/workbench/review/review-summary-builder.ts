@@ -1,5 +1,5 @@
 import { countUnresolvedPlanQuestions } from '../plan/resolve-plan-answers.js';
-import type { GenerationResult, PlanApproval, ReviewSummary, TestPlan, TestRunResult } from '../workbench.types.js';
+import type { GenerationResult, PlanApproval, ReviewSummary, TestFailure, TestPlan, TestRunResult } from '../workbench.types.js';
 
 function diffStat(change: GenerationResult['changes'][number]): string {
   const adds = change.diff.filter(line => line.kind === 'add').length;
@@ -24,16 +24,22 @@ export function buildReviewSummary(
   const line = input.run.coverage.find(item => item.metric === 'Line coverage');
   const branch = input.run.coverage.find(item => item.metric === 'Branch coverage');
 
-  const remainingRisk: ReviewSummary['remainingRisk'] = [];
-  if (input.run.attention) {
-    remainingRisk.push({ label: input.run.attention.kind, value: input.run.attention.reason, sentiment: 'bad' });
-  }
-  if (input.run.ui.outcome === 'Failed') {
-    remainingRisk.push({ label: 'UI run', value: input.run.ui.command, sentiment: 'bad' });
-  }
-  if (input.run.ui.evidence.some(item => item.kind === 'screenshot')) {
-    remainingRisk.push({ label: 'Evidence', value: 'Screenshot captured for manual review', sentiment: 'neutral' });
-  }
+  // One issue row per failing/flaky test, each with its own reason and file — not a single collapsed
+  // row. Enrich the test the run flagged for attention with its likely cause / suggested fix.
+  const attention = input.run.attention;
+  const failures: TestFailure[] = input.run.matrix
+    .filter(row => row.status === 'Failed' || row.status === 'Flaky')
+    .map(row => {
+      const matchesAttention = attention && attention.testTitle === row.title;
+      return {
+        title: row.title,
+        type: row.type,
+        kind: row.status === 'Flaky' ? 'flaky' as const : 'failed' as const,
+        reason: row.reason ?? attention?.reason ?? 'No failure detail captured.',
+        file: row.file,
+        ...(matchesAttention ? { likelyCause: attention.likelyCause, suggestedFix: attention.suggestedFix } : {}),
+      };
+    });
 
   return {
     testsAdded: added,
@@ -50,7 +56,9 @@ export function buildReviewSummary(
       diffStat: diffStat(change),
       changeKind: change.action === 'Add' ? 'add' : change.action === 'Delete' ? 'delete' : 'update',
     })),
-    remainingRisk,
+    failures,
+    // remainingRisk is retained for genuine residual risk; per-test failures now live in `failures`.
+    remainingRisk: [],
     openQuestions,
     recommendation,
   };

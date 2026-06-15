@@ -26,6 +26,53 @@ test('buildReviewSummary counts changes and run outcomes', () => {
   assert.match(summary.recommendation, /screenshot/i);
 });
 
+test('buildReviewSummary surfaces one issue per failing test with its own reason', () => {
+  const summary = buildReviewSummary({
+    generation: {
+      timeline: [],
+      changes: [],
+      beforeAfter: { before: [], after: [] },
+    },
+    run: {
+      unit: { command: 'not run', outcome: 'Skipped', passed: 0, durationMs: 0, suite: 'Unit' },
+      ui: {
+        command: 'agent-browser open http://127.0.0.1:50698/',
+        browser: 'Chromium',
+        outcome: 'Failed',
+        passed: 0,
+        durationMs: 3400,
+        evidence: [{ kind: 'screenshot', label: 'shot', href: '/x.png' }],
+      },
+      mobile: { command: 'not run', devices: [], outcome: 'Skipped', passed: 0, durationMs: 0, evidence: [] },
+      coverage: [],
+      matrix: [
+        { title: 'Browse electronics', type: 'UI / Browser', status: 'Failed', duration: '1s', evidence: null, reason: 'Element not found: Browse Electronics', file: 'src/test/a.feature' },
+        { title: 'Filter by category', type: 'UI / Browser', status: 'Failed', duration: '1s', evidence: null, reason: 'Timeout waiting for category cards', file: 'src/test/b.feature' },
+        { title: 'Hero renders', type: 'UI / Browser', status: 'Passed', duration: '1s', evidence: null, reason: null, file: 'src/test/c.feature' },
+      ],
+      attention: {
+        testTitle: 'Browse electronics',
+        kind: 'failed',
+        reason: 'Element not found: Browse Electronics',
+        likelyCause: 'Selector changed',
+        suggestedFix: 'Update the data-testid',
+        actions: ['ask-agent-to-fix'],
+      },
+    },
+  }, 'Fix the failing flows.');
+
+  assert.equal(summary.failures.length, 2);
+  assert.deepEqual(summary.failures.map(f => f.reason), [
+    'Element not found: Browse Electronics',
+    'Timeout waiting for category cards',
+  ]);
+  // The attention-matched failure carries the likely cause / suggested fix.
+  assert.equal(summary.failures[0]?.likelyCause, 'Selector changed');
+  assert.equal(summary.failures[1]?.likelyCause, undefined);
+  // No noisy "UI run" / "Evidence" rows.
+  assert.deepEqual(summary.remainingRisk, []);
+});
+
 test('buildReviewSummary counts unresolved plan questions', () => {
   const summary = buildReviewSummary({
     generation: {
