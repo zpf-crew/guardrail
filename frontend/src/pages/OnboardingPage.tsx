@@ -502,17 +502,6 @@ export function OnboardingPage() {
         contentClassName="mx-auto max-w-[1100px]"
         user={user}
         onLogout={() => void logout()}
-        actions={
-          <>
-            <span className="inline-flex items-center gap-[7px] text-[12px] text-[#98a1b3] border border-[rgba(255,255,255,0.07)] bg-[#161a24] px-[11px] py-[5px] rounded-[99px] ml-[4px]">
-              <span className="text-[#818cf8]">●</span> First-time setup
-            </span>
-            <a href="#" className="text-[12.5px] text-[#6b7488] hover:text-[#98a1b3] no-underline" onClick={e => e.preventDefault()}>Docs</a>
-            <Button variant="ghost" onClick={() => { toast('Opening dashboard…', 'loading'); setTimeout(() => navigate('/dashboard'), 900); }}>
-              Skip & explore
-            </Button>
-          </>
-        }
       />
 
       <main className="mx-auto max-w-[1100px] px-[26px] py-[30px] pb-[60px]">
