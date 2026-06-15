@@ -809,6 +809,37 @@ test('reports failed UI outcome when flow planning fails before execution', asyn
   assert.match(result.matrix[0]?.reason ?? '', /Flow planning failed/);
 });
 
+test('flow planning content failure is retried then reported without executing raw scenarios', async () => {
+  let modelCalls = 0;
+  let runCalls = 0;
+  const adapter = createAdapter({
+    agentRunner: {
+      runScenario: async () => {
+        runCalls += 1;
+        return defaultAgentScenarioResult();
+      },
+    },
+  });
+  const input = await buildInput({
+    modelConnect: {
+      getClient: () => ({
+        chat: async () => {
+          modelCalls += 1;
+          throw new Error('LLM response did not contain assistant content');
+        },
+      }),
+    } as never,
+  });
+
+  const result = await adapter.run({ ...input, generation: stubGeneration() });
+
+  assert.equal(runCalls, 0);
+  assert.equal(modelCalls, 3);
+  assert.equal(result.matrix[0]?.status, 'Failed');
+  assert.match(result.matrix[0]?.reason ?? '', /Flow planning failed/);
+  assert.match(result.matrix[0]?.reason ?? '', /model_content_empty after 3 attempts/);
+});
+
 test('skips accepted flows that cite no existing source scenario', async () => {
   const adapter = createAdapter({
     agentRunner: {
