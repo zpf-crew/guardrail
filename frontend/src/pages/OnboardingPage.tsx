@@ -26,9 +26,11 @@ import {
   ScanTaskStatusIcon,
 } from '@/components/icons';
 import type { ConnectedRepo, GitHubRepoSummary, OnboardingDraft, QCTestCase, ScanSummary, UploadedFile } from '@/types/testlens';
-import { connectRepo, listGitHubRepos } from '@/data/repos-api';
+import { connectRepo, listGitHubRepos, saveActiveRepoId } from '@/data/repos-api';
 import { commitOnboardingScan, normalizeQCPriority, toUploadedFile, type KnowledgeDocWithSnippet } from '@/data/onboarding-api';
 import { useAuth } from '@/app/auth-context';
+import { getDashboard } from '@/data/dashboard-api';
+import { findDashboardReadyRepoIds, splitOnboardingRepos } from '@/pages/onboarding-repo-options';
 
 const stepDefs = [
   { title: 'Select Repository', optional: false },
@@ -101,6 +103,8 @@ export function OnboardingPage() {
   const [stepStates, setStepStates] = React.useState<Step['state'][]>(['current', 'todo', 'todo', 'todo']);
   const [repos, setRepos] = React.useState<GitHubRepoSummary[]>([]);
   const [repoLoading, setRepoLoading] = React.useState(true);
+  const [dashboardReadyRepoIds, setDashboardReadyRepoIds] = React.useState<Set<string>>(new Set());
+  const [dashboardReadyLoading, setDashboardReadyLoading] = React.useState(false);
   const [repoError, setRepoError] = React.useState<string | null>(null);
   const [selectedGithubRepoId, setSelectedGithubRepoId] = React.useState<number | null>(null);
   const [connectingRepo, setConnectingRepo] = React.useState(false);
@@ -137,6 +141,7 @@ export function OnboardingPage() {
     try {
       const nextRepos = await listGitHubRepos();
       setRepos(nextRepos);
+      setDashboardReadyRepoIds(new Set());
       setSelectedGithubRepoId(current => current ?? nextRepos[0]?.githubRepoId ?? null);
     } catch (e) {
       setRepoError(e instanceof Error ? e.message : 'Failed to load repositories.');
@@ -148,6 +153,29 @@ export function OnboardingPage() {
   React.useEffect(() => {
     void loadRepos();
   }, [loadRepos]);
+
+  React.useEffect(() => {
+    let cancelled = false;
+    const clonedRepos = repos.filter(repo => repo.isCloned && repo.repoId);
+    if (!clonedRepos.length) {
+      setDashboardReadyRepoIds(new Set());
+      setDashboardReadyLoading(false);
+      return;
+    }
+
+    setDashboardReadyLoading(true);
+    findDashboardReadyRepoIds(clonedRepos, getDashboard)
+      .then(readyIds => {
+        if (!cancelled) setDashboardReadyRepoIds(readyIds);
+      })
+      .finally(() => {
+        if (!cancelled) setDashboardReadyLoading(false);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [repos]);
 
   const steps: Step[] = stepDefs.map((s, i) => ({ ...s, state: stepStates[i] }));
 
@@ -326,6 +354,7 @@ export function OnboardingPage() {
   const selectedRepoName = selectedRepo?.fullName ?? '—';
   const selectedBranch = connectedRepo?.repo.branch ?? selectedRepo?.currentBranch ?? selectedRepo?.defaultBranch ?? 'main';
   const selectedRepoIsCloned = Boolean(selectedRepo?.isCloned);
+  const selectedRepoHasDashboard = Boolean(selectedRepo?.repoId && dashboardReadyRepoIds.has(selectedRepo.repoId));
   const normalizedRepoSearch = repoSearch.trim().toLowerCase();
   const visibleRepos = normalizedRepoSearch
     ? repos.filter(repo => {
@@ -333,6 +362,7 @@ export function OnboardingPage() {
         return haystack.includes(normalizedRepoSearch);
       })
     : repos;
+  const { dashboardReady: visibleDashboardRepos, onboarding: visibleOnboardingRepos } = splitOnboardingRepos(visibleRepos, dashboardReadyRepoIds);
 
   const handleRepoChange = (githubRepoId: string) => {
     const id = Number(githubRepoId);
@@ -341,8 +371,19 @@ export function OnboardingPage() {
     setConnectedRepo(null);
   };
 
+  const openExistingDashboard = (repo: GitHubRepoSummary) => {
+    if (!repo.repoId) return;
+    saveActiveRepoId(repo.repoId);
+    toast(`Opening dashboard for ${repo.name}`, 'success');
+    navigate('/dashboard');
+  };
+
   const handleConnectRepo = async () => {
     if (!selectedGithubRepoId || connectingRepo) return;
+    if (selectedRepo?.repoId && selectedRepoHasDashboard) {
+      openExistingDashboard(selectedRepo);
+      return;
+    }
     setConnectingRepo(true);
     try {
       const connected = await connectRepo(selectedGithubRepoId);
@@ -538,6 +579,8 @@ export function OnboardingPage() {
                       <div className="text-[12px] text-[#6b7488] mt-[2px]">
                         {connectedRepo
                           ? `Cloned to ${connectedRepo.repo.path}`
+                          : selectedRepoHasDashboard
+                            ? 'Existing scan found — ready to open Dashboard'
                           : selectedRepo?.isCloned
                             ? `Local clone ready at ${selectedRepo.clonePath}`
                             : `${repos.length.toLocaleString()} repositories available from GitHub`}
@@ -558,7 +601,9 @@ export function OnboardingPage() {
                     <div className="flex items-center justify-between gap-[12px] mb-[9px]">
                       <label className="text-[11px] uppercase tracking-[0.6px] text-[#6b7488] font-semibold block">Repository</label>
                       <span className="text-[12px] text-[#6b7488]">
-                        {repoLoading ? 'Loading repositories…' : `${visibleRepos.length.toLocaleString()} of ${repos.length.toLocaleString()} repositories`}
+                        {repoLoading
+                          ? 'Loading repositories…'
+                          : `${visibleRepos.length.toLocaleString()} of ${repos.length.toLocaleString()} repositories`}
                       </span>
                     </div>
                     <SearchInput
@@ -578,7 +623,51 @@ export function OnboardingPage() {
                       {!repoLoading && repos.length > 0 && visibleRepos.length === 0 && (
                         <div className="px-[14px] py-[13px] text-[13px] text-[#98a1b3]">No repositories match “{repoSearch}”.</div>
                       )}
-                      {!repoLoading && visibleRepos.map(repo => {
+                      {!repoLoading && visibleDashboardRepos.length > 0 && (
+                        <div className="px-[14px] py-[10px] border-b border-[rgba(255,255,255,0.07)] bg-[rgba(61,220,151,0.06)]">
+                          <div className="flex items-center justify-between gap-[10px]">
+                            <span className="text-[10.5px] uppercase tracking-[0.6px] text-[#3ddc97] font-bold">Ready dashboards</span>
+                            {dashboardReadyLoading && <span className="text-[11.5px] text-[#6b7488]">Checking scans…</span>}
+                          </div>
+                        </div>
+                      )}
+                      {!repoLoading && visibleDashboardRepos.map(repo => (
+                        <button
+                          key={`dashboard-${repo.githubRepoId}`}
+                          type="button"
+                          onClick={() => openExistingDashboard(repo)}
+                          className="w-full text-left px-[14px] py-[12px] border-0 border-b border-[rgba(255,255,255,0.07)] bg-transparent cursor-pointer transition-colors hover:bg-[rgba(61,220,151,0.08)]"
+                        >
+                          <div className="flex items-start justify-between gap-[12px]">
+                            <div className="min-w-0">
+                              <div className="font-mono text-[13px] text-[#e8ebf2] truncate">{repo.fullName}</div>
+                              <div className="mt-[4px] flex flex-wrap items-center gap-[8px] text-[11.5px] text-[#6b7488]">
+                                <span>{repo.owner}</span>
+                                <span>·</span>
+                                <span>{repo.currentBranch ?? repo.defaultBranch}</span>
+                                {repo.lastClonedAt && (
+                                  <>
+                                    <span>·</span>
+                                    <span>Cloned {new Date(repo.lastClonedAt).toLocaleDateString()}</span>
+                                  </>
+                                )}
+                              </div>
+                            </div>
+                            <div className="flex items-center gap-[8px] flex-none">
+                              <span className="rounded-[999px] px-[8px] py-[3px] text-[10.5px] font-bold uppercase tracking-[0.4px] bg-[rgba(61,220,151,0.13)] text-[#3ddc97]">
+                                Scanned
+                              </span>
+                              <LayoutDashboardIcon className="w-[15px] h-[15px] text-[#3ddc97]" />
+                            </div>
+                          </div>
+                        </button>
+                      ))}
+                      {!repoLoading && visibleDashboardRepos.length > 0 && visibleOnboardingRepos.length > 0 && (
+                        <div className="px-[14px] py-[10px] border-b border-[rgba(255,255,255,0.07)] bg-[#11141d]">
+                          <span className="text-[10.5px] uppercase tracking-[0.6px] text-[#6b7488] font-bold">Set up another repository</span>
+                        </div>
+                      )}
+                      {!repoLoading && visibleOnboardingRepos.map(repo => {
                         const selected = repo.githubRepoId === selectedGithubRepoId;
                         return (
                           <button
@@ -650,7 +739,13 @@ export function OnboardingPage() {
                     onClick={handleConnectRepo}
                     disabled={!selectedGithubRepoId || repoLoading || connectingRepo}
                   >
-                    {connectingRepo ? (selectedRepoIsCloned ? 'Opening…' : 'Cloning…') : selectedRepoIsCloned ? 'Use Local Clone' : 'Connect Repository'}
+                    {connectingRepo
+                      ? (selectedRepoIsCloned ? 'Opening…' : 'Cloning…')
+                      : selectedRepoHasDashboard
+                        ? 'Open Dashboard'
+                        : selectedRepoIsCloned
+                          ? 'Use Local Clone'
+                          : 'Connect Repository'}
                     <ChevronRightIcon className="w-[15px] h-[15px]" />
                   </Button>
                 </StepFoot>
