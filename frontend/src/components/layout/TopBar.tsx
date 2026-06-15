@@ -1,6 +1,6 @@
 import * as React from 'react';
 import { cn } from '@/lib/cn';
-import { BrandIcon, FileRepoIcon, GitBranchIcon } from '@/components/icons';
+import { BrandIcon, GithubIcon, GitBranchIcon } from '@/components/icons';
 
 export interface TopBarProps {
   repo?: string;
@@ -29,7 +29,7 @@ export function TopBar({ repo, branch, scanTime, actions, contentClassName, user
       {repo && (
         <div className="flex items-center gap-[8px] flex-wrap">
           <span className="inline-flex items-center gap-[7px] bg-[#161a24] border border-[rgba(255,255,255,0.07)] px-[11px] py-[6px] rounded-[8px] font-mono text-[12.5px] text-[#e8ebf2]">
-            <FileRepoIcon className="w-[14px] h-[14px] opacity-[0.7]" />
+            <GithubIcon className="w-[14px] h-[14px] opacity-[0.7]" />
             <span className="text-[#6b7488]">repo</span>&nbsp;{repo}
           </span>
           {branch && (

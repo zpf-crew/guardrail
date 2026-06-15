@@ -582,11 +582,16 @@ function buildDashboard(repo: RepoRecord, facts: RepoScanFacts, draft: Onboardin
   const suspiciousTests = countStatus('suspicious');
   const highRiskOpen = testCases.filter(tc => (tc.risk === 'High' || tc.risk === 'Critical') && tc.status !== 'passed').length;
 
-  // Health uses a structural coverage proxy when real coverage is absent (scoring only, never displayed),
-  // and caps the total penalty so no single category can floor the score on its own.
+  // Health = neutral baseline + coverage reward − capped finding penalties + evidence bonus.
+  // The baseline keeps a low-coverage-but-not-broken repo off the floor, while real coverage still
+  // moves the score and findings are capped so no single category can sink it to zero on its own.
+  // (Coverage uses a structural proxy when real coverage is absent — for scoring only, never displayed.)
   const coverageBasis = measuredCoverage ?? estimateCoverageFromTestRatio(facts.testFiles.length, facts.sourceFiles.length);
-  const healthPenalty = Math.min(70, failedTests * 8 + flakyTests * 5 + suspiciousTests * 5 + missingRecommended * 3);
-  const healthScore = clamp(coverageBasis - healthPenalty + Math.min(10, productDocsIndexed + qcCasesImported), 0, 100);
+  const HEALTH_BASELINE = 45;
+  const coverageReward = Math.round(coverageBasis * 0.45);
+  const healthPenalty = Math.min(50, failedTests * 8 + flakyTests * 5 + suspiciousTests * 4 + missingRecommended * 2);
+  const evidenceBonus = Math.min(10, productDocsIndexed + qcCasesImported);
+  const healthScore = clamp(HEALTH_BASELINE + coverageReward - healthPenalty + evidenceBonus, 0, 100);
 
   const structure = facts.modules.length ? facts.modules : [{ name: 'Core', pathPrefix: '', sourceCount: facts.sourceFiles.length, testCount: facts.testFiles.length }];
 
