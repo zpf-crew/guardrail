@@ -9,6 +9,7 @@ import { useToast } from '@/components/ui/toast';
 import type { TestCase, Insight, TestStatus, HealthMetrics } from '@/types/testlens';
 import { useDashboard } from '@/pages/dashboard/use-dashboard';
 import { DashboardSkeleton, DashboardEmpty, DashboardError } from '@/pages/dashboard/dashboard-states';
+import { TestStatusPie } from '@/pages/dashboard/test-status-pie';
 import { formatRelativeTime } from '@/lib/format-relative-time';
 import { formatPercent } from '@/lib/format-percent';
 import { trendPresentation } from '@/lib/trend-presentation';
@@ -525,6 +526,7 @@ export function DashboardPage() {
 
           {/* AI Insights Sidebar */}
           <div className="flex flex-col gap-[22px] sticky top-[76px]">
+            <TestStatusPie testCases={testCases} />
             <section>
               <div className="flex items-baseline gap-[12px] mb-[14px] mt-[6px] mx-[2px]">
                 <h2 className="text-[15px] font-[650] m-0 tracking-[-0.1px] text-white">AI Insights</h2>
