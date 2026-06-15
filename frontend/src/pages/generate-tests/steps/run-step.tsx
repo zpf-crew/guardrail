@@ -1,4 +1,4 @@
-import type { ReactNode } from 'react';
+import { Fragment, useState, type ReactNode } from 'react';
 import type { Evidence, TestRunResult, RunOutcome, TestType, TestResultRow } from '@/types/testlens';
 import { Button } from '@/components/ui/button';
 import { ProgressBar } from '@/components/ui/progress-bar';
@@ -26,6 +26,7 @@ interface RunStepProps {
 }
 
 export function RunStep({ run, activeTestType, ranTests, running, progress, evidence, onBack, onReview }: RunStepProps) {
+  const [expandedReasons, setExpandedReasons] = useState<Set<string>>(() => new Set());
 
   // Real API: results not back yet — show an honest running placeholder.
   if (!run) {
@@ -107,33 +108,55 @@ export function RunStep({ run, activeTestType, ranTests, running, progress, evid
         <BlockHeader label="Test results" count={complete ? total : undefined} />
         <table className="w-full border-collapse text-[12.5px] mt-[4px]">
           <thead>
-            <tr>{['Test', 'Type', 'Status', 'Reason', 'Duration', 'Evidence', 'File'].map(h => (
+            <tr>{['Test', 'Status', 'Duration', 'Evidence', 'File'].map(h => (
               <th key={h} className="text-left text-[10.5px] uppercase tracking-[0.5px] text-[#6b7488] font-semibold p-[9px_12px] border-b border-[rgba(255,255,255,0.07)]">{h}</th>
             ))}</tr>
           </thead>
           <tbody>
-            {revealed.map(row => {
+            {revealed.map((row, index) => {
               const style = RUN_OUTCOME_STYLE[row.status];
+              const rowKey = `${row.title}-${row.file}-${index}`;
+              const reasonExpanded = expandedReasons.has(rowKey);
               return (
-                <tr key={row.title} className="hover:bg-[rgba(255,255,255,0.018)]">
-                  <td className="p-[11px_12px] border-b border-[rgba(255,255,255,0.07)] text-[#e8ebf2] font-medium">{row.title}</td>
-                  <td className="p-[11px_12px] border-b border-[rgba(255,255,255,0.07)]"><span className="font-mono text-[10.5px] bg-[#1b2030] border border-[rgba(255,255,255,0.07)] text-[#98a1b3] px-[8px] py-[2px] rounded-[6px]">{row.type}</span></td>
-                  <td className="p-[11px_12px] border-b border-[rgba(255,255,255,0.07)]">
-                    <span className="inline-flex items-center gap-[6px] text-[12px] font-semibold px-[10px] py-[3px] rounded-[7px]" style={{ background: style.bg, color: style.color }}>
-                      <RunResultIcon status={ICON_STATUS[row.status]} />{row.status}
-                    </span>
-                  </td>
-                  <td className="p-[11px_12px] border-b border-[rgba(255,255,255,0.07)] text-[#98a1b3] max-w-[280px]">
-                    {row.reason
-                      ? <span className="text-[11.5px] leading-[1.45] text-[#fb7185] break-words">{row.reason}</span>
-                      : <span className="text-[#6b7488]">—</span>}
-                  </td>
-                  <td className="p-[11px_12px] border-b border-[rgba(255,255,255,0.07)] text-[#98a1b3]">{row.duration ?? '—'}</td>
-                  <td className="p-[11px_12px] border-b border-[rgba(255,255,255,0.07)]">
-                    <MatrixEvidenceCell row={row} />
-                  </td>
-                  <td className="p-[11px_12px] border-b border-[rgba(255,255,255,0.07)] font-mono text-[11px] text-[#6b7488]">{row.file}</td>
-                </tr>
+                <Fragment key={rowKey}>
+                  <tr className="hover:bg-[rgba(255,255,255,0.018)]">
+                    <td className={`p-[11px_12px] ${row.reason ? 'border-b-0' : 'border-b'} border-[rgba(255,255,255,0.07)] text-[#e8ebf2] font-medium`}>
+                      <div>{row.title}</div>
+                      <div className="mt-[5px]">
+                        <span className="font-mono text-[10.5px] bg-[#1b2030] border border-[rgba(255,255,255,0.07)] text-[#98a1b3] px-[8px] py-[2px] rounded-[6px]">{row.type}</span>
+                      </div>
+                    </td>
+                    <td className={`p-[11px_12px] ${row.reason ? 'border-b-0' : 'border-b'} border-[rgba(255,255,255,0.07)]`}>
+                      <span className="inline-flex items-center gap-[6px] text-[12px] font-semibold px-[10px] py-[3px] rounded-[7px]" style={{ background: style.bg, color: style.color }}>
+                        <RunResultIcon status={ICON_STATUS[row.status]} />{row.status}
+                      </span>
+                    </td>
+                    <td className={`p-[11px_12px] ${row.reason ? 'border-b-0' : 'border-b'} border-[rgba(255,255,255,0.07)] text-[#98a1b3] whitespace-nowrap`}>{row.duration ?? '—'}</td>
+                    <td className={`p-[11px_12px] ${row.reason ? 'border-b-0' : 'border-b'} border-[rgba(255,255,255,0.07)] min-w-[150px]`}>
+                      <MatrixEvidenceCell row={row} />
+                    </td>
+                    <td className={`p-[11px_12px] ${row.reason ? 'border-b-0' : 'border-b'} border-[rgba(255,255,255,0.07)] font-mono text-[11px] text-[#6b7488] max-w-[260px] break-all`}>{row.file}</td>
+                  </tr>
+                  {row.reason && (
+                    <tr className="hover:bg-[rgba(255,255,255,0.012)]">
+                      <td colSpan={5} className="p-[0_12px_12px_12px] border-b border-[rgba(255,255,255,0.07)]">
+                        <RunReasonDetail
+                          status={row.status}
+                          reason={row.reason}
+                          expanded={reasonExpanded}
+                          onToggle={() => {
+                            setExpandedReasons(current => {
+                              const next = new Set(current);
+                              if (next.has(rowKey)) next.delete(rowKey);
+                              else next.add(rowKey);
+                              return next;
+                            });
+                          }}
+                        />
+                      </td>
+                    </tr>
+                  )}
+                </Fragment>
               );
             })}
           </tbody>
@@ -149,6 +172,89 @@ export function RunStep({ run, activeTestType, ranTests, running, progress, evid
       </div>
     </div>
   );
+}
+
+function RunReasonDetail({
+  status,
+  reason,
+  expanded,
+  onToggle,
+}: {
+  status: RunOutcome;
+  reason: string;
+  expanded: boolean;
+  onToggle: () => void;
+}) {
+  const tone = reasonTone(status);
+  const isLong = reason.length > 140;
+
+  return (
+    <div className={`rounded-[8px] border px-[12px] py-[9px] ${tone.container}`}>
+      <div className="flex items-start gap-[10px]">
+        <div className={`text-[10.5px] uppercase tracking-[0.5px] font-bold shrink-0 mt-[2px] ${tone.labelColor}`}>{tone.label}</div>
+        <div className="min-w-0 flex-1">
+          <div
+            className={`text-[11.5px] leading-[1.45] break-words ${tone.textColor}`}
+            style={expanded || !isLong ? undefined : {
+              display: '-webkit-box',
+              WebkitLineClamp: 2,
+              WebkitBoxOrient: 'vertical',
+              overflow: 'hidden',
+            }}
+          >
+            {reason}
+          </div>
+          {isLong && (
+            <button
+              type="button"
+              onClick={onToggle}
+              className={`mt-[6px] text-[11px] font-semibold hover:underline ${tone.labelColor}`}
+            >
+              {expanded ? 'Show less' : 'Show more'}
+            </button>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function reasonTone(status: RunOutcome): {
+  label: string;
+  container: string;
+  labelColor: string;
+  textColor: string;
+} {
+  if (status === 'Skipped') {
+    return {
+      label: 'Skipped',
+      container: 'bg-[rgba(96,165,250,0.07)] border-[rgba(96,165,250,0.18)]',
+      labelColor: 'text-[#8fb7f4]',
+      textColor: 'text-[#aeb8ca]',
+    };
+  }
+  if (status === 'Flaky') {
+    return {
+      label: 'Flaky signal',
+      container: 'bg-[rgba(251,191,36,0.08)] border-[rgba(251,191,36,0.18)]',
+      labelColor: 'text-[#fbbf24]',
+      textColor: 'text-[#d8c48b]',
+    };
+  }
+  if (status === 'Failed') {
+    return {
+      label: 'Failure',
+      container: 'bg-[rgba(251,113,133,0.08)] border-[rgba(251,113,133,0.2)]',
+      labelColor: 'text-[#fb7185]',
+      textColor: 'text-[#f2b8c0]',
+    };
+  }
+  return {
+    label: 'Detail',
+    container: 'bg-[rgba(139,148,167,0.08)] border-[rgba(139,148,167,0.16)]',
+    labelColor: 'text-[#98a1b3]',
+    textColor: 'text-[#aeb8ca]',
+  };
 }
 
 function MatrixEvidenceCell({ row }: { row: TestResultRow }) {
