@@ -3,7 +3,7 @@ import path from 'node:path';
 import { spawn } from 'node:child_process';
 import { env } from '../../config/env.js';
 
-function runGit(args: string[], cwd?: string): Promise<string> {
+export function runGit(args: string[], cwd?: string): Promise<string> {
   return new Promise((resolve, reject) => {
     const child = spawn('git', args, { cwd, stdio: ['ignore', 'pipe', 'pipe'] });
     let stdout = '';
@@ -25,7 +25,7 @@ function runGit(args: string[], cwd?: string): Promise<string> {
   });
 }
 
-function authenticatedCloneUrl(cloneUrl: string, token: string): string {
+export function authenticatedCloneUrl(cloneUrl: string, token: string): string {
   const url = new URL(cloneUrl);
   url.username = 'x-access-token';
   url.password = token;
