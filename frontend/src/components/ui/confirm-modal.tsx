@@ -1,3 +1,4 @@
+import { createPortal } from 'react-dom';
 import { Button } from './button';
 
 interface ConfirmModalProps {
@@ -24,7 +25,9 @@ export function ConfirmModal({
 }: ConfirmModalProps) {
   if (!open) return null;
 
-  return (
+  // Portal to <body> so the fixed overlay is positioned against the viewport, not a transformed/
+  // backdrop-filtered ancestor (e.g. the sticky header) that would otherwise become its containing block.
+  return createPortal(
     <div className="fixed inset-0 z-[110] grid place-items-center bg-[rgba(4,6,10,0.72)] backdrop-blur-[2px] p-[24px]" onClick={onCancel}>
       <div
         className="w-full max-w-[440px] bg-[#11141c] border border-[rgba(255,255,255,0.1)] rounded-[16px] shadow-[0_24px_80px_rgba(0,0,0,0.6)] overflow-hidden"
@@ -39,6 +42,7 @@ export function ConfirmModal({
           <Button variant={confirmVariant} onClick={onConfirm}>{confirmLabel}</Button>
         </div>
       </div>
-    </div>
+    </div>,
+    document.body,
   );
 }
