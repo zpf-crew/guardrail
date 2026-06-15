@@ -198,8 +198,8 @@ export interface HealthMetrics {
 }
 
 export interface MetricTile {
-  /** Numeric value, or percentage when `isPercent`. */
-  value: number;
+  /** Numeric value, or percentage when `isPercent`. `null` means "not measured" (renders as "—"). */
+  value: number | null;
   isPercent?: boolean;
   trend?: Trend;
 }
@@ -256,8 +256,8 @@ export interface StructureNode {
   pathPrefix: string;
   /** Leaf name, e.g. "checkout". */
   name: string;
-  /** Line coverage %, 0..100. */
-  coverage: number;
+  /** Line coverage %, 0..100, or `null` when not measured per module. */
+  coverage: number | null;
   /** Labeled counts shown as chips, e.g. { Unit: 12, Integration: 4, Missing: 3 }. */
   counts: StructureCount[];
 }
@@ -272,8 +272,8 @@ export interface StructureCount {
 /** Per-module coverage for the bar chart. */
 export interface ModuleCoverage {
   module: FeatureModule;
-  line: number;             // 0..100
-  branch: number;           // 0..100
+  line: number | null;      // 0..100, or null when not measured
+  branch: number | null;    // 0..100, or null when not measured
 }
 
 /** Risk heatmap: modules (rows) × issue categories (columns). */

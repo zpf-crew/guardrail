@@ -13,6 +13,8 @@ import { formatRelativeTime } from '@/lib/format-relative-time';
 import { formatPercent } from '@/lib/format-percent';
 import { trendPresentation } from '@/lib/trend-presentation';
 import { startScan } from '@/data/scan-api';
+import { useScanProgress } from '@/components/scan/use-scan-progress';
+import { ScanProgressOverlay } from '@/components/scan/scan-progress-overlay';
 import { exportDashboardReport } from '@/lib/export-dashboard-report';
 import { useAuth } from '@/app/auth-context';
 import {
@@ -112,7 +114,8 @@ export function DashboardPage() {
   const [highlightedInsight, setHighlightedInsight] = React.useState<string | null>(null);
   const [highlightedTests, setHighlightedTests] = React.useState<Set<string>>(new Set());
   const [jumpTarget, setJumpTarget] = React.useState<string | null>(null);
-  const [scanning, setScanning] = React.useState(false);
+  const runScan = React.useCallback(() => startScan(), []);
+  const scan = useScanProgress(runScan);
 
   React.useEffect(() => {
     const handler = (e: KeyboardEvent) => {
@@ -189,18 +192,9 @@ export function DashboardPage() {
 
   const hasFilters = search || filterStatus !== 'All' || filterType !== 'All' || filterRisk !== 'All' || filterFeature !== 'All' || highlightedInsight !== null;
 
-  const handleRunScan = async () => {
-    setScanning(true);
-    toast('Scanning repository…', 'loading');
-    try {
-      await startScan();
-      refetch();
-      toast('Scan complete', 'success');
-    } catch (e) {
-      toast(e instanceof Error ? e.message : 'Scan failed', 'success');
-    } finally {
-      setScanning(false);
-    }
+  const handleScanClose = () => {
+    if (scan.complete) refetch();
+    scan.dismiss();
   };
 
   const handleExport = () => {
@@ -220,6 +214,18 @@ export function DashboardPage() {
 
   return (
     <div className="min-h-screen" style={{ fontFamily: 'var(--sans)' }}>
+      <ScanProgressOverlay
+        open={scan.running || scan.complete || scan.error !== null}
+        repoName={repo.name}
+        running={scan.running}
+        complete={scan.complete}
+        error={scan.error}
+        progress={scan.progress}
+        stepLabel={scan.stepLabel}
+        eta={scan.eta}
+        logs={scan.logs}
+        onClose={handleScanClose}
+      />
       <TopBar
         repo={repo.name}
         branch={repo.branch}
@@ -228,9 +234,9 @@ export function DashboardPage() {
         onLogout={() => void logout()}
         actions={
           <>
-            <Button variant="outline" onClick={handleRunScan} disabled={scanning}>
+            <Button variant="outline" onClick={() => void scan.start()} disabled={scan.running}>
               <PlayIcon className="w-[15px] h-[15px]" />
-              {scanning ? 'Scanning…' : 'Run Scan'}
+              {scan.running ? 'Scanning…' : 'Run Scan'}
             </Button>
             <Button variant="primary" onClick={() => goToGenerate()}>
               <SparklesIcon className="w-[15px] h-[15px]" />
@@ -282,7 +288,8 @@ export function DashboardPage() {
             {TILE_CONFIG.map(tile => {
               const metric = metrics[tile.key];
               const tv = trendPresentation(metric.trend);
-              const valueText = metric.isPercent ? formatPercent(metric.value) : metric.value;
+              const notMeasured = metric.value == null;
+              const valueText = metric.value == null ? '—' : metric.isPercent ? formatPercent(metric.value) : metric.value;
               return (
                 <div
                   key={tile.key}
@@ -296,7 +303,9 @@ export function DashboardPage() {
                     </span>
                   </div>
                   <div className="text-[27px] font-bold tracking-[-0.8px] mt-[8px] leading-none text-white">{valueText}</div>
-                  {tv && (
+                  {notMeasured ? (
+                    <div className="text-[11px] font-semibold mt-[7px] text-[#6b7488]">not measured</div>
+                  ) : tv && (
                     <div className="text-[11px] font-semibold mt-[7px] inline-flex items-center gap-[4px]" style={{ color: tv.color }}>
                       <DeltaIcon dir={tv.arrow} />{tv.text}
                     </div>
@@ -432,7 +441,7 @@ export function DashboardPage() {
                         <span className="font-mono text-[12.5px] text-[#e8ebf2]">
                           <span className="text-[#6b7488]">{node.pathPrefix}</span>{node.name}
                         </span>
-                        <span className="ml-auto font-mono text-[12px] text-[#98a1b3]"><b className="text-[#e8ebf2]">{node.coverage}%</b> cov</span>
+                        <span className="ml-auto font-mono text-[12px] text-[#98a1b3]">{node.coverage == null ? <span className="text-[#6b7488]">cov not measured</span> : <><b className="text-[#e8ebf2]">{node.coverage}%</b> cov</>}</span>
                       </div>
                       <div className="flex flex-wrap gap-[6px]">
                         {node.counts.map(c => (
@@ -441,10 +450,12 @@ export function DashboardPage() {
                           </span>
                         ))}
                       </div>
-                      <div className="h-[4px] rounded-[4px] bg-[rgba(255,255,255,0.06)] mt-[9px] overflow-hidden flex">
-                        <span className="block h-full" style={{ width: `${node.coverage}%`, background: node.coverage >= 75 ? '#3ddc97' : node.coverage >= 55 ? '#fbbf24' : '#fb7185' }} />
-                        <span className="block h-full" style={{ width: `${100 - node.coverage}%`, background: 'rgba(255,255,255,0.07)' }} />
-                      </div>
+                      {node.coverage != null && (
+                        <div className="h-[4px] rounded-[4px] bg-[rgba(255,255,255,0.06)] mt-[9px] overflow-hidden flex">
+                          <span className="block h-full" style={{ width: `${node.coverage}%`, background: node.coverage >= 75 ? '#3ddc97' : node.coverage >= 55 ? '#fbbf24' : '#fb7185' }} />
+                          <span className="block h-full" style={{ width: `${100 - node.coverage}%`, background: 'rgba(255,255,255,0.07)' }} />
+                        </div>
+                      )}
                     </div>
                   ))}
                 </div>
@@ -456,7 +467,8 @@ export function DashboardPage() {
                   <div className="mb-[18px]">
                     <div className="text-[12px] font-semibold text-[#98a1b3] mb-[12px] uppercase tracking-[0.5px]">Coverage by module</div>
                     {coverage.map(c => {
-                      const color = c.line >= 75 ? '#3ddc97' : c.line >= 55 ? '#fbbf24' : '#fb7185';
+                      const measured = c.line != null;
+                      const color = c.line == null ? '#6b7488' : c.line >= 75 ? '#3ddc97' : c.line >= 55 ? '#fbbf24' : '#fb7185';
                       return (
                         <div key={c.module} className="flex items-center gap-[12px] mb-[11px]">
                           <span className="text-[12.5px] w-[120px] flex-none text-[#e8ebf2]">
@@ -464,10 +476,14 @@ export function DashboardPage() {
                             <span className="font-mono text-[11px] text-[#6b7488] block">line / branch</span>
                           </span>
                           <div className="flex-1 h-[8px] rounded-[99px] bg-[rgba(255,255,255,0.06)] overflow-hidden relative">
-                            <span className="absolute left-0 top-0 bottom-0 rounded-[99px]" style={{ width: `${c.line}%`, background: color, opacity: 0.95, height: '4px' }} />
-                            <span className="absolute left-0 top-[4px] bottom-0 rounded-[99px]" style={{ width: `${c.branch}%`, background: color, opacity: 0.55, height: '4px' }} />
+                            {measured && (
+                              <>
+                                <span className="absolute left-0 top-0 bottom-0 rounded-[99px]" style={{ width: `${c.line}%`, background: color, opacity: 0.95, height: '4px' }} />
+                                <span className="absolute left-0 top-[4px] bottom-0 rounded-[99px]" style={{ width: `${c.branch ?? 0}%`, background: color, opacity: 0.55, height: '4px' }} />
+                              </>
+                            )}
                           </div>
-                          <span className="font-mono text-[12.5px] font-semibold w-[42px] text-right flex-none" style={{ color }}>{c.line}%</span>
+                          <span className="font-mono text-[12.5px] font-semibold text-right flex-none" style={{ color, width: measured ? '42px' : 'auto' }}>{measured ? `${c.line}%` : 'n/a'}</span>
                         </div>
                       );
                     })}

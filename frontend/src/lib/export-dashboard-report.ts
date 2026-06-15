@@ -29,7 +29,7 @@ function buildMarkdown(d: DashboardPayload): string {
   lines.push(`| Flaky | ${m.flaky.value} |`);
   lines.push(`| Missing | ${m.missing.value} |`);
   lines.push(`| Suspicious | ${m.suspicious.value} |`);
-  lines.push(`| Coverage | ${formatPercent(m.coverage.value)} |`);
+  lines.push(`| Coverage | ${m.coverage.value == null ? 'not measured' : formatPercent(m.coverage.value)} |`);
   lines.push(`| High-risk open | ${m.highRiskOpen.value} |`);
   lines.push('');
 
