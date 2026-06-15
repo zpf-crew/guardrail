@@ -16,6 +16,7 @@ import { useWorkbench } from '@/pages/generate-tests/use-workbench';
 import { WorkflowSidebar } from '@/pages/generate-tests/workflow-sidebar';
 import { exportTestPlan } from '@/pages/generate-tests/export-test-plan';
 import { isMockMode } from '@/data/mock-workbench';
+import { createSessionPullRequest } from '@/data/workbench-api';
 import { IntentStep } from '@/pages/generate-tests/steps/intent-step';
 import { IsolationStep } from '@/pages/generate-tests/steps/isolation-step';
 import { PlanStep } from '@/pages/generate-tests/steps/plan-step';
@@ -150,6 +151,25 @@ function GenerateTestsWorkbench({
   const { status, error, session, currentStep, pending } = wb;
   const runEvidence = evidenceWithScreenshotFallback(wb.runEvidence, session?.run);
 
+  // Create-PR state: opens the PR in a new tab on success and marks the workflow complete.
+  const [creatingPr, setCreatingPr] = useState(false);
+  const [prUrl, setPrUrl] = useState<string | null>(null);
+  const handleCreatePr = useCallback(async (sessionId: string) => {
+    if (creatingPr) return;
+    setCreatingPr(true);
+    toast('Opening pull request…', 'loading');
+    try {
+      const { url } = await createSessionPullRequest(sessionId);
+      setPrUrl(url);
+      window.open(url, '_blank', 'noopener,noreferrer');
+      toast('Pull request created', 'success');
+    } catch (e) {
+      toast(e instanceof Error ? e.message : 'Failed to create pull request', 'success');
+    } finally {
+      setCreatingPr(false);
+    }
+  }, [creatingPr, toast]);
+
   if (status === 'loading' || !session) {
     return (
       <div className="min-h-screen grid place-items-center text-[#98a1b3]" style={shellStyle}>
@@ -193,7 +213,7 @@ function GenerateTestsWorkbench({
         }
       />
       <div className="mx-auto flex w-full max-w-[1118px]">
-        <WorkflowSidebar currentStep={currentStep} applied={wb.applied} onSelect={wb.setStep} />
+        <WorkflowSidebar currentStep={currentStep} applied={prUrl !== null} onSelect={wb.setStep} />
 
         <div className="w-full max-w-[900px] p-[26px_28px_70px] min-w-0">
           {error && (
@@ -269,12 +289,12 @@ function GenerateTestsWorkbench({
               run={session.run ?? null}
               changes={session.generation?.changes ?? []}
               activeTestType={activeTestType}
-              applied={wb.applied}
+              prUrl={prUrl}
+              creatingPr={creatingPr}
               progress={wb.runProgress}
               evidence={runEvidence}
               onBack={() => wb.setStep(4)}
-              onApply={() => { wb.apply(); toast('Changes applied to working tree', 'success'); }}
-              onCreatePR={() => toast('PR created', 'success')}
+              onCreatePR={() => void handleCreatePr(session.id)}
               onExport={() => { exportTestPlan(session); toast('Report downloaded', 'success'); }}
             />
           )}
