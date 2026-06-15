@@ -4,6 +4,7 @@ import type {
   ChatOptions,
   ModelClientConfig,
 } from './model-connect.types.js';
+import { ModelClientError, normalizeModelError } from './model-errors.js';
 
 function joinUrl(baseUrl: string, path: string): string {
   const base = baseUrl.replace(/\/+$/, '');
@@ -13,7 +14,11 @@ function joinUrl(baseUrl: string, path: string): string {
 
 function extractAssistantContent(payload: unknown): string {
   if (!payload || typeof payload !== 'object') {
-    throw new Error('LLM response was not a JSON object');
+    throw new ModelClientError({
+      code: 'model_response_invalid',
+      message: 'LLM response was not a JSON object',
+      retryable: true,
+    });
   }
 
   const data = payload as Record<string, unknown>;
@@ -44,7 +49,11 @@ function extractAssistantContent(payload: unknown): string {
     }
   }
 
-  throw new Error('LLM response did not contain assistant content');
+  throw new ModelClientError({
+    code: 'model_content_empty',
+    message: 'LLM response did not contain assistant content',
+    retryable: true,
+  });
 }
 
 export class ModelClient {
@@ -66,10 +75,18 @@ export class ModelClient {
     const { baseUrl, apiKey, chatPath, model, profile, fetchImpl = fetch } = this.config;
 
     if (!baseUrl) {
-      throw new Error('LLM_BASE_URL is not configured');
+      throw new ModelClientError({
+        code: 'model_config_missing',
+        message: 'LLM_BASE_URL is not configured',
+        retryable: false,
+      });
     }
     if (!apiKey) {
-      throw new Error('LLM_API_KEY is not configured');
+      throw new ModelClientError({
+        code: 'model_config_missing',
+        message: 'LLM_API_KEY is not configured',
+        retryable: false,
+      });
     }
 
     const body: Record<string, unknown> = {
@@ -84,15 +101,20 @@ export class ModelClient {
       body.max_tokens = options.maxTokens;
     }
 
-    const response = await fetchImpl(joinUrl(baseUrl, chatPath), {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        Authorization: `Bearer ${apiKey}`,
-      },
-      body: JSON.stringify(body),
-      signal: options.signal,
-    });
+    let response: Response;
+    try {
+      response = await fetchImpl(joinUrl(baseUrl, chatPath), {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${apiKey}`,
+        },
+        body: JSON.stringify(body),
+        signal: options.signal,
+      });
+    } catch (error) {
+      throw normalizeModelError(error);
+    }
 
     const raw = await response.json().catch(() => null);
 
@@ -101,7 +123,19 @@ export class ModelClient {
         raw && typeof raw === 'object' && 'error' in raw
           ? JSON.stringify((raw as { error: unknown }).error)
           : response.statusText;
-      throw new Error(`LLM request failed (${response.status}): ${detail}`);
+      const code = response.status === 401 || response.status === 403
+        ? 'model_auth_failed'
+        : response.status === 429
+          ? 'model_http_429'
+          : response.status >= 500
+            ? 'model_http_5xx'
+            : 'model_http_failed';
+      throw new ModelClientError({
+        code,
+        message: `LLM request failed (${response.status}): ${detail}`,
+        retryable: response.status === 429 || response.status >= 500,
+        status: response.status,
+      });
     }
 
     return {
