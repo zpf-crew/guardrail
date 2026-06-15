@@ -3,6 +3,7 @@ import { readFile, stat } from 'node:fs/promises';
 import path from 'node:path';
 import { promisify } from 'node:util';
 import { walkRepositoryFiles } from '../../lib/repo-file-walker.js';
+import { readFileCoverage } from './coverage-report-parser.js';
 import type { RepoScanFacts } from './onboarding.types.js';
 
 const exec = promisify(execCallback);
@@ -61,7 +62,7 @@ function installCommand(packageManager: RepoScanFacts['packageManager']): string
   return 'npm install --no-audit --no-fund';
 }
 
-function moduleNameFromPath(file: string): { name: string; pathPrefix: string } {
+export function moduleNameFromPath(file: string): { name: string; pathPrefix: string } {
   const parts = file.split('/');
   const srcIndex = parts.findIndex(part => ['src', 'app', 'lib', 'components', 'pages'].includes(part));
   if (srcIndex >= 0 && parts[srcIndex + 1]) {
@@ -218,7 +219,11 @@ export async function analyzeRepo(clonePath: string): Promise<RepoScanFacts> {
   const canRunCommands = !installRun || installRun.ok;
   const testRun = commands.test && canRunCommands ? await runCommand(clonePath, commands.test) : undefined;
   const coverageRunBase = commands.coverage && canRunCommands ? await runCommand(clonePath, commands.coverage) : undefined;
-  const coverageRun = coverageRunBase ? { ...coverageRunBase, coverage: parseCoverage(coverageRunBase.output) } : undefined;
+  // Read the per-file coverage report the run wrote to disk (stdout only carries the repo-level total).
+  const coverageFiles = coverageRunBase ? await readFileCoverage(clonePath) : [];
+  const coverageRun = coverageRunBase
+    ? { ...coverageRunBase, coverage: parseCoverage(coverageRunBase.output), files: coverageFiles }
+    : undefined;
 
   return {
     filesIndexed: files.length,

@@ -10,6 +10,16 @@ import type {
   Evidence,
 } from '@/types/testlens';
 import { getActiveRepoId } from './dashboard-api';
+import {
+  isMockMode,
+  mockSession,
+  mockIsolation,
+  mockPlan,
+  mockGeneration,
+  mockRun,
+  mockReview,
+  mockStream,
+} from './mock-workbench';
 
 /**
  * Seam between the Generate/Improve workbench UI and the workbench backend.
@@ -234,6 +244,7 @@ async function runJob<T extends JobResult>(
 
 /** S1 — create a session from the user's intent. */
 export async function createWorkbenchSession(intent?: Partial<IntentInput>): Promise<WorkbenchSession> {
+  if (isMockMode()) return mockSession();
   const repoId = getActiveRepoId();
   if (!repoId) {
     throw new WorkbenchApiError('Complete onboarding and select a repository first.');
@@ -243,21 +254,25 @@ export async function createWorkbenchSession(intent?: Partial<IntentInput>): Pro
 
 /** Load an existing workbench session (for URL restore after reload). */
 export async function fetchWorkbenchSession(sessionId: string): Promise<WorkbenchSession> {
+  if (isMockMode()) return mockSession();
   const session = await get<WorkbenchSession>(`/api/workbench/${sessionId}`);
   return normalizeWorkbenchSession(session);
 }
 
 export async function updateWorkbenchIntent(id: string, intent: IntentInput): Promise<WorkbenchSession> {
+  if (isMockMode()) return { ...mockSession(), intent: { ...mockSession().intent, ...intent } };
   return patch<WorkbenchSession>(`/api/workbench/${id}`, { intent });
 }
 
 /** S2 — isolate & classify the requested behavior. */
 export async function analyzeSession(id: string, onEvent?: (event: JobEvent) => void): Promise<IsolationResult> {
+  if (isMockMode()) { await mockStream(onEvent, 'isolation', ['Loading repository context…', 'Classifying behaviors…']); return mockIsolation(); }
   return runJob<IsolationResult>(id, 'isolation', onEvent);
 }
 
 /** S3 — produce the proposed test plan. */
 export async function planSession(id: string, onEvent?: (event: JobEvent) => void): Promise<TestPlan> {
+  if (isMockMode()) { await mockStream(onEvent, 'plan', ['Drafting plan…', 'Assessing risk…']); return mockPlan(); }
   return runJob<TestPlan>(id, 'plan', onEvent);
 }
 
@@ -267,15 +282,18 @@ export async function generateSession(
   approval: PlanApproval = { decision: 'approve', answers: {} },
   onEvent?: (event: JobEvent) => void,
 ): Promise<GenerationResult> {
+  if (isMockMode()) { await mockStream(onEvent, 'generate', ['Drafting Gherkin scenarios…', 'Staging feature files…']); return mockGeneration(); }
   return runJob<GenerationResult>(id, 'generate', onEvent, { approval });
 }
 
 /** S5 — run the generated tests. */
 export async function runSession(id: string, onEvent?: (event: JobEvent) => void): Promise<TestRunResult> {
+  if (isMockMode()) { await mockStream(onEvent, 'run', ['Starting dev server…', 'Running UI flows…', 'Summarizing evidence…']); return mockRun(); }
   return runJob<TestRunResult>(id, 'run', onEvent);
 }
 
 /** S6 — summarize the generated changes and remaining risk. */
 export async function reviewSession(id: string, onEvent?: (event: JobEvent) => void): Promise<ReviewSummary> {
+  if (isMockMode()) { await mockStream(onEvent, 'review', ['Summarizing review…']); return mockReview(); }
   return runJob<ReviewSummary>(id, 'review', onEvent);
 }

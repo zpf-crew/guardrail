@@ -1,4 +1,5 @@
 import { getActiveRepoId } from './dashboard-api';
+import type { ScanLogEntry, ScanSummary } from '@/types/testlens';
 
 /**
  * Triggers a repository scan via `POST /api/repos/:repoId/scan`.
@@ -22,6 +23,8 @@ function requireApiBase(): string {
 
 export interface StartScanResult {
   jobId: string;
+  summary: ScanSummary;
+  logs: ScanLogEntry[];
 }
 
 export async function startScan(repoId: string | null = getActiveRepoId()): Promise<StartScanResult> {

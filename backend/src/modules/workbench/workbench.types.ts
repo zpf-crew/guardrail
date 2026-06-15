@@ -294,9 +294,26 @@ export interface ReviewSummary {
   coverage: { lineDelta: number; branchDelta: number };
   flakyTracked: number;
   filesChanged: ChangedFile[];
+  /** One entry per failing/flaky test, each with its own reason — drives the review "issues" list. */
+  failures: TestFailure[];
   remainingRisk: RiskRow[];
   openQuestions: number;
   recommendation: string;
+}
+
+/** A single failing or flaky test with the detail a developer (or AI agent) needs to fix it. */
+export interface TestFailure {
+  title: string;
+  type: TestType;
+  kind: 'failed' | 'flaky';
+  /** The failure/assertion message for this specific test. */
+  reason: string;
+  /** Test file the behavior is encoded in. */
+  file: string;
+  /** Probable root cause, when the run analysis identified one. */
+  likelyCause?: string;
+  /** Suggested fix, when the run analysis produced one. */
+  suggestedFix?: string;
 }
 
 export interface ChangedFile {

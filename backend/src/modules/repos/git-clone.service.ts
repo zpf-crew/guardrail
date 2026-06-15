@@ -36,6 +36,30 @@ function safeSegment(value: string): string {
   return value.replace(/[^a-zA-Z0-9._-]/g, '-');
 }
 
+/**
+ * Refreshes an existing shallow clone to the latest commit on its branch, so a re-scan reflects
+ * pushed changes. When the commit actually moves, untracked build output (node_modules, coverage)
+ * is wiped so dependencies reinstall against the new commit.
+ */
+export async function updateRepository(input: {
+  clonePath: string;
+  branch: string;
+  cloneUrl: string;
+  accessToken: string;
+}): Promise<{ commitSha: string; changed: boolean }> {
+  const before = await runGit(['rev-parse', 'HEAD'], input.clonePath).catch(() => '');
+  // The clone embeds a possibly-stale token in its origin URL; refresh it with a current one.
+  await runGit(['remote', 'set-url', 'origin', authenticatedCloneUrl(input.cloneUrl, input.accessToken)], input.clonePath);
+  await runGit(['fetch', '--depth', '1', 'origin', input.branch], input.clonePath);
+  await runGit(['reset', '--hard', `origin/${input.branch}`], input.clonePath);
+  const commitSha = await runGit(['rev-parse', 'HEAD'], input.clonePath);
+  const changed = before !== commitSha;
+  if (changed) {
+    await runGit(['clean', '-fdx'], input.clonePath);
+  }
+  return { commitSha, changed };
+}
+
 export async function cloneRepository(input: {
   userId: string;
   repoId: string;

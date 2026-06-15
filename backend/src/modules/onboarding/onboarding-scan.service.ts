@@ -1,8 +1,9 @@
 import type { RepoRecord } from '../repos/repos.types.js';
 import { modelConnect } from '../model-connect/index.js';
-import { analyzeRepo } from './repo-scan-analyzer.js';
+import { analyzeRepo, moduleNameFromPath } from './repo-scan-analyzer.js';
 import type {
   DashboardPayload,
+  FileCoverage,
   InsightAction,
   OnboardingCommitResponse,
   OnboardingDraftInput,
@@ -45,15 +46,6 @@ function grade(score: number): string {
 function estimateCoverageFromTestRatio(testCount: number, sourceCount: number): number {
   if (!sourceCount || !testCount) return 0;
   return clamp((testCount / sourceCount) * 100, 0, 95);
-}
-
-function estimateModuleCoverage(mod: { sourceCount: number; testCount: number }, baselineCoverage?: number): number {
-  const ratioCoverage = estimateCoverageFromTestRatio(mod.testCount, mod.sourceCount);
-  if (baselineCoverage === undefined) return ratioCoverage;
-
-  const expectedRatio = 0.25;
-  const testRatio = mod.sourceCount ? mod.testCount / mod.sourceCount : 0;
-  return clamp(baselineCoverage + (testRatio - expectedRatio) * 40, 0, 95);
 }
 
 function parseJsonObject(content: string): ScanReasoningResult | null {
@@ -470,17 +462,22 @@ function buildBaseAutomatedCases(facts: RepoScanFacts): DashboardPayload['testCa
   const commandFailed = facts.testRun?.ok === false;
   const commandPassed = facts.testRun?.ok === true;
   return facts.testFiles.slice(0, 12).map((file, index) => {
-    const feature = facts.modules[index % Math.max(1, facts.modules.length)]?.name ?? 'Core';
+    // Feature = the module this test file actually lives in (path-derived), not a positional guess.
+    const feature = moduleNameFromPath(file).name;
     const status = commandPassed ? 'passed' as TestStatus : commandFailed ? 'failed' as TestStatus : 'missing' as TestStatus;
+    // Risk reflects the real run signal: a failing suite is High, an un-runnable suite is Medium,
+    // a passing suite is Low. No positional assignment.
+    const risk: RiskLevel = commandFailed ? 'High' : commandPassed ? 'Low' : 'Medium';
     return {
       id: `T-${String(index + 1).padStart(3, '0')}`,
       title: file.split('/').at(-1)?.replace(/\.(test|spec)\.[^.]+$/i, '').replace(/[-_]/g, ' ') || `Automated test ${index + 1}`,
       status,
       type: file.includes('playwright') || file.includes('cypress') || file.includes('e2e') ? 'UI / Browser' as TestType : 'Unit' as TestType,
       feature,
-      risk: index % 4 === 0 ? 'High' as RiskLevel : 'Medium' as RiskLevel,
+      risk,
       lastRunAt: facts.testRun ? nowIso() : null,
-      recentRuns: commandPassed ? [1, 1, 1, 1, 1] as (0 | 1)[] : commandFailed ? [0] as (0 | 1)[] : [],
+      // Initial scan executes the suite once; emit that single real data point, never a fabricated history.
+      recentRuns: commandPassed ? [1] as (0 | 1)[] : commandFailed ? [0] as (0 | 1)[] : [],
       description: `Discovered from ${file}.`,
       aiNote: commandFailed
         ? { text: `Test command failed: ${facts.testRun?.command}`, tone: 'warn' as const }
@@ -489,21 +486,58 @@ function buildBaseAutomatedCases(facts: RepoScanFacts): DashboardPayload['testCa
   });
 }
 
+/**
+ * Expands a per-file coverage report with the source files it omitted. A classified source file that a
+ * successful coverage run never touched was never exercised by a test, so it counts as 0% covered —
+ * the standard definition of repo-wide coverage (untested code is 0%, not "unknown").
+ */
+export function buildEffectiveFileCoverage(reported: FileCoverage[], sourceFiles: string[]): FileCoverage[] {
+  const byPath = new Map<string, FileCoverage>();
+  for (const file of reported) byPath.set(file.path, file);
+  for (const source of sourceFiles) {
+    if (!byPath.has(source)) byPath.set(source, { path: source, line: 0, branch: 0 });
+  }
+  return [...byPath.values()];
+}
+
+/** Average per-file coverage up to each module, so the module bars reflect real per-file data. */
+export function aggregateModuleCoverage(files: FileCoverage[]): Map<string, { line: number; branch: number }> {
+  const totals = new Map<string, { line: number; branch: number; count: number }>();
+  for (const file of files) {
+    const name = moduleNameFromPath(file.path).name;
+    const current = totals.get(name) ?? { line: 0, branch: 0, count: 0 };
+    current.line += file.line;
+    current.branch += file.branch;
+    current.count += 1;
+    totals.set(name, current);
+  }
+  const averaged = new Map<string, { line: number; branch: number }>();
+  for (const [name, total] of totals) {
+    averaged.set(name, { line: Math.round(total.line / total.count), branch: Math.round(total.branch / total.count) });
+  }
+  return averaged;
+}
+
 function buildDashboard(repo: RepoRecord, facts: RepoScanFacts, draft: OnboardingDraftInput, reasoning: ScanReasoningResult): { summary: ScanSummary; dashboard: DashboardPayload } {
-  const summaryInput = reasoning.summary ?? {};
   const automatedTestsFound = facts.testFiles.length;
   const productDocsIndexed = (draft.productDocs ?? []).length + (draft.docSources ?? []).length;
   const qcCasesImported = Math.max((draft.qcPreview ?? []).length, (draft.qcFiles ?? []).length);
-  const deterministicFailedTests = facts.testRun?.ok === false ? Math.max(1, automatedTestsFound) : 0;
-  const failedTests = clamp(Math.max(summaryInput.failedTests ?? 0, deterministicFailedTests), 0, 99);
-  const flakyTests = clamp(summaryInput.flakyTests ?? 0, 0, 99);
-  const missingRecommended = clamp(summaryInput.missingRecommended ?? 0, 0, 99);
-  const suspiciousTests = clamp(summaryInput.suspiciousTests ?? 0, 0, 99);
-  const hasCoverageRun = facts.coverageRun?.coverage !== undefined;
-  const estimatedRepoCoverage = estimateCoverageFromTestRatio(facts.testFiles.length, facts.sourceFiles.length);
-  const coverage = clamp(summaryInput.coverage ?? facts.coverageRun?.coverage ?? estimatedRepoCoverage, 0, 100);
-  const passed = Math.max(0, automatedTestsFound - failedTests - flakyTests - suspiciousTests);
-  const healthScore = clamp(coverage - failedTests * 8 - flakyTests * 5 - missingRecommended * 3 - suspiciousTests * 5 + Math.min(10, productDocsIndexed + qcCasesImported), 0, 100);
+  // Coverage counts as "measured" only when the coverage command produced real data — either the
+  // repo-level number from stdout, or per-file data from the coverage report. The model's coverage
+  // guess is never surfaced; unmeasured stays null ("not measured").
+  // With a per-file report, source files absent from it were never exercised → 0% (honest repo-wide
+  // coverage and 0% module bars). Without a per-file report we can only trust the stdout total.
+  const reportedFiles = facts.coverageRun?.files ?? [];
+  const haveFileReport = reportedFiles.length > 0;
+  const effectiveFileCoverage = haveFileReport ? buildEffectiveFileCoverage(reportedFiles, facts.sourceFiles) : [];
+  const moduleCoverage = aggregateModuleCoverage(effectiveFileCoverage);
+  const stdoutCoverage = facts.coverageRun?.ok && facts.coverageRun.coverage !== undefined
+    ? clamp(facts.coverageRun.coverage, 0, 100)
+    : null;
+  const repoWideCoverage = effectiveFileCoverage.length
+    ? clamp(effectiveFileCoverage.reduce((sum, file) => sum + file.line, 0) / effectiveFileCoverage.length, 0, 100)
+    : null;
+  const measuredCoverage = haveFileReport ? repoWideCoverage : stdoutCoverage;
   const modelContextTruncated = facts.sourceSnippets.reduce((sum, snippet) => sum + Math.min(2500, snippet.content.length), 0)
     + facts.testSnippets.reduce((sum, snippet) => sum + Math.min(2500, snippet.content.length), 0) > MODEL_SNIPPET_BUDGET_CHARS;
 
@@ -519,8 +553,9 @@ function buildDashboard(repo: RepoRecord, facts: RepoScanFacts, draft: Onboardin
       type,
       feature: tc.feature || 'Core',
       risk,
-      lastRunAt: status === 'missing' ? null : nowIso(),
-      recentRuns: status === 'missing' ? [] : ([1, status === 'failed' ? 0 : 1, 1, status === 'flaky' ? 0 : 1, status === 'suspicious' ? 0 : 1] as (0 | 1)[]),
+      // Model-recommended cases are not executed during the scan — no run timestamp, no run history.
+      lastRunAt: null,
+      recentRuns: [],
       description: tc.description || 'Behavior-level test recommendation from initial scan.',
       aiNote: tc.aiNote ? { text: tc.aiNote, tone: status === 'passed' ? 'info' as const : 'warn' as const } : undefined,
     };
@@ -537,7 +572,53 @@ function buildDashboard(repo: RepoRecord, facts: RepoScanFacts, draft: Onboardin
     meta: insight.meta,
   }));
 
+  // Single source of truth: every status metric counts the exact cases rendered in the explorer,
+  // so the headline can never disagree with the list below it.
+  const countStatus = (status: TestStatus) => testCases.filter(tc => tc.status === status).length;
+  const passed = countStatus('passed');
+  const failedTests = countStatus('failed');
+  const flakyTests = countStatus('flaky');
+  const missingRecommended = countStatus('missing');
+  const suspiciousTests = countStatus('suspicious');
+  const highRiskOpen = testCases.filter(tc => (tc.risk === 'High' || tc.risk === 'Critical') && tc.status !== 'passed').length;
+
+  // Health = neutral baseline + coverage reward − capped finding penalties + evidence bonus.
+  // The baseline keeps a low-coverage-but-not-broken repo off the floor, while real coverage still
+  // moves the score and findings are capped so no single category can sink it to zero on its own.
+  // (Coverage uses a structural proxy when real coverage is absent — for scoring only, never displayed.)
+  const coverageBasis = measuredCoverage ?? estimateCoverageFromTestRatio(facts.testFiles.length, facts.sourceFiles.length);
+  const HEALTH_BASELINE = 45;
+  const coverageReward = Math.round(coverageBasis * 0.45);
+  const healthPenalty = Math.min(50, failedTests * 8 + flakyTests * 5 + suspiciousTests * 4 + missingRecommended * 2);
+  const evidenceBonus = Math.min(10, productDocsIndexed + qcCasesImported);
+  const healthScore = clamp(HEALTH_BASELINE + coverageReward - healthPenalty + evidenceBonus, 0, 100);
+
   const structure = facts.modules.length ? facts.modules : [{ name: 'Core', pathPrefix: '', sourceCount: facts.sourceFiles.length, testCount: facts.testFiles.length }];
+
+  // Attribute findings to the module each case belongs to (from its real feature), not by row position.
+  // Cases whose feature matches no module fall back to a Core bucket rather than being dumped on row 0.
+  const moduleNames = new Set(structure.map(mod => mod.name));
+  const resolveModule = (feature: string) => (moduleNames.has(feature) ? feature : 'Core');
+  const tallyByModule = (status: TestStatus) => {
+    const counts = new Map<string, number>();
+    for (const tc of testCases) {
+      if (tc.status !== status) continue;
+      const key = resolveModule(tc.feature);
+      counts.set(key, (counts.get(key) ?? 0) + 1);
+    }
+    return counts;
+  };
+  const missingByModule = tallyByModule('missing');
+  const failedByModule = tallyByModule('failed');
+  const flakyByModule = tallyByModule('flaky');
+  const suspiciousByModule = tallyByModule('suspicious');
+  const needsCoreRow = !moduleNames.has('Core')
+    && [missingByModule, failedByModule, flakyByModule, suspiciousByModule].some(map => map.has('Core'));
+  const heatmapModules = needsCoreRow
+    ? [...structure, { name: 'Core', pathPrefix: '', sourceCount: 0, testCount: 0 }]
+    : structure;
+  const heatValue = (map: Map<string, number>, moduleName: string) => Math.min(3, map.get(moduleName) ?? 0) as 0 | 1 | 2 | 3;
+
   const dashboard: DashboardPayload = {
     repo: {
       name: repo.name,
@@ -561,38 +642,43 @@ function buildDashboard(repo: RepoRecord, facts: RepoScanFacts, draft: Onboardin
       flaky: { value: flakyTests, trend: { value: flakyTests, sentiment: flakyTests ? 'bad' : 'neutral', basis: 'initial scan' } },
       missing: { value: missingRecommended, trend: { value: missingRecommended, sentiment: missingRecommended ? 'bad' : 'neutral', basis: 'initial scan' } },
       suspicious: { value: suspiciousTests, trend: { value: suspiciousTests, sentiment: suspiciousTests ? 'bad' : 'neutral', basis: 'initial scan' } },
-      coverage: { value: coverage, isPercent: true, trend: { value: coverage, sentiment: coverage >= 70 ? 'good' : 'bad', basis: 'initial scan' } },
-      highRiskOpen: { value: testCases.filter(tc => tc.risk === 'High' && tc.status !== 'passed').length, trend: { value: 0, sentiment: 'neutral', basis: 'initial scan' } },
+      coverage: {
+        value: measuredCoverage,
+        isPercent: true,
+        trend: {
+          value: measuredCoverage ?? 0,
+          sentiment: measuredCoverage == null ? 'neutral' : measuredCoverage >= 70 ? 'good' : 'bad',
+          basis: measuredCoverage == null ? 'not measured' : 'initial scan',
+        },
+      },
+      highRiskOpen: { value: highRiskOpen, trend: { value: 0, sentiment: 'neutral', basis: 'initial scan' } },
     },
     testCases,
     insights,
     structure: structure.map(mod => ({
       pathPrefix: mod.pathPrefix,
       name: mod.name,
-      coverage: estimateModuleCoverage(mod, hasCoverageRun ? coverage : undefined),
+      // Real per-module line coverage when the coverage report has per-file data; null ("not measured") otherwise.
+      coverage: moduleCoverage.get(mod.name)?.line ?? null,
       counts: [
         { label: 'Unit', count: mod.testCount, kind: 'unit' },
-        { label: 'Missing', count: Math.max(0, Math.round(mod.sourceCount / 8) - mod.testCount), kind: 'missing' },
+        { label: 'Missing', count: missingByModule.get(mod.name) ?? 0, kind: 'missing' },
       ],
     })),
     coverage: structure.map(mod => {
-      const line = estimateModuleCoverage(mod, hasCoverageRun ? coverage : undefined);
-      return {
-        module: mod.name,
-        line,
-        branch: hasCoverageRun ? clamp(line - 12, 0, 90) : clamp(line * 0.75, 0, 90),
-      };
+      const cov = moduleCoverage.get(mod.name);
+      return { module: mod.name, line: cov?.line ?? null, branch: cov?.branch ?? null };
     }),
     riskHeatmap: {
       columns: ['Failed', 'Flaky', 'Missing', 'Suspect'],
-      rows: structure.map((mod, index) => ({
+      rows: heatmapModules.map(mod => ({
         module: mod.name,
         values: [
-          index === 0 ? Math.min(3, failedTests) : 0,
-          index === 1 ? Math.min(3, flakyTests) : 0,
-          Math.min(3, Math.max(0, Math.round(mod.sourceCount / 8) - mod.testCount)),
-          index === 0 ? Math.min(3, suspiciousTests) : 0,
-        ] as (0 | 1 | 2 | 3)[],
+          heatValue(failedByModule, mod.name),
+          heatValue(flakyByModule, mod.name),
+          heatValue(missingByModule, mod.name),
+          heatValue(suspiciousByModule, mod.name),
+        ],
       })),
     },
     activity: [
@@ -613,7 +699,7 @@ function buildDashboard(repo: RepoRecord, facts: RepoScanFacts, draft: Onboardin
       suspiciousTests,
       failedTests,
       flakyTests,
-      coverage,
+      coverage: measuredCoverage,
     },
     dashboard,
   };

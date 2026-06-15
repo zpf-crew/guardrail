@@ -1,5 +1,5 @@
 import * as React from 'react';
-import type { ReviewSummary, RiskRow, GeneratedChange, DiffLine, Evidence, TestType } from '@/types/testlens';
+import type { ReviewSummary, GeneratedChange, DiffLine, Evidence, TestType, TestRunResult } from '@/types/testlens';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { CodeDiff } from '@/components/ui/code-diff';
@@ -7,16 +7,18 @@ import { MicIcon, FileCodeIcon, CheckIcon } from '@/components/icons';
 import { StepHeader, BlockHeader } from '../shared';
 import { EvidencePanel } from '../evidence-panel';
 import { showsUnitRunSuite } from '../workbench-presentation';
+import { buildReviewIssues, type ReviewIssue } from '../review-issues';
 import type { RunProgressEvent } from '../use-workbench';
 
-const RISK_VALUE_STYLE: Record<string, { width: string; color: string; badge: 'pass' | 'flaky' | 'fail' }> = {
-  high: { width: '85%', color: '#fb7185', badge: 'fail' },
-  medium: { width: '60%', color: '#fbbf24', badge: 'flaky' },
-  low: { width: '30%', color: '#3ddc97', badge: 'pass' },
+const ISSUE_BADGE: Record<ReviewIssue['kind'], 'fail' | 'flaky' | 'gray'> = {
+  failed: 'fail',
+  flaky: 'flaky',
+  skipped: 'gray',
 };
 
 interface ReviewStepProps {
   review: ReviewSummary;
+  run: TestRunResult | null;
   changes: GeneratedChange[];
   activeTestType: TestType;
   applied: boolean;
@@ -28,8 +30,13 @@ interface ReviewStepProps {
   onExport: () => void;
 }
 
-export function ReviewStep({ review, changes, activeTestType, applied, progress, evidence, onBack, onApply, onCreatePR, onExport }: ReviewStepProps) {
+export function ReviewStep({ review, run, changes, activeTestType, applied, progress, evidence, onBack, onApply, onCreatePR, onExport }: ReviewStepProps) {
   const [expanded, setExpanded] = React.useState<Set<string>>(new Set());
+
+  // Every non-passing test (failed/flaky/skipped), enriched with per-test cause/fix where available.
+  const issues = React.useMemo(() => buildReviewIssues(run, review.failures), [run, review.failures]);
+  // Only a clean run (no issues) earns the green "Apply changes" recommendation; otherwise advise review.
+  const hasIssues = issues.length > 0;
 
   const scopedChanges = React.useMemo(
     () => changes.filter(change => change.testType === activeTestType),
@@ -77,8 +84,6 @@ export function ReviewStep({ review, changes, activeTestType, applied, progress,
     { label: 'Files changed', value: String(scopedFilesChanged.length), color: '#818cf8' },
   ];
 
-  const riskStyle = (r: RiskRow) => RISK_VALUE_STYLE[r.value] ?? RISK_VALUE_STYLE.low;
-
   return (
     <div>
       <StepHeader
@@ -87,12 +92,18 @@ export function ReviewStep({ review, changes, activeTestType, applied, progress,
         description="You're in control. Apply changes to your working tree or open a PR — Guardrail never commits without your action."
       />
 
-      <div className="flex items-start gap-[11px] p-[14px_16px] bg-[rgba(61,220,151,0.08)] border border-[rgba(61,220,151,0.2)] rounded-[12px] mb-[18px] text-[13px] text-[#b6f0d4] leading-[1.5]">
-        <MicIcon className="w-[18px] h-[18px] flex-shrink-0 text-[#3ddc97] mt-[1px]" />
-        <div><b className="text-[#d6fae8]">Recommended: Apply changes</b> — {review.recommendation}</div>
+      <div className={`flex items-start gap-[11px] p-[14px_16px] border rounded-[12px] mb-[18px] text-[13px] leading-[1.5] ${
+        hasIssues
+          ? 'bg-[rgba(251,191,36,0.08)] border-[rgba(251,191,36,0.25)] text-[#f3d9a0]'
+          : 'bg-[rgba(61,220,151,0.08)] border-[rgba(61,220,151,0.2)] text-[#b6f0d4]'
+      }`}>
+        <MicIcon className={`w-[18px] h-[18px] flex-shrink-0 mt-[1px] ${hasIssues ? 'text-[#fbbf24]' : 'text-[#3ddc97]'}`} />
+        <div>
+          <b className={hasIssues ? 'text-[#fbe3b0]' : 'text-[#d6fae8]'}>
+            {hasIssues ? 'Review before applying' : 'Recommended: Apply changes'}
+          </b> — {review.recommendation}
+        </div>
       </div>
-
-      <EvidencePanel title="Evidence from run" progress={progress} evidence={evidence} />
 
       <div className="grid grid-cols-4 gap-[12px] mb-[20px]">
         {tiles.map(t => (
@@ -103,6 +114,31 @@ export function ReviewStep({ review, changes, activeTestType, applied, progress,
           </div>
         ))}
       </div>
+
+      {issues.length > 0 && (
+        <div className="mb-[18px]">
+          <BlockHeader label="Issues to resolve" count={issues.length} />
+          <div className="flex flex-col gap-[8px]">
+            {issues.map((issue, i) => (
+              <div key={`${issue.file}-${i}`} className={`bg-[#0d0f16] border rounded-[10px] p-[12px_14px] ${issue.kind === 'skipped' ? 'border-[rgba(255,255,255,0.08)]' : 'border-[rgba(251,113,133,0.18)]'}`}>
+                <div className="flex items-center gap-[9px] mb-[7px] flex-wrap">
+                  <Badge variant={ISSUE_BADGE[issue.kind]}>{issue.kind}</Badge>
+                  <span className="text-[13px] font-semibold text-[#e8ebf2]">{issue.title}</span>
+                  <span className="text-[10.5px] text-[#6b7488] border border-[rgba(255,255,255,0.08)] rounded-[5px] px-[6px] py-[1px]">{issue.type}</span>
+                  <span className="ml-auto font-mono text-[11px] text-[#818cf8] truncate max-w-[280px]">{issue.file}</span>
+                </div>
+                <div className={`text-[12.5px] leading-[1.5] font-mono ${issue.kind === 'skipped' ? 'text-[#98a1b3]' : 'text-[#f2b8c0]'}`}>{issue.reason}</div>
+                {issue.likelyCause && (
+                  <div className="text-[12px] text-[#98a1b3] mt-[6px] leading-[1.5]"><span className="text-[#6b7488]">Likely cause:</span> {issue.likelyCause}</div>
+                )}
+                {issue.suggestedFix && (
+                  <div className="text-[12px] text-[#b6f0d4] mt-[3px] leading-[1.5]"><span className="text-[#6b7488]">Suggested fix:</span> {issue.suggestedFix}</div>
+                )}
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
 
       <div className="mb-[18px]">
         <BlockHeader label={`${activeTestType} files changed`} count={scopedFilesChanged.length} />
@@ -135,28 +171,12 @@ export function ReviewStep({ review, changes, activeTestType, applied, progress,
       </div>
 
       <div className="mb-[18px]">
-        <BlockHeader label="Remaining risk" />
-        <div className="flex flex-col gap-[6px]">
-          {review.remainingRisk.map(r => {
-            const s = riskStyle(r);
-            return (
-              <div key={r.label} className="flex items-center gap-[12px] bg-[#0d0f16] rounded-[8px] px-[12px] py-[8px]">
-                <div className="flex-1">
-                  <div className="text-[12px] text-[#e8ebf2]">{r.label}</div>
-                  <div className="w-full h-[3px] bg-[rgba(255,255,255,0.05)] rounded-full mt-[4px] overflow-hidden">
-                    <div className="h-full rounded-full" style={{ width: s.width, backgroundColor: s.color }} />
-                  </div>
-                </div>
-                <Badge variant={s.badge}>{r.value}</Badge>
-              </div>
-            );
-          })}
-        </div>
+        <EvidencePanel title="Run evidence" progress={progress} evidence={evidence} />
       </div>
 
       <div className="flex items-center gap-[10px] flex-wrap p-[18px] bg-[#161a24] border border-[rgba(255,255,255,0.12)] rounded-[12px]">
         <Button variant="ghost" onClick={onBack}>Back</Button>
-        <Button variant="outline" onClick={onExport}>Export Test Plan</Button>
+        <Button variant="outline" onClick={onExport}>Export Report</Button>
         <Button variant="outline" onClick={onCreatePR}>Create PR</Button>
         <div className="flex-1" />
         {applied ? (

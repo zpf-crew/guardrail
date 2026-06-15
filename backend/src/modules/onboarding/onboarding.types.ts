@@ -63,7 +63,8 @@ export interface ScanSummary {
   suspiciousTests: number;
   failedTests: number;
   flakyTests: number;
-  coverage: number;
+  /** Repo-level line coverage 0..100, or null when coverage was not measured. */
+  coverage: number | null;
 }
 
 export interface DashboardPayload {
@@ -77,7 +78,7 @@ export interface DashboardPayload {
     trend: { value: number; sentiment: 'good' | 'bad' | 'neutral'; basis?: string };
     note?: string;
   };
-  metrics: Record<string, { value: number; isPercent?: boolean; trend?: { value: number; sentiment: 'good' | 'bad' | 'neutral'; basis?: string } }>;
+  metrics: Record<string, { value: number | null; isPercent?: boolean; trend?: { value: number; sentiment: 'good' | 'bad' | 'neutral'; basis?: string } }>;
   testCases: Array<{
     id: string;
     title: string;
@@ -102,10 +103,11 @@ export interface DashboardPayload {
   structure: Array<{
     pathPrefix: string;
     name: string;
-    coverage: number;
+    /** Per-module line coverage 0..100, or null when not measured per module. */
+    coverage: number | null;
     counts: Array<{ label: string; count: number; kind: 'unit' | 'integration' | 'failed' | 'flaky' | 'missing' | 'suspicious' | 'other' }>;
   }>;
-  coverage: Array<{ module: string; line: number; branch: number }>;
+  coverage: Array<{ module: string; line: number | null; branch: number | null }>;
   riskHeatmap: {
     columns: ('Failed' | 'Flaky' | 'Missing' | 'Suspect')[];
     rows: Array<{ module: string; values: (0 | 1 | 2 | 3)[] }>;
@@ -147,6 +149,13 @@ export interface ScanReasoningResult {
   }>;
 }
 
+/** Per-file coverage parsed from a clone's coverage report (0..100). */
+export interface FileCoverage {
+  path: string;
+  line: number;
+  branch: number;
+}
+
 export interface RepoScanFacts {
   filesIndexed: number;
   sourceFiles: string[];
@@ -160,5 +169,5 @@ export interface RepoScanFacts {
   commands: { test?: string; coverage?: string; typecheck?: string; lint?: string };
   installRun?: { command: string; ok: boolean; output: string };
   testRun?: { command: string; ok: boolean; output: string };
-  coverageRun?: { command: string; ok: boolean; output: string; coverage?: number };
+  coverageRun?: { command: string; ok: boolean; output: string; coverage?: number; files?: FileCoverage[] };
 }

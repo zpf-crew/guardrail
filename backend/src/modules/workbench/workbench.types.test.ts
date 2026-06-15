@@ -54,6 +54,7 @@ test('workbench schema mirror accepts the shared frontend workbench shapes', () 
     coverage: { lineDelta: 0, branchDelta: 0 },
     flakyTracked: 0,
     filesChanged: [{ path: 'guardrail-tests/ui/onboarding.feature', diffStat: '+12', changeKind: 'add' }],
+    failures: [],
     remainingRisk: [{ label: 'Persistence', value: 'Not implemented in this slice', sentiment: 'neutral' }],
     openQuestions: 0,
     recommendation: 'Review generated evidence before applying future changes.',

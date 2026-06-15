@@ -293,6 +293,15 @@ const reviewSchema = z.object({
     diffStat: z.string(),
     changeKind: z.enum(['add', 'update', 'delete']),
   })),
+  failures: z.array(z.object({
+    title: z.string(),
+    type: testTypeSchema,
+    kind: z.enum(['failed', 'flaky']),
+    reason: z.string(),
+    file: z.string(),
+    likelyCause: z.string().optional(),
+    suggestedFix: z.string().optional(),
+  })),
   remainingRisk: z.array(z.object({
     label: z.string(),
     value: z.string(),

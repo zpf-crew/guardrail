@@ -67,6 +67,19 @@ export interface UseWorkbenchOptions {
 }
 
 /**
+ * Turn a workbench error into a clear, actionable message. The backend surfaces a timed-out/aborted
+ * step as the cryptic "This operation was aborted" — rewrite that so the user knows it can be retried,
+ * while leaving genuine failure messages intact (so a stuck step still explains itself).
+ */
+function describeWorkbenchError(e: unknown, fallback: string): string {
+  const message = e instanceof Error ? e.message : typeof e === 'string' ? e : '';
+  if (/\baborted\b|\bcancell?ed\b|timed out/i.test(message)) {
+    return 'This step was interrupted or timed out. Please try again.';
+  }
+  return message || fallback;
+}
+
+/**
  * Drives the 6-step workbench: loads the session through the seam, holds the
  * editable intent, and advances steps by calling the seam and merging the
  * returned contract slice into the session.
@@ -158,7 +171,7 @@ export function useWorkbench(initialIntent?: Partial<IntentInput>, options?: Use
       setSession(s => (s ? { ...s, isolation } : s));
       setCurrentStep(1);
     } catch (e) {
-      setError(e instanceof Error ? e.message : 'Analyze failed.');
+      setError(describeWorkbenchError(e, 'Analyze failed.'));
     } finally {
       setPending(null);
     }
@@ -176,7 +189,7 @@ export function useWorkbench(initialIntent?: Partial<IntentInput>, options?: Use
       setSession(s => (s ? { ...s, plan } : s));
       setCurrentStep(2);
     } catch (e) {
-      setError(e instanceof Error ? e.message : 'Plan generation failed.');
+      setError(describeWorkbenchError(e, 'Plan generation failed.'));
     } finally {
       setPending(null);
     }
@@ -211,7 +224,7 @@ export function useWorkbench(initialIntent?: Partial<IntentInput>, options?: Use
         setCurrentStep(3);
         startGenerationAnimation(generation.timeline.length);
       })
-      .catch(e => setError(e instanceof Error ? e.message : 'Generation failed.'))
+      .catch(e => setError(describeWorkbenchError(e, 'Generation failed.')))
       .finally(() => setPending(null));
   }, [session, startGenerationAnimation]);
 
@@ -281,7 +294,7 @@ export function useWorkbench(initialIntent?: Partial<IntentInput>, options?: Use
           intervalRef.current = null;
         }
         setPending(null);
-        setError(e instanceof Error ? e.message : 'Run failed.');
+        setError(describeWorkbenchError(e, 'Run failed.'));
       }
     })();
   }, [session, startRunAnimation]);
