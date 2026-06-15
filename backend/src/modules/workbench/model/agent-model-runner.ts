@@ -10,6 +10,7 @@ import {
   type UiBrowserUserFlowPlan,
 } from '../validation/workbench-validators.js';
 import { normalizeAgentActionInput } from './normalize-ui-browser-agent-action.js';
+import { runReliableStructuredModel } from './reliable-model-runner.js';
 
 interface AgentModelRunnerOptions {
   modelConnect: ModelConnect | null;
@@ -42,37 +43,32 @@ export class AgentModelRunner {
     }
 
     const client = this.#modelConnect.getClient(args.profile);
-    let lastError: string | null = null;
-
-    for (let attempt = 0; attempt < 2; attempt += 1) {
-      const userContent = lastError
-        ? JSON.stringify({
-          schemaName: 'UiBrowserAgentAction',
-          context: args.context,
-          validationError: lastError,
-          retryHint: 'Return only one valid UiBrowserAgentAction JSON object. Do not include analysis, prose, markdown, or code fences.',
-        }, null, 2)
-        : JSON.stringify({ schemaName: 'UiBrowserAgentAction', context: args.context }, null, 2);
-
-      const response = await client.chat(
-        [
-          { role: 'system', content: args.skill.content },
-          { role: 'user', content: userContent },
-        ],
-        { temperature: 0, maxTokens: 1500, signal: args.signal },
-      );
-
-      try {
-        const parsed = parseJsonObject(response.content);
-        const normalized = normalizeAgentActionInput(parsed, args.context);
-        return validateUiBrowserAgentAction(normalized);
-      } catch (error) {
-        lastError = error instanceof Error ? error.message : String(error);
-        if (attempt === 1) throw error;
-      }
-    }
-
-    throw new Error(lastError ?? 'Agent decision failed.');
+    return runReliableStructuredModel({
+      client,
+      messagesForAttempt: validationError => [
+        { role: 'system', content: args.skill.content },
+        {
+          role: 'user',
+          content: JSON.stringify(
+            validationError
+              ? {
+                schemaName: 'UiBrowserAgentAction',
+                context: args.context,
+                validationError,
+                retryHint: 'Return only one valid UiBrowserAgentAction JSON object. Do not include analysis, prose, markdown, or code fences.',
+              }
+              : { schemaName: 'UiBrowserAgentAction', context: args.context },
+            null,
+            2,
+          ),
+        },
+      ],
+      chatOptions: { temperature: 0, maxTokens: 1500 },
+      signal: args.signal,
+      validate: parsed => validateUiBrowserAgentAction(
+        normalizeAgentActionInput(parsed, args.context),
+      ),
+    });
   }
 
   async #runValidatedPlan<T>(
@@ -84,36 +80,30 @@ export class AgentModelRunner {
     }
 
     const client = this.#modelConnect.getClient(args.profile);
-    let lastError: string | null = null;
-
-    for (let attempt = 0; attempt < 2; attempt += 1) {
-      const userContent = lastError
-        ? JSON.stringify({
-          schemaName,
-          context: args.context,
-          validationError: lastError,
-          retryHint: `Return only one valid ${schemaName} JSON object. Do not include analysis, prose, markdown, or code fences.`,
-        }, null, 2)
-        : JSON.stringify({ schemaName, context: args.context }, null, 2);
-
-      const response = await client.chat(
-        [
-          { role: 'system', content: args.skill.content },
-          { role: 'user', content: userContent },
-        ],
-        { temperature: 0, maxTokens: 4000, signal: args.signal },
-      );
-
-      try {
-        const parsed = parseJsonObject(response.content);
-        return validateWorkbenchStepResult(schemaName, parsed) as T;
-      } catch (error) {
-        lastError = error instanceof Error ? error.message : String(error);
-        if (attempt === 1) throw error;
-      }
-    }
-
-    throw new Error(lastError ?? `${schemaName} planning failed.`);
+    return runReliableStructuredModel({
+      client,
+      messagesForAttempt: validationError => [
+        { role: 'system', content: args.skill.content },
+        {
+          role: 'user',
+          content: JSON.stringify(
+            validationError
+              ? {
+                schemaName,
+                context: args.context,
+                validationError,
+                retryHint: `Return only one valid ${schemaName} JSON object. Do not include analysis, prose, markdown, or code fences.`,
+              }
+              : { schemaName, context: args.context },
+            null,
+            2,
+          ),
+        },
+      ],
+      chatOptions: { temperature: 0, maxTokens: 4000 },
+      signal: args.signal,
+      validate: parsed => validateWorkbenchStepResult(schemaName, parsed) as T,
+    });
   }
 
   async planUiBrowserFlows(args: PlanScenarioArgs): Promise<UiBrowserUserFlowPlan> {
@@ -123,49 +113,4 @@ export class AgentModelRunner {
   async planUiBrowserExecution(args: PlanScenarioArgs): Promise<UiBrowserExecutionPlan> {
     return this.#runValidatedPlan<UiBrowserExecutionPlan>(args, 'UiBrowserExecutionPlan');
   }
-}
-
-function parseJsonObject(content: string): unknown {
-  const trimmed = content.trim();
-  const fenced = trimmed.match(/^```(?:json)?\s*([\s\S]*?)\s*```$/i);
-  const json = fenced ? fenced[1] : extractFirstJsonObject(trimmed);
-  try {
-    return JSON.parse(json);
-  } catch (error) {
-    throw new Error(
-      `Model returned invalid JSON: ${error instanceof Error ? error.message : String(error)}`,
-    );
-  }
-}
-
-function extractFirstJsonObject(value: string): string {
-  const start = value.indexOf('{');
-  if (start < 0) return value;
-
-  let depth = 0;
-  let inString = false;
-  let escaped = false;
-  for (let index = start; index < value.length; index += 1) {
-    const char = value[index];
-    if (escaped) {
-      escaped = false;
-      continue;
-    }
-    if (char === '\\') {
-      escaped = true;
-      continue;
-    }
-    if (char === '"') {
-      inString = !inString;
-      continue;
-    }
-    if (inString) continue;
-    if (char === '{') depth += 1;
-    if (char === '}') {
-      depth -= 1;
-      if (depth === 0) return value.slice(start, index + 1);
-    }
-  }
-
-  return value;
 }

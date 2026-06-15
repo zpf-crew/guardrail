@@ -382,3 +382,87 @@ test('plans UI Browser execution steps', async () => {
   assert.equal(result.steps[2].kind, 'assert');
   assert.equal(capturedMaxTokens, 4000);
 });
+
+test('plans UI Browser user flows after transient missing assistant content', async () => {
+  let calls = 0;
+  const runner = new AgentModelRunner({
+    modelConnect: {
+      getClient: () => ({
+        chat: async () => {
+          calls += 1;
+          if (calls === 1) {
+            throw new Error('LLM response did not contain assistant content');
+          }
+          return {
+            content: JSON.stringify({
+              behaviorTitle: 'Add product to cart from homepage',
+              acceptedFlows: [
+                {
+                  id: 'flow-1',
+                  title: 'Add one product to cart',
+                  sourceScenarioIndexes: [0],
+                  userGoal: 'A shopper adds a product to the cart.',
+                  durableOutcome: 'The cart count shows one item.',
+                  priority: 'high',
+                },
+              ],
+              droppedScenarios: [],
+            }),
+          };
+        },
+      }),
+    } as never,
+  });
+
+  const result = await runner.planUiBrowserFlows({
+    profile: 'coder',
+    skill: { name: 'test-plan-ui-browser-flows', content: 'Return JSON only.' },
+    context: { schemaName: 'UiBrowserUserFlowPlan' },
+    signal: new AbortController().signal,
+  });
+
+  assert.equal(result.acceptedFlows[0]?.id, 'flow-1');
+  assert.equal(calls, 2);
+});
+
+test('UI Browser execution planning repairs invalid JSON with validation hint', async () => {
+  const userMessages: string[] = [];
+  let calls = 0;
+  const runner = new AgentModelRunner({
+    modelConnect: {
+      getClient: () => ({
+        chat: async (messages: Array<{ role: string; content: string }>) => {
+          calls += 1;
+          userMessages.push(messages.find(message => message.role === 'user')!.content);
+          if (calls === 1) return { content: 'not json' };
+          return {
+            content: JSON.stringify({
+              flowId: 'flow-1',
+              title: 'Add one product to cart',
+              steps: [
+                {
+                  id: 'step-1',
+                  kind: 'setup',
+                  instruction: 'Open the homepage.',
+                  successCriteria: 'The homepage is loaded.',
+                },
+              ],
+            }),
+          };
+        },
+      }),
+    } as never,
+  });
+
+  const result = await runner.planUiBrowserExecution({
+    profile: 'coder',
+    skill: { name: 'test-plan-ui-browser-execution', content: 'Return JSON only.' },
+    context: { schemaName: 'UiBrowserExecutionPlan' },
+    signal: new AbortController().signal,
+  });
+
+  assert.equal(result.flowId, 'flow-1');
+  assert.equal(calls, 2);
+  assert.match(userMessages[1]!, /validationError/);
+  assert.match(userMessages[1]!, /Return only one valid UiBrowserExecutionPlan JSON object/);
+});
