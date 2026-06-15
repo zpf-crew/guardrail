@@ -1,8 +1,12 @@
 import { createReadStream } from 'node:fs';
 import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
 import { env } from '../../config/env.js';
+import { AuthRepository } from '../auth/auth.repository.js';
 import { requireAuth } from '../auth/session.service.js';
+import { decryptToken } from '../auth/token-crypto.js';
 import { ReposRepository } from '../repos/repos.repository.js';
+import { createPullRequest } from './pr/create-pull-request.service.js';
+import { buildPullRequestBody } from './pr/build-pr-body.js';
 import { formatSse } from './jobs/job-events.js';
 import type { WorkbenchService } from './workbench.service.js';
 import type { IntentInput, PlanApproval, WorkbenchJob, WorkbenchJobEvent } from './workbench.types.js';
@@ -112,6 +116,48 @@ export function buildWorkbenchRoutes(service: WorkbenchService) {
 
     app.post('/:sessionId/review/jobs', async (request: FastifyRequest<{ Params: SessionParams }>, reply) => {
       return startJob(reply, () => service.startJob(request.params.sessionId, 'review'));
+    });
+
+    app.post('/:sessionId/pull-request', async (request: FastifyRequest<{ Params: SessionParams }>, reply) => {
+      const user = request.user!;
+      let session;
+      try {
+        session = service.getSession(request.params.sessionId, user.id);
+      } catch (error) {
+        return routeError(reply, error);
+      }
+
+      const changes = session.generation?.changes ?? [];
+      if (!changes.length) {
+        return reply.code(400).send({ error: 'No generated changes to open a pull request for.' });
+      }
+
+      const repo = await new ReposRepository(app.db).getForUser(session.repoId, user.id);
+      if (!repo?.clonePath) {
+        return reply.code(404).send({ error: 'Repository clone not found' });
+      }
+      const encrypted = await new AuthRepository(app.db).getEncryptedToken(user.id);
+      if (!encrypted) {
+        return reply.code(401).send({ error: 'GitHub token is missing; reconnect GitHub.' });
+      }
+
+      const baseBranch = repo.currentBranch ?? repo.defaultBranch;
+      try {
+        const result = await createPullRequest({
+          clonePath: repo.clonePath,
+          cloneUrl: repo.cloneUrl,
+          fullName: repo.fullName,
+          baseBranch,
+          accessToken: decryptToken(encrypted),
+          changes,
+          title: `test: add ${changes.length} Guardrail-generated test${changes.length === 1 ? '' : 's'}`,
+          body: buildPullRequestBody({ changes, run: session.run, review: session.review }),
+        });
+        return { url: result.url, branch: result.branch };
+      } catch (error) {
+        request.log.warn({ err: error, sessionId: session.id }, 'Create pull request failed');
+        return reply.code(422).send({ error: error instanceof Error ? error.message : 'Failed to open pull request' });
+      }
     });
 
     app.get('/:sessionId/jobs/:jobId', async (request: FastifyRequest<{ Params: JobParams }>, reply) => {

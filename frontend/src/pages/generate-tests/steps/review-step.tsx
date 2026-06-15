@@ -21,16 +21,16 @@ interface ReviewStepProps {
   run: TestRunResult | null;
   changes: GeneratedChange[];
   activeTestType: TestType;
-  applied: boolean;
+  prUrl: string | null;
+  creatingPr: boolean;
   progress: RunProgressEvent[];
   evidence: Evidence[];
   onBack: () => void;
-  onApply: () => void;
   onCreatePR: () => void;
   onExport: () => void;
 }
 
-export function ReviewStep({ review, run, changes, activeTestType, applied, progress, evidence, onBack, onApply, onCreatePR, onExport }: ReviewStepProps) {
+export function ReviewStep({ review, run, changes, activeTestType, prUrl, creatingPr, progress, evidence, onBack, onCreatePR, onExport }: ReviewStepProps) {
   const [expanded, setExpanded] = React.useState<Set<string>>(new Set());
 
   // Every non-passing test (failed/flaky/skipped), enriched with per-test cause/fix where available.
@@ -177,15 +177,16 @@ export function ReviewStep({ review, run, changes, activeTestType, applied, prog
       <div className="flex items-center gap-[10px] flex-wrap p-[18px] bg-[#161a24] border border-[rgba(255,255,255,0.12)] rounded-[12px]">
         <Button variant="ghost" onClick={onBack}>Back</Button>
         <Button variant="outline" onClick={onExport}>Export Report</Button>
-        <Button variant="outline" onClick={onCreatePR}>Create PR</Button>
         <div className="flex-1" />
-        {applied ? (
-          <Button variant="primary" size="lg" disabled>
+        {prUrl ? (
+          <Button variant="primary" size="lg" onClick={() => window.open(prUrl, '_blank', 'noopener,noreferrer')}>
             <CheckIcon strokeWidth={2.5} className="w-[15px] h-[15px] mr-[6px]" />
-            Changes Applied
+            View Pull Request
           </Button>
         ) : (
-          <Button variant="primary" size="lg" onClick={onApply}>Apply Changes</Button>
+          <Button variant="primary" size="lg" onClick={onCreatePR} disabled={creatingPr}>
+            {creatingPr ? 'Creating PR…' : 'Create PR'}
+          </Button>
         )}
       </div>
     </div>

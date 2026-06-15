@@ -297,3 +297,17 @@ export async function reviewSession(id: string, onEvent?: (event: JobEvent) => v
   if (isMockMode()) { await mockStream(onEvent, 'review', ['Summarizing review…']); return mockReview(); }
   return runJob<ReviewSummary>(id, 'review', onEvent);
 }
+
+export interface CreatePullRequestResult {
+  url: string;
+  branch: string;
+}
+
+/** S6 — write the generated tests to a branch and open a GitHub pull request. Returns the PR URL. */
+export async function createSessionPullRequest(id: string): Promise<CreatePullRequestResult> {
+  if (isMockMode()) {
+    await mockStream(undefined, 'review', []);
+    return { url: 'https://github.com/example/repo/pull/1', branch: 'guardrail/add-tests-mock' };
+  }
+  return post<CreatePullRequestResult>(`/api/workbench/${id}/pull-request`);
+}
