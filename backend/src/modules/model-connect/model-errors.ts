@@ -49,6 +49,14 @@ export function normalizeModelError(error: unknown): ModelClientError {
       cause: error,
     });
   }
+  if (error instanceof Error && /did not contain assistant content|assistant content/i.test(error.message)) {
+    return new ModelClientError({
+      code: 'model_content_empty',
+      message: error.message,
+      retryable: true,
+      cause: error,
+    });
+  }
   return new ModelClientError({
     code: 'model_network_error',
     message: error instanceof Error ? error.message : String(error),

@@ -5,6 +5,7 @@ import {
   validateWorkbenchStepResult,
   type WorkbenchSchemaName,
 } from '../validation/workbench-validators.js';
+import { runReliableStructuredModel } from './reliable-model-runner.js';
 
 interface StructuredModelRunnerOptions {
   modelConnect: ModelConnect | null;
@@ -35,35 +36,29 @@ export class StructuredModelRunner {
     }
 
     const client = this.#modelConnect.getClient(args.profile);
-    const response = await client.chat(
-      [
+    return runReliableStructuredModel({
+      client,
+      messagesForAttempt: validationError => [
         { role: 'system', content: args.skill.content },
         {
           role: 'user',
           content: JSON.stringify(
-            { schemaName: args.schemaName, context: args.context },
+            validationError
+              ? {
+                schemaName: args.schemaName,
+                context: args.context,
+                validationError,
+                retryHint: `Return only one valid ${args.schemaName} JSON object. Do not include analysis, prose, markdown, or code fences.`,
+              }
+              : { schemaName: args.schemaName, context: args.context },
             null,
             2,
           ),
         },
       ],
-      { temperature: 0, maxTokens: 8000, signal: args.signal },
-    );
-
-    const parsed = parseJsonObject(response.content);
-    return validateWorkbenchStepResult(args.schemaName, parsed);
-  }
-}
-
-function parseJsonObject(content: string): unknown {
-  const trimmed = content.trim();
-  const fenced = trimmed.match(/^```(?:json)?\s*([\s\S]*?)\s*```$/i);
-  const json = fenced ? fenced[1] : trimmed;
-  try {
-    return JSON.parse(json);
-  } catch (error) {
-    throw new Error(
-      `Model returned invalid JSON: ${error instanceof Error ? error.message : String(error)}`,
-    );
+      chatOptions: { temperature: 0, maxTokens: 8000 },
+      signal: args.signal,
+      validate: parsed => validateWorkbenchStepResult(args.schemaName, parsed),
+    });
   }
 }
