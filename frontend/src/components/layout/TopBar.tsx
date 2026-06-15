@@ -25,10 +25,17 @@ export function TopBar({ repo, branch, scanTime, actions, contentClassName, user
     <header className="sticky top-0 z-[50] bg-[rgba(11,13,19,0.78)] backdrop-blur-[18px] saturate-[140%] border-b border-[rgba(255,255,255,0.07)]">
       <div className={cn('flex items-center gap-[22px] px-[26px] py-[12px] w-full', contentClassName)}>
       <div className="flex items-center gap-[11px] pr-[20px] border-r border-[rgba(255,255,255,0.07)]">
-        <div className="w-[34px] h-[34px] rounded-[9px] flex-none grid place-items-center bg-gradient-to-br from-[#8b93ff] via-[#5d68f0] to-[#22d3ee] shadow-[0_4px_16px_rgba(99,102,241,0.4),0_0_0_1px_rgba(255,255,255,0.12)_inset]">
-          <BrandIcon stroke="#fff" className="w-[19px] h-[19px]" />
-        </div>
-        <div className="text-[16px] font-semibold tracking-[-0.2px] text-[#e8ebf2]"><b className="text-white">Guard</b>rail</div>
+        <button
+          type="button"
+          onClick={() => navigate('/dashboard')}
+          title="Go to dashboard"
+          className="flex items-center gap-[11px] bg-transparent border-none cursor-pointer p-0 rounded-[9px] transition-opacity hover:opacity-80"
+        >
+          <span className="w-[34px] h-[34px] rounded-[9px] flex-none grid place-items-center bg-gradient-to-br from-[#8b93ff] via-[#5d68f0] to-[#22d3ee] shadow-[0_4px_16px_rgba(99,102,241,0.4),0_0_0_1px_rgba(255,255,255,0.12)_inset]">
+            <BrandIcon stroke="#fff" className="w-[19px] h-[19px]" />
+          </span>
+          <span className="text-[16px] font-semibold tracking-[-0.2px] text-[#e8ebf2]"><b className="text-white">Guard</b>rail</span>
+        </button>
         <span className="text-[9.5px] font-bold tracking-[1px] uppercase text-[#22d3ee] border border-[rgba(34,211,238,0.3)] bg-[rgba(34,211,238,0.08)] px-[6px] py-[2px] rounded-[5px]">Agent</span>
       </div>
       {repo && (
