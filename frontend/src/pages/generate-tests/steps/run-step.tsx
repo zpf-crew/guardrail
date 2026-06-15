@@ -1,9 +1,8 @@
-import * as React from 'react';
 import type { ReactNode } from 'react';
 import type { Evidence, TestRunResult, RunOutcome, TestType, TestResultRow } from '@/types/testlens';
 import { Button } from '@/components/ui/button';
 import { ProgressBar } from '@/components/ui/progress-bar';
-import { RunResultIcon, MicIcon, MonitorIcon, SmartphoneIcon, AlertCircleIcon, EyeIcon, LoaderIcon, CheckIcon } from '@/components/icons';
+import { RunResultIcon, MicIcon, MonitorIcon, SmartphoneIcon, EyeIcon, LoaderIcon } from '@/components/icons';
 import { StepHeader, BlockHeader } from '../shared';
 import { RUN_OUTCOME_STYLE, showsMobileRunSuite, showsUiRunSuite, showsUnitRunSuite } from '../workbench-presentation';
 import { EvidencePanel } from '../evidence-panel';
@@ -15,8 +14,6 @@ const ICON_STATUS: Record<RunOutcome, 'pass' | 'fail' | 'running'> = {
 
 const fmt = (ms: number) => (ms < 1000 ? `${ms}ms` : `${(ms / 1000).toFixed(1)}s`);
 
-type Resolution = null | 'fixing' | 'accepted' | 'reverted';
-
 interface RunStepProps {
   run: TestRunResult | null;
   activeTestType: TestType;
@@ -26,11 +23,9 @@ interface RunStepProps {
   evidence: Evidence[];
   onBack: () => void;
   onReview: () => void;
-  onAttentionAction: (action: 'fix' | 'accept' | 'revert') => void;
 }
 
-export function RunStep({ run, activeTestType, ranTests, running, progress, evidence, onBack, onReview, onAttentionAction }: RunStepProps) {
-  const [resolution, setResolution] = React.useState<Resolution>(null);
+export function RunStep({ run, activeTestType, ranTests, running, progress, evidence, onBack, onReview }: RunStepProps) {
 
   // Real API: results not back yet — show an honest running placeholder.
   if (!run) {
@@ -54,11 +49,6 @@ export function RunStep({ run, activeTestType, ranTests, running, progress, evid
   const progressPercent = total ? Math.round((ranTests / total) * 100) : 100;
   const matrixRows = run.matrix.filter(row => row.type === activeTestType);
   const revealed = complete ? matrixRows : matrixRows.slice(0, ranTests);
-
-  const act = (action: 'fix' | 'accept' | 'revert', state: Resolution) => {
-    setResolution(state);
-    onAttentionAction(action);
-  };
 
   return (
     <div>
@@ -150,32 +140,6 @@ export function RunStep({ run, activeTestType, ranTests, running, progress, evid
         </table>
         {!complete && <div className="flex items-center gap-[8px] text-[11.5px] text-[#6b7488] mt-[10px]"><LoaderIcon className="w-[13px] h-[13px] animate-spin text-[#818cf8]" /> running…</div>}
       </div>
-
-      {complete && run.attention && (
-        <div className="bg-[rgba(251,113,133,0.05)] border border-[rgba(251,113,133,0.28)] rounded-[12px] p-[16px] mt-[14px]">
-          <div className="flex items-center gap-[9px] text-[13.5px] font-semibold text-[#fb7185] mb-[12px]"><AlertCircleIcon className="w-[17px] h-[17px]" />{run.attention.testTitle}</div>
-          {resolution === null && (
-            <>
-              <div className="text-[12.5px] text-[#98a1b3] mb-[4px] leading-[1.5]">{run.attention.reason}</div>
-              <div className="text-[12px] text-[#6b7488] mb-[8px] leading-[1.5]">Likely cause: {run.attention.likelyCause}</div>
-              <div className="flex gap-[9px] flex-wrap mt-[13px]">
-                <Button variant="outline" className="text-[11px]" onClick={() => act('fix', 'fixing')}>Ask agent to fix</Button>
-                <Button variant="ghost" className="text-[11px]" onClick={() => act('accept', 'accepted')}>Accept</Button>
-                <Button variant="danger" className="text-[11px]" onClick={() => act('revert', 'reverted')}>Revert</Button>
-              </div>
-            </>
-          )}
-          {resolution === 'fixing' && (
-            <div className="flex items-center gap-[8px] text-[12.5px] text-[#c7cdf5]"><LoaderIcon className="w-[14px] h-[14px] animate-spin text-[#818cf8]" /> Agent is drafting a fix — suggested: {run.attention.suggestedFix}</div>
-          )}
-          {resolution === 'accepted' && (
-            <div className="flex items-center gap-[8px] text-[12.5px] text-[#b6f0d4]"><CheckIcon className="w-[14px] h-[14px] text-[#3ddc97]" /> Kept as-is — tracked as a known issue.</div>
-          )}
-          {resolution === 'reverted' && (
-            <div className="flex items-center gap-[8px] text-[12.5px] text-[#98a1b3]"><CheckIcon className="w-[14px] h-[14px] text-[#fb7185]" /> Generated test reverted — removed from the change set.</div>
-          )}
-        </div>
-      )}
 
       <div className="flex gap-[10px] mt-[18px]">
         <Button variant="ghost" onClick={onBack}>Back</Button>

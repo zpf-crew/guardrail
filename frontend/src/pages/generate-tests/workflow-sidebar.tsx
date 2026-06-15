@@ -1,12 +1,12 @@
 import { ShieldCheckIcon } from '@/components/icons';
 
 export const WORKFLOW_STEPS = [
-  { title: 'Intent', status: 'Ready' },
-  { title: 'Isolation', status: 'Done' },
-  { title: 'Plan', status: 'Done' },
-  { title: 'Generate', status: 'Done' },
-  { title: 'Run', status: 'Done' },
-  { title: 'Review', status: 'Pending' },
+  { title: 'Intent' },
+  { title: 'Isolation' },
+  { title: 'Plan' },
+  { title: 'Generate' },
+  { title: 'Run' },
+  { title: 'Review' },
 ];
 
 interface WorkflowSidebarProps {
@@ -45,7 +45,7 @@ export function WorkflowSidebar({ currentStep, applied = false, onSelect }: Work
               <div className="pt-[3px]">
                 <div className={`text-[13.5px] font-semibold ${active ? 'text-white' : 'text-[#e8ebf2]'}`}>{step.title}</div>
                 <div className={`text-[11px] mt-[1px] ${done ? 'text-[#3ddc97]' : active ? 'text-[#818cf8]' : 'text-[#6b7488]'}`}>
-                  {done ? 'Done' : active ? 'Active' : step.status}
+                  {done ? 'Done' : active ? 'Active' : 'Pending'}
                 </div>
               </div>
               {i < WORKFLOW_STEPS.length - 1 && (

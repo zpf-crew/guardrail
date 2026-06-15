@@ -15,6 +15,7 @@ import { primaryTestType } from '@/pages/generate-tests/workbench-presentation';
 import { useWorkbench } from '@/pages/generate-tests/use-workbench';
 import { WorkflowSidebar } from '@/pages/generate-tests/workflow-sidebar';
 import { exportTestPlan } from '@/pages/generate-tests/export-test-plan';
+import { isMockMode } from '@/data/mock-workbench';
 import { IntentStep } from '@/pages/generate-tests/steps/intent-step';
 import { IsolationStep } from '@/pages/generate-tests/steps/isolation-step';
 import { PlanStep } from '@/pages/generate-tests/steps/plan-step';
@@ -137,6 +138,8 @@ function GenerateTestsWorkbench({
   const { user, logout } = useAuth();
 
   const syncSessionToUrl = useCallback((id: string) => {
+    // In mock mode (?mock=1) keep the flag in the URL so every step stays mocked; the session id isn't needed.
+    if (isMockMode()) return;
     setSearchParams({ session: id }, { replace: true });
   }, [setSearchParams]);
 
@@ -258,12 +261,12 @@ function GenerateTestsWorkbench({
               evidence={runEvidence}
               onBack={() => wb.setStep(3)}
               onReview={() => wb.setStep(5)}
-              onAttentionAction={a => toast(a === 'fix' ? 'Asked agent to fix the test' : a === 'accept' ? 'Test accepted as known issue' : 'Generated test reverted', 'success')}
             />
           )}
           {currentStep === 5 && session.review && (
             <ReviewStep
               review={session.review}
+              run={session.run ?? null}
               changes={session.generation?.changes ?? []}
               activeTestType={activeTestType}
               applied={wb.applied}
@@ -272,7 +275,7 @@ function GenerateTestsWorkbench({
               onBack={() => wb.setStep(4)}
               onApply={() => { wb.apply(); toast('Changes applied to working tree', 'success'); }}
               onCreatePR={() => toast('PR created', 'success')}
-              onExport={() => { exportTestPlan(session); toast('Test plan downloaded', 'success'); }}
+              onExport={() => { exportTestPlan(session); toast('Report downloaded', 'success'); }}
             />
           )}
         </div>
