@@ -2,6 +2,7 @@
   "name": "guardrail",
   "version": "0.0.1",
   "private": true,
+  "packageManager": "pnpm@10.14.0",
   "pnpm": {
     "onlyBuiltDependencies": ["esbuild"]
   },

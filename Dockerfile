@@ -1,6 +1,7 @@
 FROM node:20-bookworm-slim AS build
 
 WORKDIR /app
+ENV UV_USE_IO_URING=0
 RUN corepack enable
 
 COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
@@ -19,6 +20,7 @@ RUN pnpm --filter guardrail-backend --prod deploy --legacy /app/backend-prod
 FROM node:20-bookworm-slim AS runtime
 
 ENV NODE_ENV=production
+ENV UV_USE_IO_URING=0
 ENV PORT=3000
 ENV WORKSPACE_DIR=/tmp/guardrail-workspaces
 
@@ -26,7 +28,13 @@ RUN apt-get update \
   && apt-get install -y --no-install-recommends nginx git ca-certificates \
   && rm -rf /var/lib/apt/lists/* \
   && corepack enable \
+  && corepack prepare pnpm@10.14.0 --activate \
+  && corepack prepare yarn@1.22.22 --activate \
+  && npm install -g agent-browser \
+  && agent-browser install --with-deps \
   && mkdir -p /run/nginx /tmp/guardrail-workspaces /app
+
+ENV AGENT_BROWSER_ARGS=--no-sandbox,--disable-dev-shm-usage
 
 WORKDIR /app
 

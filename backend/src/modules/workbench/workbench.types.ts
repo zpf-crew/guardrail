@@ -34,6 +34,10 @@ export type RunOutcome =
   | 'Skipped'
   | 'Needs approval';
 
+export interface RunOptions {
+  manualBaseUrl?: string;
+}
+
 export interface RepoRef {
   name: string;
   path: string;

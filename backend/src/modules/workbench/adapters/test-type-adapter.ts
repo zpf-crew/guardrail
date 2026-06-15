@@ -7,6 +7,7 @@ import type {
   IsolationResult,
   PlanApproval,
   ReviewSummary,
+  RunOptions,
   TestPlan,
   TestRunResult,
   TestType,
@@ -35,6 +36,6 @@ export interface TestTypeAdapter {
   analyze(input: AdapterInput): Promise<IsolationResult>;
   plan(input: AdapterInput & { isolation: IsolationResult }): Promise<TestPlan>;
   generate(input: AdapterInput & { plan: TestPlan; approval: PlanApproval }): Promise<GenerationResult>;
-  run(input: AdapterInput & { generation: GenerationResult }): Promise<TestRunResult>;
+  run(input: AdapterInput & { generation: GenerationResult; runOptions?: RunOptions }): Promise<TestRunResult>;
   review(input: AdapterInput & { generation: GenerationResult; run: TestRunResult }): Promise<ReviewSummary>;
 }

@@ -46,7 +46,7 @@ Use `linux/amd64` for AgentBase Runtime compatibility:
 
 ```bash
 REGISTRY_URL="vcr.vngcloud.vn"
-REPO_NAME="<value-from-cr-repo-get>"
+REPO_NAME="111480-abp111731"
 IMAGE_NAME="guardrail"
 TAG="v$(date +%Y%m%d%H%M%S)"
 IMAGE_URL="${REGISTRY_URL}/${REPO_NAME}/${IMAGE_NAME}:${TAG}"
@@ -91,13 +91,13 @@ LLM_BASE_URL=
 LLM_API_KEY=
 ```
 
-Optional at startup, but needed before GitHub login works:
+Optional override. In AgentBase Runtime, `deploy/start-container.sh` derives this from `GREENNODE_ENDPOINT_URL` when omitted:
 
 ```env
 GITHUB_CALLBACK_URL=https://<agentbase-endpoint>/api/auth/github/callback
 ```
 
-Optional URL overrides:
+Optional URL overrides. In AgentBase Runtime, `deploy/start-container.sh` derives both from `GREENNODE_ENDPOINT_URL` when omitted:
 
 ```env
 FRONTEND_URL=https://<agentbase-endpoint>

@@ -16,6 +16,7 @@ import type {
   PlanApproval,
   RepoRef,
   ReviewSummary,
+  RunOptions,
   TestPlan,
   TestRunResult,
   WorkbenchJob,
@@ -78,6 +79,7 @@ export class WorkbenchService {
     sessionId: string,
     step: WorkbenchJobStep,
     approval: PlanApproval = { decision: 'approve', answers: {} },
+    runOptions: RunOptions = {},
   ): WorkbenchJob {
     const session = this.requireSession(sessionId);
     if (step === 'generate' && approval) {
@@ -127,7 +129,7 @@ export class WorkbenchService {
           emit: (event: AdapterEvent) => this.emit(session.id, job.id, event),
         };
 
-        const rawResult = await this.runAdapterStep(adapter, step, baseInput, currentSession, approval);
+        const rawResult = await this.runAdapterStep(adapter, step, baseInput, currentSession, approval, runOptions);
         const result = await this.normalizeStepResult(session.id, job.id, step, rawResult);
         this.setStepResult(session.id, step, result);
         await this.emit(session.id, job.id, { type: 'result', payload: result });
@@ -167,6 +169,7 @@ export class WorkbenchService {
     baseInput: Parameters<TestTypeAdapter['analyze']>[0],
     session: WorkbenchSession,
     approval: PlanApproval,
+    runOptions: RunOptions,
   ): Promise<IsolationResult | TestPlan | GenerationResult | TestRunResult | ReviewSummary> {
     switch (step) {
       case 'isolation':
@@ -179,7 +182,7 @@ export class WorkbenchService {
         return adapter.generate({ ...baseInput, plan: session.plan, approval });
       case 'run':
         if (!session.generation) throw new Error('Cannot run before generation result exists.');
-        return adapter.run({ ...baseInput, generation: session.generation });
+        return adapter.run({ ...baseInput, generation: session.generation, runOptions });
       case 'review':
         if (!session.generation) throw new Error('Cannot review before generation result exists.');
         if (!session.run) throw new Error('Cannot review before run result exists.');

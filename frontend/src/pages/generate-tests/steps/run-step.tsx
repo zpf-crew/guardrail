@@ -22,11 +22,14 @@ interface RunStepProps {
   progress: RunProgressEvent[];
   evidence: Evidence[];
   onBack: () => void;
+  onRunWithUrl: (manualBaseUrl: string) => void;
   onReview: () => void;
 }
 
-export function RunStep({ run, activeTestType, ranTests, running, progress, evidence, onBack, onReview }: RunStepProps) {
+export function RunStep({ run, activeTestType, ranTests, running, progress, evidence, onBack, onRunWithUrl, onReview }: RunStepProps) {
   const [expandedReasons, setExpandedReasons] = useState<Set<string>>(() => new Set());
+  const [manualUrl, setManualUrl] = useState('');
+  const failedAutoRun = Boolean(run && !running && run.ui.outcome === 'Failed');
 
   // Real API: results not back yet — show an honest running placeholder.
   if (!run) {
@@ -74,6 +77,30 @@ export function RunStep({ run, activeTestType, ranTests, running, progress, evid
               )}
             </div>
           )}
+        </div>
+      )}
+
+      {complete && showsUiRunSuite(activeTestType) && failedAutoRun && (
+        <div className="mb-[18px] rounded-[8px] border border-[rgba(129,140,248,0.22)] bg-[rgba(129,140,248,0.07)] p-[14px]">
+          <BlockHeader label="Run against existing app URL" />
+          <div className="text-[12px] leading-[1.45] text-[#aeb8ca] mb-[10px]">
+            If Guardrail cannot start this repo inside AgentBase, provide a running preview or staging URL and rerun the UI Browser flow there.
+          </div>
+          <div className="flex gap-[8px]">
+            <input
+              value={manualUrl}
+              onChange={event => setManualUrl(event.target.value)}
+              placeholder="https://preview.example.com"
+              className="min-w-0 flex-1 rounded-[7px] border border-[rgba(255,255,255,0.11)] bg-[#0b0d13] px-[10px] py-[8px] text-[12.5px] text-[#e8ebf2] outline-none focus:border-[#818cf8]"
+            />
+            <Button
+              variant="primary"
+              disabled={!manualUrl.trim()}
+              onClick={() => onRunWithUrl(manualUrl.trim())}
+            >
+              Run URL
+            </Button>
+          </div>
         </div>
       )}
 

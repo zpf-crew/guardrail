@@ -10,13 +10,25 @@ export interface DevServerLease {
 
 export interface SpawnedProcess {
   pid: number;
+  output?: () => ProcessOutput;
   kill: (signal?: NodeJS.Signals) => Promise<void>;
+}
+
+export interface ProcessOutput {
+  stdout: string;
+  stderr: string;
+}
+
+export interface DevServerLogEvent {
+  source: 'install' | 'server' | 'docker';
+  stream: 'stdout' | 'stderr';
+  text: string;
 }
 
 export type SpawnImpl = (
   command: string,
   args: string[],
-  options: { cwd: string; env: Record<string, string> },
+  options: { cwd: string; env: Record<string, string>; onOutput?: (event: DevServerLogEvent) => void; source?: DevServerLogEvent['source'] },
 ) => Promise<SpawnedProcess>;
 
 export type FetchImpl = (
@@ -33,6 +45,23 @@ export interface DevServerOrchestratorOptions {
 
 const DEFAULT_HEALTH_TIMEOUT_MS = Number(process.env.WORKBENCH_DEV_SERVER_TIMEOUT_MS) || 60_000;
 const DEFAULT_HEALTH_POLL_MS = 500;
+const MAX_CAPTURED_OUTPUT_CHARS = 8_000;
+
+function appendBounded(current: string, chunk: string): string {
+  const next = current + chunk;
+  return next.length > MAX_CAPTURED_OUTPUT_CHARS ? next.slice(-MAX_CAPTURED_OUTPUT_CHARS) : next;
+}
+
+function excerpt(value: string): string {
+  const trimmed = value.trim();
+  return trimmed.length > 2_000 ? `${trimmed.slice(0, 2_000)}…` : trimmed;
+}
+
+function outputDetail(output: ProcessOutput | undefined): string {
+  if (!output) return '';
+  const detail = excerpt(output.stderr || output.stdout);
+  return detail ? ` Output: ${detail}` : '';
+}
 
 function sleep(ms: number, signal: AbortSignal): Promise<void> {
   return new Promise((resolve, reject) => {
@@ -52,7 +81,7 @@ function sleep(ms: number, signal: AbortSignal): Promise<void> {
 function defaultSpawnImpl(
   command: string,
   args: string[],
-  options: { cwd: string; env: Record<string, string> },
+  options: { cwd: string; env: Record<string, string>; onOutput?: (event: DevServerLogEvent) => void; source?: DevServerLogEvent['source'] },
 ): Promise<SpawnedProcess> {
   return new Promise((resolve, reject) => {
     const child = nodeSpawn(command, args, {
@@ -62,9 +91,22 @@ function defaultSpawnImpl(
     });
 
     child.on('error', reject);
+    let stdout = '';
+    let stderr = '';
+    child.stdout?.on('data', chunk => {
+      const text = String(chunk);
+      stdout = appendBounded(stdout, text);
+      options.onOutput?.({ source: options.source ?? 'server', stream: 'stdout', text });
+    });
+    child.stderr?.on('data', chunk => {
+      const text = String(chunk);
+      stderr = appendBounded(stderr, text);
+      options.onOutput?.({ source: options.source ?? 'server', stream: 'stderr', text });
+    });
 
     const spawned: SpawnedProcess = {
       pid: child.pid ?? 0,
+      output: () => ({ stdout, stderr }),
       kill: async (signal = 'SIGTERM') => {
         if (child.exitCode !== null) return;
 
@@ -93,6 +135,40 @@ function defaultSpawnImpl(
   });
 }
 
+function runCommand(
+  command: string,
+  args: string[],
+  options: { cwd: string; env: Record<string, string>; signal: AbortSignal; onOutput?: (event: DevServerLogEvent) => void; source: DevServerLogEvent['source'] },
+): Promise<ProcessOutput> {
+  return new Promise((resolve, reject) => {
+    const child = nodeSpawn(command, args, {
+      cwd: options.cwd,
+      env: { ...process.env, ...options.env },
+      stdio: 'pipe',
+      signal: options.signal,
+    });
+    let stdout = '';
+    let stderr = '';
+
+    child.stdout?.on('data', chunk => {
+      const text = String(chunk);
+      stdout = appendBounded(stdout, text);
+      options.onOutput?.({ source: options.source, stream: 'stdout', text });
+    });
+    child.stderr?.on('data', chunk => {
+      const text = String(chunk);
+      stderr = appendBounded(stderr, text);
+      options.onOutput?.({ source: options.source, stream: 'stderr', text });
+    });
+    child.on('error', reject);
+    child.on('close', code => {
+      const output = { stdout, stderr };
+      if (code === 0) resolve(output);
+      else reject(new Error(`${command} ${args.join(' ')} failed with exit ${code ?? 1}.${outputDetail(output)}`));
+    });
+  });
+}
+
 export class DevServerOrchestrator {
   readonly #spawnImpl: SpawnImpl;
   readonly #fetchImpl: FetchImpl;
@@ -109,7 +185,12 @@ export class DevServerOrchestrator {
     this.#healthPollMs = options.healthPollMs ?? DEFAULT_HEALTH_POLL_MS;
   }
 
-  async start(target: DevServerTarget, signal: AbortSignal, route = '/'): Promise<DevServerLease> {
+  async start(
+    target: DevServerTarget,
+    signal: AbortSignal,
+    route = '/',
+    onLog?: (event: DevServerLogEvent) => void,
+  ): Promise<DevServerLease> {
     const baseUrl = `http://127.0.0.1:${target.port}`;
     const healthUrl = `${baseUrl}${target.healthPath}`;
     let cleanup: (() => Promise<void>) | null = null;
@@ -128,16 +209,34 @@ export class DevServerOrchestrator {
 
     try {
       if (target.kind === 'subprocess') {
+        if (target.installCommand && target.installArgs) {
+          onLog?.({ source: 'install', stream: 'stdout', text: `$ ${target.installCommand} ${target.installArgs.join(' ')}\n` });
+          await runCommand(target.installCommand, target.installArgs, {
+            cwd: target.cwd,
+            env: {},
+            signal,
+            onOutput: onLog,
+            source: 'install',
+          });
+        }
+        onLog?.({ source: 'server', stream: 'stdout', text: `$ ${target.command} ${target.args.join(' ')}\n` });
         const process = await this.#spawnImpl(target.command, target.args, {
           cwd: target.cwd,
           env: {
             PORT: String(target.port),
             HOST: '127.0.0.1',
           },
+          onOutput: onLog,
+          source: 'server',
         });
         cleanup = async () => {
           await process.kill('SIGTERM');
         };
+        try {
+          await this.#waitForHealth(healthUrl, signal);
+        } catch (error) {
+          throw new Error(`${error instanceof Error ? error.message : String(error)}.${outputDetail(process.output?.())}`);
+        }
       } else {
         await this.#spawnImpl('docker', [
           'compose',
@@ -151,6 +250,8 @@ export class DevServerOrchestrator {
         ], {
           cwd: dirname(target.composeFile),
           env: {},
+          onOutput: onLog,
+          source: 'docker',
         });
         cleanup = async () => {
           await this.#spawnImpl('docker', [
@@ -163,11 +264,12 @@ export class DevServerOrchestrator {
           ], {
             cwd: dirname(target.composeFile),
             env: {},
+            onOutput: onLog,
+            source: 'docker',
           });
         };
+        await this.#waitForHealth(healthUrl, signal);
       }
-
-      await this.#waitForHealth(healthUrl, signal);
 
       return {
         baseUrl,
