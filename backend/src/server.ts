@@ -1,11 +1,12 @@
 import { buildApp } from './app.js';
+import { env } from './config/env.js';
 
 const app = buildApp();
 
 const start = async () => {
   try {
     await app.listen({
-      port: 3000,
+      port: env.PORT,
       host: '0.0.0.0',
       listenTextResolver: address => `Guardrail API listening on ${address}`,
     });

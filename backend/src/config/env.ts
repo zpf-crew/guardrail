@@ -13,6 +13,7 @@ const envSchema = z.object({
   LLM_CODER_MODEL: z.string().optional(),
   FRONTEND_URL: z.string().url().optional(),
   BACKEND_URL: z.string().url().optional(),
+  PORT: z.coerce.number().int().positive().default(3000),
   WORKSPACE_DIR: z.string().default('.guardrail-workspaces'),
   TOKEN_ENC_KEY: z.string().optional(),
   SESSION_TTL_DAYS: z.coerce.number().int().positive().default(30),

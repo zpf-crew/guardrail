@@ -1,0 +1,45 @@
+FROM node:20-bookworm-slim AS build
+
+WORKDIR /app
+RUN corepack enable
+
+COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
+COPY backend/package.json backend/package.json
+COPY frontend/package.json frontend/package.json
+RUN pnpm install --frozen-lockfile
+
+COPY backend backend
+COPY frontend frontend
+COPY guardrail-skills guardrail-skills
+
+RUN pnpm --dir frontend build
+RUN pnpm --dir backend build
+RUN pnpm --filter guardrail-backend --prod deploy --legacy /app/backend-prod
+
+FROM node:20-bookworm-slim AS runtime
+
+ENV NODE_ENV=production
+ENV PORT=3000
+ENV WORKSPACE_DIR=/tmp/guardrail-workspaces
+
+RUN apt-get update \
+  && apt-get install -y --no-install-recommends nginx git ca-certificates \
+  && rm -rf /var/lib/apt/lists/* \
+  && corepack enable \
+  && mkdir -p /run/nginx /tmp/guardrail-workspaces /app
+
+WORKDIR /app
+
+COPY --from=build /app/backend-prod /app/backend
+COPY --from=build /app/backend/dist /app/backend/dist
+COPY --from=build /app/backend/db /app/backend/db
+COPY --from=build /app/guardrail-skills /app/guardrail-skills
+COPY --from=build /app/frontend/dist /usr/share/nginx/html
+COPY deploy/nginx.conf /etc/nginx/conf.d/default.conf
+COPY deploy/start-container.sh /usr/local/bin/start-container.sh
+
+RUN chmod +x /usr/local/bin/start-container.sh
+
+EXPOSE 8080
+
+CMD ["/usr/local/bin/start-container.sh"]

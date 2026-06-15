@@ -1,6 +1,6 @@
 import type { ConnectedRepo, GitHubRepoSummary, RepoFileContent, RepoFileNode } from '@/types/testlens';
 
-const API_BASE = import.meta.env.VITE_API_BASE_URL?.trim();
+const API_BASE = import.meta.env.VITE_API_BASE_URL?.trim() ?? '';
 const ACTIVE_REPO_KEY = 'tl.activeRepoId';
 
 export class ReposApiError extends Error {
@@ -11,9 +11,6 @@ export class ReposApiError extends Error {
 }
 
 function requireApiBase(): string {
-  if (!API_BASE) {
-    throw new ReposApiError('VITE_API_BASE_URL is not configured.');
-  }
   return API_BASE;
 }
 

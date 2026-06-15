@@ -4,7 +4,7 @@ import type { DashboardPayload } from '@/types/testlens';
  * Seam between the Dashboard UI and `GET /api/repos/:repoId/dashboard`.
  */
 
-const API_BASE = import.meta.env.VITE_API_BASE_URL?.trim();
+const API_BASE = import.meta.env.VITE_API_BASE_URL?.trim() ?? '';
 
 /** localStorage key the onboarding flow writes the chosen repo id to. */
 const ACTIVE_REPO_KEY = 'tl.activeRepoId';
@@ -26,9 +26,6 @@ export class DashboardApiError extends Error {
 }
 
 function requireApiBase(): string {
-  if (!API_BASE) {
-    throw new DashboardApiError('VITE_API_BASE_URL is not configured.');
-  }
   return API_BASE;
 }
 

@@ -29,7 +29,7 @@ import {
 const configuredApiBase = import.meta.env.VITE_API_BASE_URL?.trim();
 const API_BASE = configuredApiBase && configuredApiBase.length > 0
   ? configuredApiBase
-  : 'http://localhost:3000';
+  : '';
 
 export type JobStep = 'isolation' | 'plan' | 'generate' | 'run' | 'review';
 export type JobStatus = 'queued' | 'running' | 'succeeded' | 'failed' | 'timeout';
