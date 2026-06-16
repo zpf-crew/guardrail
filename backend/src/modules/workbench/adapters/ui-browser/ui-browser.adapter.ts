@@ -78,9 +78,12 @@ interface DevServerLike {
   stop: (lease: DevServerLease) => Promise<void>;
 }
 
+type UrlReachabilityCheck = (url: string, signal: AbortSignal) => Promise<void>;
+
 interface UiBrowserAdapterOptions {
   agentRunner?: AgentRunnerLike;
   devServer?: DevServerLike;
+  checkUrlReachable?: UrlReachabilityCheck;
 }
 
 interface UiRunOutcome {
@@ -138,6 +141,22 @@ function resolveManualTarget(manualBaseUrl: string | undefined, defaultRoute: st
     ? defaultRoute
     : `${url.pathname}${url.search}${url.hash}`;
   return { baseUrl: url.origin, route, targetUrl: `${url.origin}${route}` };
+}
+
+async function defaultCheckUrlReachable(url: string, signal: AbortSignal): Promise<void> {
+  let response: Response;
+  try {
+    response = await fetch(url, { method: 'HEAD', signal, redirect: 'follow' });
+    if (response.status === 405 || response.status === 501) {
+      response = await fetch(url, { method: 'GET', signal, redirect: 'follow' });
+    }
+  } catch (error) {
+    throw new Error(`Cannot reach provided app URL ${url}: ${error instanceof Error ? error.message : String(error)}`);
+  }
+
+  if (!response.ok) {
+    throw new Error(`Provided app URL ${url} responded with HTTP ${response.status}.`);
+  }
 }
 
 function durationLabel(durationMs: number): string {
@@ -272,9 +291,11 @@ export class UiBrowserAdapter implements TestTypeAdapter {
 
   readonly #agentRunner: AgentRunnerLike | null;
   readonly #devServer: DevServerLike;
+  readonly #checkUrlReachable: UrlReachabilityCheck;
 
   constructor(options: UiBrowserAdapterOptions = {}) {
     this.#agentRunner = options.agentRunner ?? null;
+    this.#checkUrlReachable = options.checkUrlReachable ?? defaultCheckUrlReachable;
     if (options.devServer) {
       this.#devServer = options.devServer;
     } else {
@@ -542,6 +563,12 @@ export class UiBrowserAdapter implements TestTypeAdapter {
     try {
       const manualTarget = resolveManualTarget(input.runOptions?.manualBaseUrl, defaultRoute);
       if (manualTarget) {
+        await input.emit({
+          type: 'progress',
+          message: `Checking provided app URL before UI Browser run: ${manualTarget.targetUrl}`,
+          percent: 75,
+        });
+        await this.#checkUrlReachable(manualTarget.targetUrl, input.signal);
         await input.emit({
           type: 'progress',
           message: `Using provided app URL for UI Browser run: ${manualTarget.targetUrl}`,

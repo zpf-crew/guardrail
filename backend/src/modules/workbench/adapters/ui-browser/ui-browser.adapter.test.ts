@@ -589,6 +589,69 @@ test('run starts and stops dev server before agent-browser', async () => {
   assert.deepEqual(events, ['stopped']);
 });
 
+test('manual app URL is checked before running UI browser scenarios', async () => {
+  const checkedUrls: string[] = [];
+  const runCalls: Array<{ baseUrl: string; defaultRoute: string }> = [];
+  const adapter = createAdapter({
+    checkUrlReachable: async url => {
+      checkedUrls.push(url);
+    },
+    agentRunner: {
+      runScenario: async ({ baseUrl, defaultRoute }) => {
+        runCalls.push({ baseUrl, defaultRoute });
+        return defaultAgentScenarioResult();
+      },
+    },
+    devServer: {
+      ...stubDevServer(),
+      resolve: async () => {
+        throw new Error('dev server should not resolve for manual URL runs');
+      },
+    },
+  });
+  const input = await buildInput({ structuredModel: generationStructuredModel() });
+  const generation = stubGeneration();
+
+  const run = await adapter.run({ ...input, generation, runOptions: { manualBaseUrl: 'http://localhost:4173/cart' } });
+
+  assert.deepEqual(checkedUrls, ['http://localhost:4173/cart']);
+  assert.deepEqual(runCalls, [{ baseUrl: 'http://localhost:4173', defaultRoute: '/cart' }]);
+  assert.equal(run.ui.outcome, 'Passed');
+});
+
+test('manual app URL failure is reported before UI browser scenarios run', async () => {
+  let runCalled = false;
+  const progressMessages: string[] = [];
+  const adapter = createAdapter({
+    checkUrlReachable: async url => {
+      throw new Error(`Cannot reach provided app URL ${url}: connect ECONNREFUSED`);
+    },
+    agentRunner: {
+      runScenario: async () => {
+        runCalled = true;
+        return defaultAgentScenarioResult();
+      },
+    },
+  });
+  const input = await buildInput({
+    structuredModel: generationStructuredModel(),
+    emit: async event => {
+      if (event.type === 'progress') progressMessages.push(event.message);
+      return event;
+    },
+  });
+  const generation = stubGeneration();
+
+  const run = await adapter.run({ ...input, generation, runOptions: { manualBaseUrl: 'http://localhost:4173/cart' } });
+
+  assert.equal(runCalled, false);
+  assert.equal(run.ui.outcome, 'Failed');
+  assert.equal(run.matrix[0]?.status, 'Failed');
+  assert.match(run.matrix[0]?.reason ?? '', /Cannot reach provided app URL/);
+  assert.match(run.matrix[0]?.reason ?? '', /connect ECONNREFUSED/);
+  assert.ok(progressMessages.some(message => /Checking provided app URL/.test(message)));
+});
+
 test('run executes one agent-browser session per generated UI change', async () => {
   const runCalls: string[] = [];
   const adapter = createAdapter({
