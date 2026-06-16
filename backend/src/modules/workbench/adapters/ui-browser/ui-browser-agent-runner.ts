@@ -631,14 +631,16 @@ async function captureBrowserDiagnostics(
   debug?: (message: string) => void,
 ): Promise<Evidence | null> {
   try {
-    const [url, consoleOutput, errors, networkRequests] = await Promise.all([
+    const [url, bodyText, rootHtml, consoleOutput, errors, networkRequests] = await Promise.all([
       execute(['get', 'url'], signal).catch(errorResult),
+      execute(['get', 'text', 'body'], signal).catch(errorResult),
+      execute(['get', 'html', '#root'], signal).catch(errorResult),
       execute(['console'], signal).catch(errorResult),
       execute(['errors'], signal).catch(errorResult),
       execute(['network', 'requests'], signal).catch(errorResult),
     ]);
 
-    debug?.(`diagnostics ${label} url=${debugExcerpt(url.stdout || url.stderr)} console=${diagnosticSummary(consoleOutput)} errors=${diagnosticSummary(errors)} network=${diagnosticSummary(networkRequests)}`);
+    debug?.(`diagnostics ${label} url=${debugExcerpt(url.stdout || url.stderr)} bodyText=${diagnosticSummary(bodyText)} rootHtml=${diagnosticSummary(rootHtml)} console=${diagnosticSummary(consoleOutput)} errors=${diagnosticSummary(errors)} network=${diagnosticSummary(networkRequests)}`);
 
     const dir = path.join(os.tmpdir(), 'guardrail-ui-browser-diagnostics');
     await mkdir(dir, { recursive: true });
@@ -650,6 +652,8 @@ async function captureBrowserDiagnostics(
         label,
         capturedAt: new Date().toISOString(),
         url,
+        bodyText,
+        rootHtml,
         console: consoleOutput,
         errors,
         networkRequests,

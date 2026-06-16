@@ -648,6 +648,8 @@ test('agent runner captures browser diagnostics on failure', async () => {
       if (args[0] === 'snapshot') return { exitCode: 0, stdout: '(no interactive elements)', stderr: '' };
       if (args[0] === 'screenshot') return { exitCode: 0, stdout: 'Screenshot saved to /tmp/blank.png', stderr: '' };
       if (args[0] === 'get' && args[1] === 'url') return { exitCode: 0, stdout: 'http://127.0.0.1:5555/products', stderr: '' };
+      if (args[0] === 'get' && args[1] === 'text' && args[2] === 'body') return { exitCode: 0, stdout: 'Products', stderr: '' };
+      if (args[0] === 'get' && args[1] === 'html' && args[2] === '#root') return { exitCode: 0, stdout: '<main>Products</main>', stderr: '' };
       if (args[0] === 'console') return { exitCode: 0, stdout: '[error] render failed', stderr: '' };
       if (args[0] === 'errors') return { exitCode: 0, stdout: 'TypeError: Cannot read properties of undefined', stderr: '' };
       if (args[0] === 'network') return { exitCode: 0, stdout: 'GET /src/App.tsx 200', stderr: '' };
@@ -668,8 +670,10 @@ test('agent runner captures browser diagnostics on failure', async () => {
   assert.ok(calls.some(call => call.join(' ') === 'console'));
   assert.ok(calls.some(call => call.join(' ') === 'errors'));
   assert.ok(calls.some(call => call.join(' ') === 'network requests'));
+  assert.ok(calls.some(call => call.join(' ') === 'get text body'));
+  assert.ok(calls.some(call => call.join(' ') === 'get html #root'));
   assert.ok(result.evidence.some(item => item.kind === 'trace' && /failure diagnostics/i.test(item.label)));
-  assert.ok(debug.some(message => /diagnostics failure diagnostics/i.test(message)));
+  assert.ok(debug.some(message => /diagnostics failure diagnostics/i.test(message) && /bodyText=/i.test(message) && /rootHtml=/i.test(message)));
 });
 
 test('agent runner allows total scenario duration to exceed one step budget after progress', async () => {
