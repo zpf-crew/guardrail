@@ -14,6 +14,7 @@ import { formatRelativeTime } from '@/lib/format-relative-time';
 import { formatPercent } from '@/lib/format-percent';
 import { trendPresentation } from '@/lib/trend-presentation';
 import { startScan } from '@/data/scan-api';
+import type { ScanStreamProgress } from '@/data/scan-stream';
 import { useScanProgress } from '@/components/scan/use-scan-progress';
 import { ScanProgressOverlay } from '@/components/scan/scan-progress-overlay';
 import { exportDashboardReport } from '@/lib/export-dashboard-report';
@@ -115,7 +116,7 @@ export function DashboardPage() {
   const [highlightedInsight, setHighlightedInsight] = React.useState<string | null>(null);
   const [highlightedTests, setHighlightedTests] = React.useState<Set<string>>(new Set());
   const [jumpTarget, setJumpTarget] = React.useState<string | null>(null);
-  const runScan = React.useCallback(() => startScan(), []);
+  const runScan = React.useCallback((onProgress: (p: ScanStreamProgress) => void) => startScan(onProgress), []);
   const scan = useScanProgress(runScan);
 
   React.useEffect(() => {

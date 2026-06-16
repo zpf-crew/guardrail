@@ -55,6 +55,17 @@ export interface ScanLogEntry {
   message: string;
 }
 
+/** A real-time progress update emitted while a scan runs (streamed to the client over SSE). */
+export interface ScanProgressEvent {
+  message: string;
+  percent: number;
+  level?: 'info' | 'ok' | 'warn';
+  /** ISO timestamp of when this step actually happened (stamped at emit time). */
+  at?: string;
+}
+
+export type ScanProgress = (event: ScanProgressEvent) => void;
+
 export interface ScanSummary {
   automatedTestsFound: number;
   qcCasesImported: number;

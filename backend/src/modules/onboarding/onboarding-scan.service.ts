@@ -11,6 +11,7 @@ import type {
   RepoScanFacts,
   RiskLevel,
   ScanLogEntry,
+  ScanProgress,
   ScanReasoningResult,
   ScanSummary,
   Severity,
@@ -763,27 +764,42 @@ function buildLogs(
   ];
 }
 
-export async function runOnboardingScan(repo: RepoRecord, draft: OnboardingDraftInput): Promise<OnboardingCommitResponse> {
+export async function runOnboardingScan(
+  repo: RepoRecord,
+  draft: OnboardingDraftInput,
+  onProgress?: ScanProgress,
+): Promise<OnboardingCommitResponse> {
   if (!repo.clonePath) {
     throw new Error('Repository clone not found');
   }
 
-  const facts = await analyzeRepo(repo.clonePath);
+  const facts = await analyzeRepo(repo.clonePath, onProgress);
   const fallback = fallbackReasoning(facts, draft);
   const moduleTargets = buildModuleTargets(facts);
+
+  // The per-module model analysis is the long tail; emit a progress tick as each module completes so
+  // the bar reflects real work (60 → 88%) instead of freezing.
+  let completed = 0;
+  const total = Math.max(1, moduleTargets.length);
+  onProgress?.({ message: `Analyzing ${moduleTargets.length} modules with the model…`, percent: 60 });
   const moduleOutcomes = await runWithConcurrency(moduleTargets, MODULE_MODEL_CONCURRENCY, async module => {
     const outcome = await analyzeModuleWithModel(module, facts, draft);
+    completed += 1;
+    onProgress?.({ message: `Analyzed module ${completed}/${total}: ${module.name}`, percent: 60 + Math.round((completed / total) * 28) });
     if (outcome.reasoning) return outcome;
     return {
       ...outcome,
       reasoning: fallbackModuleReasoning(module, facts, draft),
     };
   });
+
+  onProgress?.({ message: 'Aggregating findings into the dashboard…', percent: 92 });
   const mergedModuleReasoning = mergeReasoningResults(moduleOutcomes.map(outcome => outcome.reasoning ?? fallback));
   const aggregateOutcome = await aggregateWithModel(facts, draft, moduleOutcomes, mergedModuleReasoning);
   const reasoning = normalizeReasoning(aggregateOutcome.reasoning, fallback);
   const { summary, dashboard } = buildDashboard(repo, facts, draft, reasoning);
   const logs = buildLogs(facts, draft, summary, moduleOutcomes, aggregateOutcome);
+  onProgress?.({ message: 'Generated initial testing insights', percent: 98, level: 'ok' });
 
   return {
     jobId: `scan-${repo.id}-${Date.now()}`,

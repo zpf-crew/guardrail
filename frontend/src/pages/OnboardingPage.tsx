@@ -405,29 +405,20 @@ export function OnboardingPage() {
     setScanEta('done');
     setScanTaskIndex(onboardingScanTasks.length);
     setScanSummary(result.summary);
-    if (result.logs.length) {
-      setScanLogMessages(result.logs.map(log => ({ tag: log.level, message: log.message, at: log.at })));
-    }
+    // Keep the streamed feed (accurate per-step times); just mark completion.
+    setScanLogMessages(prev => [...prev, { tag: 'ok', message: 'Scan complete', at: new Date().toISOString() }]);
     setStepStates(prev => prev.map((state, idx) => (idx === 3 ? 'done' : state)));
     toast('Scan complete', 'success');
   }, [toast]);
 
-  const runScanStep = React.useCallback((index: number) => {
+  // Map a real scan percent onto the onboarding step list so its highlight advances with actual work.
+  const applyScanProgress = React.useCallback((progress: { message: string; percent: number; level?: 'ok' | 'warn' | 'info'; at?: string }) => {
     const total = onboardingScanTasks.length;
-    if (index >= total) {
-      setScanProgress(96);
-      setScanStepLabel('Generating initial testing insights');
-      setScanEta('waiting for scan result');
-      return;
-    }
-
-    setScanTaskIndex(index);
-    setScanProgress(Math.round(((index + 0.5) / total) * 100));
-    setScanStepLabel(onboardingScanTasks[index].label);
-    setScanEta(`~${Math.max(1, total - index)}s remaining`);
-    setScanLogMessages(prev => [...prev, { tag: onboardingScanTasks[index].warn ? 'warn' : 'info', message: onboardingScanTasks[index].label }]);
-
-    scanTimerRef.current = setTimeout(() => runScanStep(index + 1), 620 + Math.random() * 260);
+    setScanProgress(progress.percent);
+    setScanStepLabel(progress.message);
+    setScanTaskIndex(Math.min(total - 1, Math.floor((progress.percent / 100) * total)));
+    setScanEta('');
+    setScanLogMessages(prev => [...prev, { tag: progress.level ?? 'info', message: progress.message, at: progress.at }]);
   }, []);
 
   const buildDraft = (): Partial<OnboardingDraft> => ({
@@ -481,15 +472,13 @@ export function OnboardingPage() {
     setScanTaskIndex(-1);
     setScanLogMessages([]);
     setScanProgress(0);
+    setScanStepLabel('Preparing…');
     setScanSummary(null);
     toast('Scan started', 'loading');
-    scanTimerRef.current = setTimeout(() => runScanStep(0), 300);
     try {
-      const result = await commitOnboardingScan(repoId, buildDraft());
-      if (scanTimerRef.current) clearTimeout(scanTimerRef.current);
+      const result = await commitOnboardingScan(repoId, buildDraft(), applyScanProgress);
       finishScan(result);
     } catch (e) {
-      if (scanTimerRef.current) clearTimeout(scanTimerRef.current);
       setScanning(false);
       setScanEta('');
       setScanStepLabel('Scan failed');
