@@ -1,5 +1,6 @@
 import type { FastifyInstance } from 'fastify';
 import type { Pool } from 'pg';
+import { env } from '../../config/env.js';
 import { UiBrowserAdapter } from './adapters/ui-browser/ui-browser.adapter.js';
 import { WorkbenchArtifactStore } from './artifacts/workbench-artifact-store.js';
 import { WorkbenchJobEventBus } from './jobs/job-events.js';
@@ -15,7 +16,7 @@ export { buildWorkbenchRoutes } from './workbench.routes.js';
 export function createWorkbenchService(db: Pool): WorkbenchService {
   return new WorkbenchService(
     new WorkbenchJobStore(),
-    new WorkbenchJobQueue({ concurrency: 50 }),
+    new WorkbenchJobQueue({ concurrency: 50, maxPendingJobs: env.WORKBENCH_MAX_PENDING_JOBS }),
     new WorkbenchJobEventBus(),
     new WorkbenchArtifactStore(),
     ClonedRepoRepositoryProvider.fromDb(db),

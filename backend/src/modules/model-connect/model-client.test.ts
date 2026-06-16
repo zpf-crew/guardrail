@@ -76,6 +76,44 @@ test('model client limits concurrent LLM fetches to five', async () => {
   assert.equal(active, 0);
 });
 
+test('model client rejects new calls when LLM pending queue is full', async () => {
+  let active = 0;
+  let maxActive = 0;
+  let started = 0;
+  const releases: Array<() => void> = [];
+  const client = clientWithFetch(async () => {
+    active += 1;
+    maxActive = Math.max(maxActive, active);
+    started += 1;
+    await new Promise<void>(resolve => releases.push(resolve));
+    active -= 1;
+    return response(200, { choices: [{ message: { content: 'ok' } }] }) as never;
+  });
+
+  const acceptedCalls = Array.from({ length: 105 }, () => client.chat([{ role: 'user', content: 'Return text.' }]));
+  await waitUntil(() => started === 5);
+
+  await assert.rejects(
+    () => client.chat([{ role: 'user', content: 'Return text.' }]),
+    (error: unknown) => {
+      assert.ok(error instanceof ModelClientError);
+      assert.equal(error.code, 'model_queue_full');
+      assert.equal(error.retryable, true);
+      return true;
+    },
+  );
+
+  while (started < 105) {
+    releases.splice(0).forEach(resolve => resolve());
+    await waitUntil(() => releases.length > 0 || started === 105);
+  }
+  releases.splice(0).forEach(resolve => resolve());
+  await Promise.all(acceptedCalls);
+
+  assert.equal(maxActive, 5);
+  assert.equal(active, 0);
+});
+
 test('model client classifies 429 as retryable HTTP error', async () => {
   const client = clientWithFetch(async () => response(429, { error: { message: 'rate limited' } }, 'Too Many Requests') as never);
 

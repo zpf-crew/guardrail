@@ -15,15 +15,22 @@ interface PendingQueueJob {
 
 export class WorkbenchJobQueue {
   private readonly concurrency: number;
+  private readonly maxPendingJobs: number;
   private readonly pending: PendingQueueJob[] = [];
   private active = 0;
 
-  constructor(options: { concurrency: number }) {
+  constructor(options: { concurrency: number; maxPendingJobs?: number }) {
     this.concurrency = Math.max(1, options.concurrency);
+    this.maxPendingJobs = Math.max(0, options.maxPendingJobs ?? Number.POSITIVE_INFINITY);
   }
 
   enqueue(job: QueueJob): Promise<void> {
     safeStatus(job, 'queued');
+    if (this.pending.length >= this.maxPendingJobs) {
+      safeStatus(job, 'failed');
+      safeError(job, `Workbench job queue is full. Try again later. Max pending jobs: ${this.maxPendingJobs}.`);
+      return Promise.resolve();
+    }
 
     return new Promise<void>(resolve => {
       this.pending.push({ job, resolve, settled: false });

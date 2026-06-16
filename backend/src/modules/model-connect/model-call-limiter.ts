@@ -1,3 +1,6 @@
+import { env } from '../../config/env.js';
+import { ModelClientError } from './model-errors.js';
+
 const MAX_CONCURRENT_MODEL_CALLS = 5;
 
 interface PendingAcquire {
@@ -30,6 +33,13 @@ function acquireModelCallSlot(signal: AbortSignal | undefined): Promise<() => vo
   if (activeCalls < MAX_CONCURRENT_MODEL_CALLS) {
     activeCalls += 1;
     return Promise.resolve(releaseModelCallSlot);
+  }
+  if (pending.length >= env.MODEL_MAX_PENDING_CALLS) {
+    return Promise.reject(new ModelClientError({
+      code: 'model_queue_full',
+      message: `LLM request queue is full. Try again later. Max pending calls: ${env.MODEL_MAX_PENDING_CALLS}.`,
+      retryable: true,
+    }));
   }
 
   return new Promise((resolve, reject) => {

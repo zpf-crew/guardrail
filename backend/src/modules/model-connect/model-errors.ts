@@ -6,6 +6,7 @@ export type ModelErrorCode =
   | 'model_http_5xx'
   | 'model_http_failed'
   | 'model_network_error'
+  | 'model_queue_full'
   | 'model_response_invalid'
   | 'model_content_empty'
   | 'model_aborted'

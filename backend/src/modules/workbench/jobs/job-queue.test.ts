@@ -55,6 +55,52 @@ test('job queue frees concurrency when a timed-out job ignores abort', async () 
   ]);
 });
 
+test('job queue fails new jobs when pending queue is full', async () => {
+  const events: string[] = [];
+  const queue = new WorkbenchJobQueue({ concurrency: 1, maxPendingJobs: 1 });
+  let releaseFirst!: () => void;
+
+  const firstJob = queue.enqueue({
+    timeoutMs: 0,
+    onStatus: status => events.push(`first:${status}`),
+    onError: message => events.push(`first:${message}`),
+    run: async () => {
+      await new Promise<void>(resolve => {
+        releaseFirst = resolve;
+      });
+    },
+  });
+  const secondJob = queue.enqueue({
+    timeoutMs: 0,
+    onStatus: status => events.push(`second:${status}`),
+    onError: message => events.push(`second:${message}`),
+    run: async () => {
+      events.push('second:run');
+    },
+  });
+  await queue.enqueue({
+    timeoutMs: 0,
+    onStatus: status => events.push(`third:${status}`),
+    onError: message => events.push(`third:${message}`),
+    run: async () => {
+      events.push('third:run');
+    },
+  });
+
+  assert.deepEqual(events, [
+    'first:queued',
+    'first:running',
+    'second:queued',
+    'third:queued',
+    'third:failed',
+    'third:Workbench job queue is full. Try again later. Max pending jobs: 1.',
+  ]);
+
+  releaseFirst();
+  await Promise.all([firstJob, secondJob]);
+  assert.equal(events.includes('third:run'), false);
+});
+
 test('job queue frees concurrency before a late cooperative abort error is emitted', async () => {
   const events: string[] = [];
   const queue = new WorkbenchJobQueue({ concurrency: 1 });
