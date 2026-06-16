@@ -47,6 +47,42 @@ async function detectPackageManager(clonePath: string): Promise<PackageManager> 
   return 'npm';
 }
 
+async function readPackageScripts(filePath: string): Promise<Record<string, string> | null> {
+  if (!(await fileExists(filePath))) return null;
+  try {
+    const payload = JSON.parse(await readFile(filePath, 'utf8')) as { scripts?: Record<string, string> };
+    return payload.scripts ?? {};
+  } catch {
+    return null;
+  }
+}
+
+function formatScripts(scripts: Record<string, string> | null): string {
+  if (!scripts) return 'package.json not found';
+  const names = Object.keys(scripts).sort();
+  return names.length > 0 ? names.join(', ') : 'no scripts';
+}
+
+export async function diagnoseDevServerResolution(clonePath: string): Promise<string[]> {
+  const files = await readdir(clonePath).catch(() => [] as string[]);
+  const packageManager = await detectPackageManager(clonePath);
+  const frontendScripts = await readPackageScripts(join(clonePath, 'frontend', 'package.json'));
+  const rootScripts = await readPackageScripts(join(clonePath, 'package.json'));
+  const composeFile = await findComposeFile(clonePath);
+  const composeService = composeFile ? await detectWebService(composeFile) : null;
+
+  return [
+    `clonePath=${clonePath}`,
+    `topLevelFiles=${files.slice(0, 40).join(', ') || '<empty>'}`,
+    `packageManager=${packageManager}`,
+    `frontendPackageScripts=${formatScripts(frontendScripts)}`,
+    `rootPackageScripts=${formatScripts(rootScripts)}`,
+    `composeFile=${composeFile ?? '<none>'}`,
+    `composeWebService=${composeService ?? '<none>'}`,
+    'resolverPolicy=frontend package dev script, root package dev script, root package start script, then docker compose web service',
+  ];
+}
+
 function buildDevArgs(packageManager: PackageManager, packageDir: string | null, port: number): string[] {
   const portArgs = ['--host', '127.0.0.1', '--port', String(port)];
 

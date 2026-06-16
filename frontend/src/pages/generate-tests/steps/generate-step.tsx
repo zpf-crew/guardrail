@@ -166,7 +166,7 @@ export function GenerateStep({ generation, genStep, genComplete, onBack, onRunTe
       <div className="flex gap-[10px]">
         <Button variant="ghost" onClick={onBack}>Back</Button>
         {genComplete
-          ? <Button variant="primary" size="lg" onClick={onRunTests}>Run Tests</Button>
+          ? <Button variant="primary" size="lg" onClick={() => onRunTests()}>Run Tests</Button>
           : <Button variant="primary" size="lg" disabled><LoaderIcon className="w-[15px] h-[15px] mr-[6px] animate-spin" />Generating…</Button>}
       </div>
     </div>
