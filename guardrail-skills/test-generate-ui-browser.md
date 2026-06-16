@@ -41,6 +41,8 @@ Do **not** generate Playwright, Cypress, Vitest, jsdom, or React Testing Library
 - Write Gherkin steps reviewers can map to browser actions (open page, click, fill, assert visible text).
 - Use repository snippets for realistic labels, routes, and button text.
 - Do not create required `Then` steps for transient toasts, snackbars, banners, or success notifications. These can disappear before the agent observes them. For state-changing flows, assert durable user-visible state instead, such as cart count, cart contents, route changes, saved item state, table rows, headings, or persisted form values.
+- Never assert exact names, IDs, SKUs, product names, order numbers, usernames, repository names, or other identity values unless that exact value is present in repository evidence, specs, QC cases, resolved user answers, or was created earlier in the same scenario. If the data is unknown, assert behavior-level facts instead, such as a non-empty result list, count changes, route changes, the selected item appears in cart, or persisted state changes.
+- Each generated scenario must be executable from a fresh browser session. Do not assume cart contents, wishlist contents, selected variants, form values, login state, or any other state created by a previous scenario unless the scenario itself creates that state first.
 - Do not write production code.
 - When `resolvedPlanAnswers` is non-empty, encode the selected product behavior in scenario steps and `reason` fields.
 - Do not re-ask questions already answered in `resolvedPlanAnswers`.

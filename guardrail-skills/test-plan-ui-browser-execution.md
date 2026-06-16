@@ -33,6 +33,9 @@ Return only one valid `UiBrowserExecutionPlan` JSON object.
 - Do not include toast, snackbar, notification, loading, spinner, animation, fade, disappears, cleanup, or exploratory checks in any `instruction` or `successCriteria` unless the accepted flow specifically exists to test that transient behavior.
 - Action `successCriteria` must be mechanical and brief, such as "The click completes", "The route changes", "The results load", or "The page state is ready for the next assertion".
 - Assertion `successCriteria` must be durable, such as cart count, cart contents, route, heading, persisted field value, search result text, table row, or saved state.
+- Assertion `successCriteria` must not require exact names, IDs, SKUs, product names, order numbers, usernames, repository names, or other identity values unless that exact value is grounded in `sourceScenarios`, `repositoryEvidence`, resolved user answers, or created earlier in the same plan. Prefer durable behavior assertions such as item count, non-empty results, route, persisted field value, "the selected item appears", or "the added item appears".
+- Each plan runs in a fresh browser session. Do not assume cart contents, wishlist contents, selected variants, form values, search state, login state, or other state from a previous scenario.
+- If the flow depends on state such as an item in the cart, an item in the wishlist, a selected variant, or an existing row, add action steps that create or ground that state inside this same plan before asserting or mutating it.
 - Include natural scroll guidance when a control may be below the fold.
 - Do not include selectors, accessibility refs, or private knowledge about a specific test repository.
 
@@ -44,6 +47,9 @@ When `generatedPlan` is present, repair that plan instead of creating an unrelat
 - Otherwise return a corrected full `UiBrowserExecutionPlan`.
 - Preserve the same `flowId`, title, and user goal unless they conflict with the rules.
 - Move any interaction hidden inside an `assert` step into one or more preceding `action` steps.
+- Remove wrong-state steps from the repaired plan. A wrong-state step is any step that clicks, decrements, removes, edits, checks out, submits, or asserts against data that was never created, selected, or grounded earlier in the same fresh-session plan.
+- If a wrong-state plan can be repaired within five steps, add the missing setup first. Example: replace "Open cart, click minus, assert item count decreased" with a self-contained flow that opens a product, adds it to cart, opens the cart, clicks minus, and verifies the cart count changes.
+- If the required precondition cannot be created or grounded within five steps, do not preserve the impossible action or assertion. Return the shortest self-contained plan for the same feature area that verifies a durable default state or setup outcome.
 - Keep or create one final durable `assert` step after the needed actions.
 - Keep the repaired plan within five total steps.
 
