@@ -4,10 +4,12 @@ import path from 'node:path';
 import { promisify } from 'node:util';
 import { walkRepositoryFiles } from '../../lib/repo-file-walker.js';
 import { readFileCoverage } from './coverage-report-parser.js';
-import type { RepoScanFacts } from './onboarding.types.js';
+import type { RepoScanFacts, ScanProgress } from './onboarding.types.js';
 
 const exec = promisify(execCallback);
-const TEST_FILE_RE = /(^|\/)(__tests__|tests?|e2e|cypress|playwright)(\/|$)|\.(test|spec)\.[cm]?[jt]sx?$/i;
+// Recognize unit/integration specs, dedicated test dirs, and Gherkin `.feature` files (the UI-flow
+// test artifact). `.feature` must be the extension so paths like `src/feature/flags.ts` stay source.
+const TEST_FILE_RE = /(^|\/)(__tests__|tests?|e2e|cypress|playwright)(\/|$)|\.(test|spec)\.[cm]?[jt]sx?$|\.feature$/i;
 const SOURCE_FILE_RE = /\.(ts|tsx|js|jsx|mjs|cjs|py|go|rs|java|kt|swift)$/i;
 const MAX_SNIPPET_BYTES = 8000;
 
@@ -194,12 +196,13 @@ async function readSnippets(root: string, files: string[]): Promise<{ snippets: 
   return { snippets, skippedLargeFiles };
 }
 
-export async function analyzeRepo(clonePath: string): Promise<RepoScanFacts> {
+export async function analyzeRepo(clonePath: string, onProgress?: ScanProgress): Promise<RepoScanFacts> {
   const rootStat = await stat(clonePath);
   if (!rootStat.isDirectory()) {
     throw new Error('Repository clone path is not a directory');
   }
 
+  onProgress?.({ message: 'Indexing repository files…', percent: 8 });
   const files = await walk(clonePath);
   const packageJson = await readFile(path.join(clonePath, 'package.json'), 'utf8')
     .then(raw => JSON.parse(raw) as Record<string, unknown>)
@@ -208,16 +211,23 @@ export async function analyzeRepo(clonePath: string): Promise<RepoScanFacts> {
   const packageManager = detectPackageManager(files);
   const sourceFiles = files.filter(file => SOURCE_FILE_RE.test(file) && !TEST_FILE_RE.test(file));
   const testFiles = files.filter(file => TEST_FILE_RE.test(file));
+  onProgress?.({ message: `Classified ${sourceFiles.length} source and ${testFiles.length} test files`, percent: 15, level: 'ok' });
   const sourceSnippetResult = await readSnippets(clonePath, sourceFiles);
   const testSnippetResult = await readSnippets(clonePath, testFiles);
   const commands = detectCommands(packageJson, packageManager);
+  const detectedStack = detectStack(packageJson, files);
+  onProgress?.({ message: detectedStack.length ? `Detected ${detectedStack.join(', ')}` : 'No known test framework detected', percent: 20, level: detectedStack.length ? 'ok' : 'warn' });
   const hasPackageJson = files.includes('package.json');
   const hasNodeModules = await stat(path.join(clonePath, 'node_modules')).then(info => info.isDirectory()).catch(() => false);
-  const installRun = hasPackageJson && !hasNodeModules && (commands.test || commands.coverage)
+  const needsInstall = hasPackageJson && !hasNodeModules && (commands.test || commands.coverage);
+  if (needsInstall) onProgress?.({ message: 'Installing repository dependencies…', percent: 26 });
+  const installRun = needsInstall
     ? await runCommand(clonePath, installCommand(packageManager), 120_000)
     : undefined;
   const canRunCommands = !installRun || installRun.ok;
+  if (commands.test && canRunCommands) onProgress?.({ message: `Running test command: ${commands.test}`, percent: 40 });
   const testRun = commands.test && canRunCommands ? await runCommand(clonePath, commands.test) : undefined;
+  if (commands.coverage && canRunCommands) onProgress?.({ message: `Running coverage command: ${commands.coverage}`, percent: 50 });
   const coverageRunBase = commands.coverage && canRunCommands ? await runCommand(clonePath, commands.coverage) : undefined;
   // Read the per-file coverage report the run wrote to disk (stdout only carries the repo-level total).
   const coverageFiles = coverageRunBase ? await readFileCoverage(clonePath) : [];
@@ -233,7 +243,7 @@ export async function analyzeRepo(clonePath: string): Promise<RepoScanFacts> {
     testSnippets: testSnippetResult.snippets,
     skippedLargeFiles: sourceSnippetResult.skippedLargeFiles + testSnippetResult.skippedLargeFiles,
     modules: buildModules(sourceFiles, testFiles, testSnippetResult.snippets),
-    detectedStack: detectStack(packageJson, files),
+    detectedStack,
     packageManager,
     commands,
     installRun,

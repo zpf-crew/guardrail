@@ -7,9 +7,8 @@ import type {
   ScanSummary,
   UploadedFile,
 } from '@/types/testlens';
-import { getApiBase } from './api-base';
+import { postScanStream, type ScanStreamProgress } from './scan-stream';
 
-const API_BASE = getApiBase();
 const LATEST_DASHBOARD_PREFIX = 'tl.latestDashboard.';
 
 export type KnowledgeDocWithSnippet = KnowledgeDoc & {
@@ -28,10 +27,6 @@ export class OnboardingApiError extends Error {
     super(message);
     this.name = 'OnboardingApiError';
   }
-}
-
-function requireApiBase(): string {
-  return API_BASE;
 }
 
 export function saveLatestDashboard(repoId: string, dashboard: DashboardPayload) {
@@ -61,19 +56,16 @@ export function clearLatestDashboard(repoId: string | null) {
   }
 }
 
-export async function commitOnboardingScan(repoId: string, draft: Partial<OnboardingDraft>): Promise<OnboardingCommitResponse> {
-  const res = await fetch(`${requireApiBase()}/api/repos/${encodeURIComponent(repoId)}/onboarding/commit`, {
-    method: 'POST',
-    credentials: 'include',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(draft),
-  });
-
-  if (!res.ok) {
-    throw new OnboardingApiError(`Initial scan failed (${res.status} ${res.statusText})`);
-  }
-
-  const result = await res.json() as OnboardingCommitResponse;
+export async function commitOnboardingScan(
+  repoId: string,
+  draft: Partial<OnboardingDraft>,
+  onProgress: (progress: ScanStreamProgress) => void = () => {},
+): Promise<OnboardingCommitResponse> {
+  const result = await postScanStream(
+    `/api/repos/${encodeURIComponent(repoId)}/onboarding/commit`,
+    draft,
+    onProgress,
+  ) as OnboardingCommitResponse;
   saveLatestDashboard(repoId, result.dashboard);
   return result;
 }

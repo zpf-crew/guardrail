@@ -55,6 +55,17 @@ export interface ScanLogEntry {
   message: string;
 }
 
+/** A real-time progress update emitted while a scan runs (streamed to the client over SSE). */
+export interface ScanProgressEvent {
+  message: string;
+  percent: number;
+  level?: 'info' | 'ok' | 'warn';
+  /** ISO timestamp of when this step actually happened (stamped at emit time). */
+  at?: string;
+}
+
+export type ScanProgress = (event: ScanProgressEvent) => void;
+
 export interface ScanSummary {
   automatedTestsFound: number;
   qcCasesImported: number;
@@ -108,6 +119,11 @@ export interface DashboardPayload {
     counts: Array<{ label: string; count: number; kind: 'unit' | 'integration' | 'failed' | 'flaky' | 'missing' | 'suspicious' | 'other' }>;
   }>;
   coverage: Array<{ module: string; line: number | null; branch: number | null }>;
+  /**
+   * UI/Browser flow coverage — distinct from vitest line coverage. Measures how many route/page
+   * components have at least one UI test targeting them. `percent` is null when the repo has no pages.
+   */
+  uiFlowCoverage: { percent: number | null; covered: string[]; uncovered: string[] };
   riskHeatmap: {
     columns: ('Failed' | 'Flaky' | 'Missing' | 'Suspect')[];
     rows: Array<{ module: string; values: (0 | 1 | 2 | 3)[] }>;

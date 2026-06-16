@@ -11,6 +11,7 @@ import type {
   RepoScanFacts,
   RiskLevel,
   ScanLogEntry,
+  ScanProgress,
   ScanReasoningResult,
   ScanSummary,
   Severity,
@@ -518,6 +519,31 @@ export function aggregateModuleCoverage(files: FileCoverage[]): Map<string, { li
   return averaged;
 }
 
+/**
+ * UI flow coverage: how many route/page components (`src/pages/*`) have a UI/Browser test targeting
+ * them. A page is "covered" when a UI test's filename references the page's name (stem minus "Page").
+ * Distinct from vitest line coverage — it tracks whether the user-facing surface has UI tests at all.
+ */
+export function buildUiFlowCoverage(facts: RepoScanFacts): DashboardPayload['uiFlowCoverage'] {
+  const pageFiles = facts.sourceFiles.filter(file => /(^|\/)pages\//.test(file));
+  const uiTestKeys = facts.testFiles
+    .filter(file => /\.feature$/i.test(file) || /(e2e|playwright|cypress)/i.test(file))
+    .map(file => file.toLowerCase().replace(/[^a-z0-9]/g, ''));
+
+  const covered: string[] = [];
+  const uncovered: string[] = [];
+  for (const file of pageFiles) {
+    const stem = file.split('/').at(-1)?.replace(/\.[cm]?[jt]sx?$/i, '') ?? '';
+    if (!stem || /^index$/i.test(stem)) continue;
+    const key = stem.replace(/page$/i, '').toLowerCase().replace(/[^a-z0-9]/g, '');
+    const isCovered = key.length > 0 && uiTestKeys.some(testKey => testKey.includes(key));
+    (isCovered ? covered : uncovered).push(stem);
+  }
+
+  const total = covered.length + uncovered.length;
+  return { percent: total ? Math.round((covered.length / total) * 100) : null, covered, uncovered };
+}
+
 function buildDashboard(repo: RepoRecord, facts: RepoScanFacts, draft: OnboardingDraftInput, reasoning: ScanReasoningResult): { summary: ScanSummary; dashboard: DashboardPayload } {
   const automatedTestsFound = facts.testFiles.length;
   const productDocsIndexed = (draft.productDocs ?? []).length + (draft.docSources ?? []).length;
@@ -669,6 +695,7 @@ function buildDashboard(repo: RepoRecord, facts: RepoScanFacts, draft: Onboardin
       const cov = moduleCoverage.get(mod.name);
       return { module: mod.name, line: cov?.line ?? null, branch: cov?.branch ?? null };
     }),
+    uiFlowCoverage: buildUiFlowCoverage(facts),
     riskHeatmap: {
       columns: ['Failed', 'Flaky', 'Missing', 'Suspect'],
       rows: heatmapModules.map(mod => ({
@@ -763,27 +790,42 @@ function buildLogs(
   ];
 }
 
-export async function runOnboardingScan(repo: RepoRecord, draft: OnboardingDraftInput): Promise<OnboardingCommitResponse> {
+export async function runOnboardingScan(
+  repo: RepoRecord,
+  draft: OnboardingDraftInput,
+  onProgress?: ScanProgress,
+): Promise<OnboardingCommitResponse> {
   if (!repo.clonePath) {
     throw new Error('Repository clone not found');
   }
 
-  const facts = await analyzeRepo(repo.clonePath);
+  const facts = await analyzeRepo(repo.clonePath, onProgress);
   const fallback = fallbackReasoning(facts, draft);
   const moduleTargets = buildModuleTargets(facts);
+
+  // The per-module model analysis is the long tail; emit a progress tick as each module completes so
+  // the bar reflects real work (60 → 88%) instead of freezing.
+  let completed = 0;
+  const total = Math.max(1, moduleTargets.length);
+  onProgress?.({ message: `Analyzing ${moduleTargets.length} modules with the model…`, percent: 60 });
   const moduleOutcomes = await runWithConcurrency(moduleTargets, MODULE_MODEL_CONCURRENCY, async module => {
     const outcome = await analyzeModuleWithModel(module, facts, draft);
+    completed += 1;
+    onProgress?.({ message: `Analyzed module ${completed}/${total}: ${module.name}`, percent: 60 + Math.round((completed / total) * 28) });
     if (outcome.reasoning) return outcome;
     return {
       ...outcome,
       reasoning: fallbackModuleReasoning(module, facts, draft),
     };
   });
+
+  onProgress?.({ message: 'Aggregating findings into the dashboard…', percent: 92 });
   const mergedModuleReasoning = mergeReasoningResults(moduleOutcomes.map(outcome => outcome.reasoning ?? fallback));
   const aggregateOutcome = await aggregateWithModel(facts, draft, moduleOutcomes, mergedModuleReasoning);
   const reasoning = normalizeReasoning(aggregateOutcome.reasoning, fallback);
   const { summary, dashboard } = buildDashboard(repo, facts, draft, reasoning);
   const logs = buildLogs(facts, draft, summary, moduleOutcomes, aggregateOutcome);
+  onProgress?.({ message: 'Generated initial testing insights', percent: 98, level: 'ok' });
 
   return {
     jobId: `scan-${repo.id}-${Date.now()}`,

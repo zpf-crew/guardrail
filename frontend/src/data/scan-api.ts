@@ -1,12 +1,9 @@
 import { getActiveRepoId } from './dashboard-api';
-import type { ScanLogEntry, ScanSummary } from '@/types/testlens';
-import { getApiBase } from './api-base';
+import { postScanStream, type ScanStreamProgress, type ScanStreamResult } from './scan-stream';
 
 /**
- * Triggers a repository scan via `POST /api/repos/:repoId/scan`.
+ * Triggers a repository scan via `POST /api/repos/:repoId/scan`, streaming real progress events.
  */
-
-const API_BASE = getApiBase();
 
 export class ScanApiError extends Error {
   constructor(message: string) {
@@ -15,24 +12,14 @@ export class ScanApiError extends Error {
   }
 }
 
-function requireApiBase(): string {
-  return API_BASE;
-}
+export type StartScanResult = ScanStreamResult;
 
-export interface StartScanResult {
-  jobId: string;
-  summary: ScanSummary;
-  logs: ScanLogEntry[];
-}
-
-export async function startScan(repoId: string | null = getActiveRepoId()): Promise<StartScanResult> {
+export async function startScan(
+  onProgress: (progress: ScanStreamProgress) => void = () => {},
+  repoId: string | null = getActiveRepoId(),
+): Promise<StartScanResult> {
   if (!repoId) {
     throw new ScanApiError('No repository selected. Complete onboarding first.');
   }
-
-  const res = await fetch(`${requireApiBase()}/api/repos/${encodeURIComponent(repoId)}/scan`, { method: 'POST', credentials: 'include' });
-  if (!res.ok) {
-    throw new ScanApiError(`Scan request failed (${res.status} ${res.statusText})`);
-  }
-  return (await res.json()) as StartScanResult;
+  return postScanStream(`/api/repos/${encodeURIComponent(repoId)}/scan`, undefined, onProgress);
 }

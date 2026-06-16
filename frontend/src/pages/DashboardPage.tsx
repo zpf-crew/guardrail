@@ -15,6 +15,7 @@ import { formatRelativeTime } from '@/lib/format-relative-time';
 import { formatPercent } from '@/lib/format-percent';
 import { trendPresentation } from '@/lib/trend-presentation';
 import { startScan } from '@/data/scan-api';
+import type { ScanStreamProgress } from '@/data/scan-stream';
 import { getActiveRepoId } from '@/data/dashboard-api';
 import { clearLatestDashboard } from '@/data/onboarding-api';
 import { clearActiveRepoId, resetRepo } from '@/data/repos-api';
@@ -122,7 +123,7 @@ export function DashboardPage() {
   const [jumpTarget, setJumpTarget] = React.useState<string | null>(null);
   const [resetOpen, setResetOpen] = React.useState(false);
   const [resetting, setResetting] = React.useState(false);
-  const runScan = React.useCallback(() => startScan(), []);
+  const runScan = React.useCallback((onProgress: (p: ScanStreamProgress) => void) => startScan(onProgress), []);
   const scan = useScanProgress(runScan);
 
   React.useEffect(() => {
@@ -154,6 +155,8 @@ export function DashboardPage() {
   }
 
   const { repo, lastScanAt, filesIndexed, health, metrics, testCases, insights, structure, coverage, riskHeatmap } = data;
+  // Default for dashboards persisted before UI flow coverage existed.
+  const uiFlowCoverage = data.uiFlowCoverage ?? { percent: null, covered: [], uncovered: [] };
 
   const features = [...new Set(testCases.map(tc => tc.feature))];
   const types = [...new Set(testCases.map(tc => tc.type))];
@@ -512,6 +515,32 @@ export function DashboardPage() {
               <section>
                 <SectionHead title="Coverage & Risk" />
                 <div className="bg-[#11141c] border border-[rgba(255,255,255,0.07)] rounded-[14px] shadow-[0_1px_0_rgba(255,255,255,0.04)_inset,0_8px_30px_rgba(0,0,0,0.45)] p-[18px]">
+                  {(() => {
+                    const pct = uiFlowCoverage.percent;
+                    const total = uiFlowCoverage.covered.length + uiFlowCoverage.uncovered.length;
+                    const color = pct == null ? '#6b7488' : pct >= 75 ? '#3ddc97' : pct >= 40 ? '#fbbf24' : '#fb7185';
+                    return (
+                      <div className="mb-[18px] pb-[16px] border-b border-[rgba(255,255,255,0.07)]">
+                        <div className="flex items-baseline justify-between mb-[8px]">
+                          <span className="text-[12px] font-semibold text-[#98a1b3] uppercase tracking-[0.5px]">UI flow coverage</span>
+                          <span className="font-mono text-[13px] font-semibold" style={{ color }}>{pct == null ? 'n/a' : `${pct}%`}</span>
+                        </div>
+                        {pct == null ? (
+                          <div className="text-[11.5px] text-[#6b7488]">No route/page components detected.</div>
+                        ) : (
+                          <>
+                            <div className="h-[6px] rounded-full bg-[rgba(255,255,255,0.06)] overflow-hidden">
+                              <span className="block h-full rounded-full" style={{ width: `${pct}%`, background: color }} />
+                            </div>
+                            <div className="text-[11.5px] text-[#6b7488] mt-[7px]">{uiFlowCoverage.covered.length} of {total} pages have a UI/Browser test</div>
+                            {uiFlowCoverage.uncovered.length > 0 && (
+                              <div className="text-[11px] text-[#6b7488] mt-[4px] leading-[1.5]">No UI test: <span className="text-[#98a1b3]">{uiFlowCoverage.uncovered.join(', ')}</span></div>
+                            )}
+                          </>
+                        )}
+                      </div>
+                    );
+                  })()}
                   <div className="mb-[18px]">
                     <div className="text-[12px] font-semibold text-[#98a1b3] mb-[12px] uppercase tracking-[0.5px]">Coverage by module</div>
                     {coverage.map(c => {
