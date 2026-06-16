@@ -15,18 +15,22 @@ test('resolves frontend package dev script', async () => {
   assert.equal(target?.kind, 'subprocess');
   assert.match(target?.command ?? '', /frontend/);
   assert.equal(target?.cwd, root);
+  assert.equal(target?.kind === 'subprocess' ? target.installCommand : undefined, 'pnpm');
+  assert.deepEqual(target?.kind === 'subprocess' ? target.installArgs : undefined, ['install', '--frozen-lockfile', '--prod=false']);
 });
 
 test('resolves standalone nested frontend package from its own directory', async () => {
   const root = await mkdtemp(join(tmpdir(), 'dev-resolve-'));
   await mkdir(join(root, 'frontend'), { recursive: true });
   await writeFile(join(root, 'frontend', 'package.json'), JSON.stringify({ scripts: { dev: 'vite' } }));
+  await writeFile(join(root, 'frontend', 'package-lock.json'), '');
 
   const target = await resolveDevServerTarget(root);
   assert.equal(target?.kind, 'subprocess');
   assert.equal(target?.command, 'npm');
   assert.deepEqual(target?.args.slice(0, 2), ['run', 'dev']);
   assert.equal(target?.cwd, join(root, 'frontend'));
+  assert.deepEqual(target?.kind === 'subprocess' ? target.installArgs : undefined, ['install', '--include=dev', '--no-audit', '--no-fund']);
 });
 
 test('returns null when no dev script or compose file', async () => {

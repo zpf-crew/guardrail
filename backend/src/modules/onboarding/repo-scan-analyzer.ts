@@ -2,6 +2,7 @@ import { exec as execCallback } from 'node:child_process';
 import { readFile, stat } from 'node:fs/promises';
 import path from 'node:path';
 import { promisify } from 'node:util';
+import { formatPackageInstallCommand } from '../../lib/package-manager.js';
 import { walkRepositoryFiles } from '../../lib/repo-file-walker.js';
 import { readFileCoverage } from './coverage-report-parser.js';
 import type { RepoScanFacts, ScanProgress } from './onboarding.types.js';
@@ -56,12 +57,6 @@ function detectCommands(pkg: Record<string, unknown> | null, packageManager: Rep
     typecheck: scripts.typecheck ? scriptCommand(packageManager, 'typecheck') : undefined,
     lint: scripts.lint ? scriptCommand(packageManager, 'lint') : undefined,
   };
-}
-
-function installCommand(packageManager: RepoScanFacts['packageManager']): string {
-  if (packageManager === 'pnpm') return 'pnpm install --frozen-lockfile --prod=false';
-  if (packageManager === 'yarn') return 'yarn install --frozen-lockfile --production=false';
-  return 'npm install --include=dev --no-audit --no-fund';
 }
 
 export function moduleNameFromPath(file: string): { name: string; pathPrefix: string } {
@@ -232,7 +227,7 @@ export async function analyzeRepo(clonePath: string, onProgress?: ScanProgress):
   const needsInstall = hasPackageJson && Boolean(commands.test || commands.coverage);
   if (needsInstall) onProgress?.({ message: 'Installing repository dependencies…', percent: 26 });
   const installRun = needsInstall
-    ? await runCommand(clonePath, installCommand(packageManager), 120_000)
+    ? await runCommand(clonePath, formatPackageInstallCommand(packageManager), 120_000)
     : undefined;
   if (installRun) emitCommandResult(onProgress, installRun, 34, 'Dependency install');
   const canRunCommands = !installRun || installRun.ok;

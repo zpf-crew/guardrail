@@ -1,6 +1,7 @@
 import { createServer } from 'node:net';
 import { readFile, readdir, stat } from 'node:fs/promises';
 import { join } from 'node:path';
+import { buildPackageInstallCommand, type NodePackageManager } from '../../../lib/package-manager.js';
 
 export type DevServerTarget =
   | {
@@ -15,7 +16,7 @@ export type DevServerTarget =
     }
   | { kind: 'docker'; composeFile: string; service: string; port: number; healthPath: string; projectName: string };
 
-type PackageManager = 'pnpm' | 'yarn' | 'npm';
+type PackageManager = NodePackageManager;
 
 const COMPOSE_FILE_NAMES = ['docker-compose.yml', 'docker-compose.yaml', 'compose.yml', 'compose.yaml'] as const;
 const WEB_SERVICE_NAMES = ['frontend', 'web', 'app', 'nginx'] as const;
@@ -118,12 +119,6 @@ function buildDevArgs(packageManager: PackageManager, packageDir: string | null,
     : ['run', 'dev', '--', ...portArgs];
 }
 
-function buildInstallArgs(packageManager: PackageManager, hasPackageLock: boolean): string[] {
-  if (packageManager === 'pnpm') return ['install', '--frozen-lockfile'];
-  if (packageManager === 'yarn') return ['install', '--frozen-lockfile'];
-  return hasPackageLock ? ['ci'] : ['install'];
-}
-
 function subprocessCommand(packageManager: PackageManager, packageDir: string | null): string {
   if (packageDir) {
     if (packageManager === 'pnpm') return `${packageManager} --dir ${packageDir}`;
@@ -143,7 +138,7 @@ async function subprocessTarget(
   const cwd = runFromRoot ? clonePath : join(clonePath, packageDir);
   const commandPackageDir = runFromRoot ? packageDir : null;
   const packageManager = await detectPackageManager(cwd);
-  const hasPackageLock = await fileExists(join(cwd, 'package-lock.json'));
+  const installCommand = buildPackageInstallCommand(packageManager);
   const args = script === 'dev'
     ? buildDevArgs(packageManager, commandPackageDir, port)
     : ['start'];
@@ -155,8 +150,8 @@ async function subprocessTarget(
     cwd,
     port,
     healthPath: '/',
-    installCommand: packageManager,
-    installArgs: buildInstallArgs(packageManager, hasPackageLock),
+    installCommand: installCommand.command,
+    installArgs: installCommand.args,
   };
 }
 
