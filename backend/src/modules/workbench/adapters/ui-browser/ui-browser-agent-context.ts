@@ -2,6 +2,8 @@ import type { BehaviorRunConstraints, ThenVerdict } from '../../workbench.types.
 import type { GherkinStep } from './gherkin-step-parser.js';
 import type { UiBrowserAgentAction } from '../../validation/workbench-validators.js';
 
+export const MAX_THEN_OBSERVATION_ACTIONS = 3;
+
 export interface AgentActionHistoryEntry {
   iteration: number;
   action: string;
@@ -15,6 +17,7 @@ export interface AgentIterationCurrentStep {
   effectiveKind: string;
   text: string;
   observationOnlyActionsUsed: number;
+  observationOnlyActionsRemaining: number;
   verdictRequiredNow: boolean;
 }
 
@@ -50,7 +53,8 @@ export function buildAgentIterationContext(input: {
   const step = input.gherkinSteps[input.currentStepIndex];
   const effectiveKind = step?.effectiveKind ?? 'Then';
   const observationOnlyActionsUsed = input.observationOnlyActionsForCurrentStep;
-  const verdictRequiredNow = effectiveKind === 'Then' && observationOnlyActionsUsed >= 1;
+  const observationOnlyActionsRemaining = Math.max(0, MAX_THEN_OBSERVATION_ACTIONS - observationOnlyActionsUsed);
+  const verdictRequiredNow = effectiveKind === 'Then' && observationOnlyActionsRemaining === 0;
   const scenarioCompleteAllowed = allThenStepsSatisfied(input.gherkinSteps, input.thenVerdicts);
 
   return {
@@ -63,6 +67,7 @@ export function buildAgentIterationContext(input: {
       effectiveKind,
       text: step?.text ?? '',
       observationOnlyActionsUsed,
+      observationOnlyActionsRemaining,
       verdictRequiredNow,
     },
     completedSteps: input.completedSteps,

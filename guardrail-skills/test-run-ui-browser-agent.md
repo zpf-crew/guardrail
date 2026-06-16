@@ -11,7 +11,7 @@ JSON context with:
 - `scenarioTitle`
 - `gherkinSteps` (each has `index`, `effectiveKind`, `text`; these may be concise planned QC steps derived from Gherkin)
 - `currentStepIndex` — the planned step you are working on now
-- `currentStep` — current step metadata, including `observationOnlyActionsUsed` and `verdictRequiredNow`
+- `currentStep` — current step metadata, including `observationOnlyActionsUsed`, `observationOnlyActionsRemaining`, and `verdictRequiredNow`
 - `completedSteps`
 - `thenVerdicts`
 - `pageSnapshot` (accessibility tree with @eN refs)
@@ -39,7 +39,7 @@ JSON context with:
 - If the target control is not present in `pageSnapshot` but the page likely continues below the viewport, use `scroll` or `scrollintoview`, then inspect a fresh snapshot before clicking.
 - For action choice, trust current `pageSnapshot` refs first.
 - For `Then` steps: decide from the current `pageSnapshot`, URL/text/value checks, and previous `actionHistory`.
-- On a `Then` step, use at most one observation command from `allowedCommands` (`snapshot`, `get`, or `is`) if the current snapshot is not enough.
+- On a `Then` step, use the fewest observation commands needed from `allowedCommands` (`snapshot`, `get`, or `is`). You have at most three observations total, tracked by `currentStep.observationOnlyActionsRemaining`.
 - If `currentStep.verdictRequiredNow` is true, return only `assertThen` or `stepFailed`. Do not return `agentBrowserCommand`.
 - Screenshots are runner-owned evidence.
 - If the available snapshot honestly confirms the durable expected state, return `assertThen` with `satisfied: true`.

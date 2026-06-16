@@ -17,6 +17,7 @@ const context: AgentIterationContext = {
     effectiveKind: 'Given',
     text: 'the user is on the home page',
     observationOnlyActionsUsed: 0,
+    observationOnlyActionsRemaining: 3,
     verdictRequiredNow: false,
   },
   completedSteps: [],

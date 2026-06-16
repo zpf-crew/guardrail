@@ -806,13 +806,13 @@ function isMutatingCommand(action: AgentBrowserCommandAction): boolean {
 function actionContractFailure(context: AgentIterationContext, action: UiBrowserAgentAction): string | null {
   if (!context.allowedActionKinds.includes(action.kind)) {
     if (context.currentStep.verdictRequiredNow) {
-      return `Verdict required now for Then step after observation; return assertThen or stepFailed, not ${formatActionForHistory(action)}.`;
+      return `Agent did not provide the required Then-step verdict after observing the page. Expected assertThen or stepFailed, but received ${formatActionForHistory(action)}.`;
     }
     return `Action kind ${action.kind} is not allowed for current step; allowed kinds: ${context.allowedActionKinds.join(', ')}.`;
   }
   if (isAgentBrowserCommandAction(action) && !context.allowedCommands.includes(action.command)) {
     if (context.currentStep.verdictRequiredNow) {
-      return `Verdict required now for Then step after observation; return assertThen or stepFailed, not ${formatActionForHistory(action)}.`;
+      return `Agent did not provide the required Then-step verdict after observing the page. Expected assertThen or stepFailed, but received ${formatActionForHistory(action)}.`;
     }
     return `agent-browser command ${action.command} is not allowed for current step; allowed commands: ${context.allowedCommands.join(', ') || 'none'}.`;
   }

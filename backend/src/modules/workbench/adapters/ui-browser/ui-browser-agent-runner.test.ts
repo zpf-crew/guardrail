@@ -375,14 +375,16 @@ Scenario: Add to cart
   assert.ok(progress.some(message => /Step 3\/3/.test(message)));
 });
 
-test('agent runner tells the model to return a verdict after one Then observation', async () => {
-  const thenContextValues: Array<{ effectiveKind: string; verdictRequiredNow: boolean }> = [];
+test('agent runner tells the model to return a verdict after three Then observations', async () => {
+  const thenContextValues: Array<{ effectiveKind: string; observationOnlyActionsUsed: number; observationOnlyActionsRemaining: number; verdictRequiredNow: boolean }> = [];
   let call = 0;
   const scripted: UiBrowserAgentAction[] = [
     { kind: 'stepComplete', stepIndex: 0, note: 'Home open' },
     { kind: 'agentBrowserCommand', command: 'click', args: ['@e3'], reason: 'Click Add to Cart' },
     { kind: 'stepComplete', stepIndex: 1, note: 'Clicked Add to Cart' },
     { kind: 'agentBrowserCommand', command: 'snapshot', args: ['-i'], reason: 'Check cart count' },
+    { kind: 'agentBrowserCommand', command: 'get', args: ['url'], reason: 'Check current URL' },
+    { kind: 'agentBrowserCommand', command: 'is', args: ['visible', '@e4'], reason: 'Check cart link visibility' },
     { kind: 'assertThen', stepIndex: 2, satisfied: true, reason: 'Shopping cart shows 1 item' },
     { kind: 'scenarioComplete' },
   ];
@@ -392,6 +394,8 @@ test('agent runner tells the model to return a verdict after one Then observatio
       if (context.currentStep.effectiveKind === 'Then') {
         thenContextValues.push({
           effectiveKind: context.currentStep.effectiveKind,
+          observationOnlyActionsUsed: context.currentStep.observationOnlyActionsUsed,
+          observationOnlyActionsRemaining: context.currentStep.observationOnlyActionsRemaining,
           verdictRequiredNow: context.currentStep.verdictRequiredNow,
         });
       }
@@ -401,6 +405,7 @@ test('agent runner tells the model to return a verdict after one Then observatio
       if (args[0] === 'snapshot') return { exitCode: 0, stdout: '- button "Add to Cart" @e3\n- link "Shopping cart 1" @e4', stderr: '' };
       if (args[0] === 'screenshot') return { exitCode: 0, stdout: 'Screenshot saved to /tmp/asserted-cart.png', stderr: '' };
       if (args[0] === 'get' && args[1] === 'url') return { exitCode: 0, stdout: 'http://127.0.0.1:5555/', stderr: '' };
+      if (args[0] === 'is') return { exitCode: 0, stdout: 'true', stderr: '' };
       return { exitCode: 0, stdout: 'ok', stderr: '' };
     },
   });
@@ -420,8 +425,10 @@ Scenario: Add to cart
 
   assert.equal(result.outcome, 'Passed');
   assert.deepEqual(thenContextValues, [
-    { effectiveKind: 'Then', verdictRequiredNow: false },
-    { effectiveKind: 'Then', verdictRequiredNow: true },
+    { effectiveKind: 'Then', observationOnlyActionsUsed: 0, observationOnlyActionsRemaining: 3, verdictRequiredNow: false },
+    { effectiveKind: 'Then', observationOnlyActionsUsed: 1, observationOnlyActionsRemaining: 2, verdictRequiredNow: false },
+    { effectiveKind: 'Then', observationOnlyActionsUsed: 2, observationOnlyActionsRemaining: 1, verdictRequiredNow: false },
+    { effectiveKind: 'Then', observationOnlyActionsUsed: 3, observationOnlyActionsRemaining: 0, verdictRequiredNow: true },
   ]);
   assert.equal(result.thenVerdicts[0]?.satisfied, true);
 });
@@ -433,7 +440,9 @@ test('agent runner fails clearly when model ignores verdict-only Then turn', asy
     { kind: 'agentBrowserCommand', command: 'click', args: ['@e3'], reason: 'Click Add to Cart' },
     { kind: 'stepComplete', stepIndex: 1, note: 'Clicked Add to Cart' },
     { kind: 'agentBrowserCommand', command: 'snapshot', args: ['-i'], reason: 'Check cart count' },
-    { kind: 'agentBrowserCommand', command: 'screenshot', args: [], reason: 'Keep looking instead of asserting' },
+    { kind: 'agentBrowserCommand', command: 'get', args: ['url'], reason: 'Check URL' },
+    { kind: 'agentBrowserCommand', command: 'is', args: ['visible', '@e4'], reason: 'Check cart visibility' },
+    { kind: 'agentBrowserCommand', command: 'get', args: ['url'], reason: 'Keep looking instead of asserting' },
   ];
 
   const runner = new UiBrowserAgentRunner({
@@ -442,6 +451,7 @@ test('agent runner fails clearly when model ignores verdict-only Then turn', asy
       if (args[0] === 'snapshot') return { exitCode: 0, stdout: '- button "Add to Cart" @e3\n- link "Shopping cart 1" @e4', stderr: '' };
       if (args[0] === 'screenshot') return { exitCode: 0, stdout: 'Screenshot saved to /tmp/ignored-contract.png', stderr: '' };
       if (args[0] === 'get' && args[1] === 'url') return { exitCode: 0, stdout: 'http://127.0.0.1:5555/', stderr: '' };
+      if (args[0] === 'is') return { exitCode: 0, stdout: 'true', stderr: '' };
       return { exitCode: 0, stdout: 'ok', stderr: '' };
     },
   });
@@ -460,8 +470,8 @@ Scenario: Add to cart
   });
 
   assert.equal(result.outcome, 'Failed');
-  assert.match(result.reason ?? '', /Verdict required now/);
-  assert.match(result.reason ?? '', /assertThen or stepFailed/);
+  assert.match(result.reason ?? '', /required Then-step verdict/);
+  assert.match(result.reason ?? '', /Expected assertThen or stepFailed/);
 });
 
 test('agent runner rejects screenshot commands on Then steps', async () => {

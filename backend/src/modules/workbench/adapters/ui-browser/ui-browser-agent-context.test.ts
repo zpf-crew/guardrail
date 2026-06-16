@@ -79,12 +79,13 @@ test('buildAgentIterationContext marks Then turns as observation-allowed before 
 
   assert.equal(context.currentStep.effectiveKind, 'Then');
   assert.equal(context.currentStep.observationOnlyActionsUsed, 0);
+  assert.equal(context.currentStep.observationOnlyActionsRemaining, 3);
   assert.equal(context.currentStep.verdictRequiredNow, false);
   assert.deepEqual(context.allowedActionKinds, ['agentBrowserCommand', 'assertThen', 'stepFailed']);
   assert.deepEqual(context.allowedCommands, ['snapshot', 'get', 'is']);
 });
 
-test('buildAgentIterationContext requires verdict after a Then observation', () => {
+test('buildAgentIterationContext allows up to three Then observations before requiring verdict', () => {
   const context = buildAgentIterationContext({
     scenarioTitle: 'Add to cart',
     gherkinSteps: steps,
@@ -96,9 +97,31 @@ test('buildAgentIterationContext requires verdict after a Then observation', () 
     constraints: { behavior: 'Add to cart', maxStepDurationMs: 60_000, maxSteps: 15 },
     startedAt: Date.now(),
     iterationsUsed: 4,
-    observationOnlyActionsForCurrentStep: 1,
+    observationOnlyActionsForCurrentStep: 2,
   });
 
+  assert.equal(context.currentStep.observationOnlyActionsRemaining, 1);
+  assert.equal(context.currentStep.verdictRequiredNow, false);
+  assert.deepEqual(context.allowedActionKinds, ['agentBrowserCommand', 'assertThen', 'stepFailed']);
+  assert.deepEqual(context.allowedCommands, ['snapshot', 'get', 'is']);
+});
+
+test('buildAgentIterationContext requires verdict after three Then observations', () => {
+  const context = buildAgentIterationContext({
+    scenarioTitle: 'Add to cart',
+    gherkinSteps: steps,
+    currentStepIndex: 2,
+    completedSteps: [{ index: 0, note: 'Home open' }, { index: 1, note: 'Clicked' }],
+    thenVerdicts: [],
+    pageSnapshot: '- link "Shopping cart 1" @e4',
+    actionHistory: [{ iteration: 3, action: 'snapshot -i', result: 'ok' }],
+    constraints: { behavior: 'Add to cart', maxStepDurationMs: 60_000, maxSteps: 15 },
+    startedAt: Date.now(),
+    iterationsUsed: 4,
+    observationOnlyActionsForCurrentStep: 3,
+  });
+
+  assert.equal(context.currentStep.observationOnlyActionsRemaining, 0);
   assert.equal(context.currentStep.verdictRequiredNow, true);
   assert.deepEqual(context.allowedActionKinds, ['assertThen', 'stepFailed']);
   assert.deepEqual(context.allowedCommands, []);
@@ -121,7 +144,7 @@ test('buildAgentIterationContext allows scenario completion when all Then steps 
     constraints: { behavior: 'Add to cart', maxStepDurationMs: 60_000, maxSteps: 15 },
     startedAt: Date.now(),
     iterationsUsed: 5,
-    observationOnlyActionsForCurrentStep: 1,
+    observationOnlyActionsForCurrentStep: 3,
   });
 
   assert.deepEqual(context.allowedActionKinds, ['assertThen', 'stepFailed', 'scenarioComplete']);
@@ -135,6 +158,7 @@ test('ui browser run skill describes verdict-only Then turns without screenshot 
   assert.match(skill, /verdictRequiredNow/);
   assert.match(skill, /allowedActionKinds/);
   assert.match(skill, /allowedCommands/);
+  assert.match(skill, /currentStep\.observationOnlyActionsRemaining/);
   assert.match(skill, /If `currentStep\.verdictRequiredNow` is true/);
   assert.match(skill, /Screenshots are runner-owned evidence\./);
   const skillWithoutRunnerEvidence = skill.replace(/Screenshots are runner-owned evidence\./g, '');
