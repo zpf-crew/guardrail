@@ -16,7 +16,7 @@ const steps: GherkinStep[] = [
 test('formatActionForProgress uses human-readable Gherkin step labels', () => {
   assert.equal(
     formatActionForProgress({ kind: 'stepComplete', stepIndex: 0, note: 'ok' }, steps, 0),
-    'Done — Step 1/3 — Given: the user is on the home page',
+    'Done — Step 1 — Given: the user is on the home page',
   );
   assert.equal(
     formatActionForProgress({
@@ -25,7 +25,7 @@ test('formatActionForProgress uses human-readable Gherkin step labels', () => {
       satisfied: true,
       reason: 'Products heading visible',
     }, steps, 2),
-    'Verified — Step 3/3 — Then: the products page is displayed',
+    'Verified — Step 3 — Then: the products page is displayed',
   );
 });
 
@@ -37,7 +37,7 @@ test('formatActionForProgress describes agent-browser commands', () => {
       args: ['role', 'button', 'click', 'Add to Cart'],
       reason: 'Click Add to Cart',
     }, steps, 1),
-    'agent-browser find role button click Add to Cart — Step 2/3 — When: the user clicks Shop Now',
+    'agent-browser find role button click Add to Cart — Step 2 — When: the user clicks Shop Now',
   );
 });
 
@@ -49,7 +49,7 @@ test('formatActionForProgress redacts typed values from browser commands', () =>
       args: ['@e2', 'secret search'],
       reason: 'Fill search field',
     }, steps, 1),
-    'agent-browser fill @e2 [redacted] — Step 2/3 — When: the user clicks Shop Now',
+    'agent-browser fill @e2 [redacted] — Step 2 — When: the user clicks Shop Now',
   );
   assert.equal(
     formatActionForHistory({
@@ -79,13 +79,13 @@ test('buildAgentIterationContext marks Then turns as observation-allowed before 
 
   assert.equal(context.currentStep.effectiveKind, 'Then');
   assert.equal(context.currentStep.observationOnlyActionsUsed, 0);
-  assert.equal(context.currentStep.observationOnlyActionsRemaining, 3);
+  assert.equal(context.currentStep.observationOnlyActionsRemaining, 6);
   assert.equal(context.currentStep.verdictRequiredNow, false);
   assert.deepEqual(context.allowedActionKinds, ['agentBrowserCommand', 'assertThen', 'stepFailed']);
   assert.deepEqual(context.allowedCommands, ['snapshot', 'get', 'is', 'scroll', 'click']);
 });
 
-test('buildAgentIterationContext allows up to three Then observations before requiring verdict', () => {
+test('buildAgentIterationContext allows up to six Then observations before requiring verdict', () => {
   const context = buildAgentIterationContext({
     scenarioTitle: 'Add to cart',
     gherkinSteps: steps,
@@ -97,7 +97,7 @@ test('buildAgentIterationContext allows up to three Then observations before req
     constraints: { behavior: 'Add to cart', maxStepDurationMs: 60_000, maxSteps: 15 },
     startedAt: Date.now(),
     iterationsUsed: 4,
-    observationOnlyActionsForCurrentStep: 2,
+    observationOnlyActionsForCurrentStep: 5,
   });
 
   assert.equal(context.currentStep.observationOnlyActionsRemaining, 1);
@@ -106,7 +106,7 @@ test('buildAgentIterationContext allows up to three Then observations before req
   assert.deepEqual(context.allowedCommands, ['snapshot', 'get', 'is', 'scroll', 'click']);
 });
 
-test('buildAgentIterationContext requires verdict after three Then observations', () => {
+test('buildAgentIterationContext requires verdict after six Then observations', () => {
   const context = buildAgentIterationContext({
     scenarioTitle: 'Add to cart',
     gherkinSteps: steps,
@@ -118,7 +118,7 @@ test('buildAgentIterationContext requires verdict after three Then observations'
     constraints: { behavior: 'Add to cart', maxStepDurationMs: 60_000, maxSteps: 15 },
     startedAt: Date.now(),
     iterationsUsed: 4,
-    observationOnlyActionsForCurrentStep: 3,
+    observationOnlyActionsForCurrentStep: 6,
   });
 
   assert.equal(context.currentStep.observationOnlyActionsRemaining, 0);
@@ -144,7 +144,7 @@ test('buildAgentIterationContext allows scenario completion when all Then steps 
     constraints: { behavior: 'Add to cart', maxStepDurationMs: 60_000, maxSteps: 15 },
     startedAt: Date.now(),
     iterationsUsed: 5,
-    observationOnlyActionsForCurrentStep: 3,
+    observationOnlyActionsForCurrentStep: 6,
   });
 
   assert.deepEqual(context.allowedActionKinds, ['assertThen', 'stepFailed', 'scenarioComplete']);

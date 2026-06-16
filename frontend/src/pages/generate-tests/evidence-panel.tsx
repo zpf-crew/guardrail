@@ -266,25 +266,25 @@ function formatProgressMessage(raw: string): DisplayProgressContent {
 }
 
 function formatFlowMessage(message: string): DisplayProgressContent {
-  const action = message.match(/^agent-browser\s+(.+?)\s+—\s+Step\s+(\d+)\/(\d+)\s+—\s+(.+)$/);
+  const action = message.match(/^agent-browser\s+(.+?)\s+—\s+Step\s+(\d+)(?:\/(\d+))?\s+—\s+(.+)$/);
   if (action) {
     const command = action[1] ?? '';
     const step = formatStepText(action[4] ?? '');
     return {
       label: actionLabel(command, step.instruction),
       detail: step.criteria,
-      meta: `Step ${action[2]} of ${action[3]}`,
+      meta: `Step ${action[2]}`,
     };
   }
 
-  const done = message.match(/^(Done|Verified|Check failed)\s+—\s+Step\s+(\d+)\/(\d+)\s+—\s+(.+)$/);
+  const done = message.match(/^(Done|Verified|Check failed)\s+—\s+Step\s+(\d+)(?:\/(\d+))?\s+—\s+(.+)$/);
   if (done) {
     const status = done[1] ?? '';
     const step = formatStepText(done[4] ?? '');
     return {
       label: status === 'Verified' ? `Verified: ${sentenceCase(step.instruction)}` : status === 'Done' ? `Completed: ${sentenceCase(step.instruction)}` : `Check failed: ${sentenceCase(step.instruction)}`,
       detail: step.criteria,
-      meta: `Step ${done[2]} of ${done[3]}`,
+      meta: `Step ${done[2]}`,
     };
   }
 

@@ -372,10 +372,10 @@ Scenario: Add to cart
   assert.equal(result.thenVerdicts[0]?.stepIndex, 2);
   assert.equal(result.thenVerdicts[0]?.satisfied, true);
   assert.equal(result.thenVerdicts.length, 1);
-  assert.ok(progress.some(message => /Step 3\/3/.test(message)));
+  assert.ok(progress.some(message => /Step 3\b/.test(message)));
 });
 
-test('agent runner tells the model to return a verdict after three Then observations', async () => {
+test('agent runner tells the model to return a verdict after six Then observations', async () => {
   const thenContextValues: Array<{ effectiveKind: string; observationOnlyActionsUsed: number; observationOnlyActionsRemaining: number; verdictRequiredNow: boolean }> = [];
   let call = 0;
   const scripted: UiBrowserAgentAction[] = [
@@ -385,6 +385,9 @@ test('agent runner tells the model to return a verdict after three Then observat
     { kind: 'agentBrowserCommand', command: 'snapshot', args: ['-i'], reason: 'Check cart count' },
     { kind: 'agentBrowserCommand', command: 'get', args: ['url'], reason: 'Check current URL' },
     { kind: 'agentBrowserCommand', command: 'is', args: ['visible', '@e4'], reason: 'Check cart link visibility' },
+    { kind: 'agentBrowserCommand', command: 'snapshot', args: ['-i'], reason: 'Re-check visible cart state' },
+    { kind: 'agentBrowserCommand', command: 'get', args: ['text', 'body'], reason: 'Read visible page text' },
+    { kind: 'agentBrowserCommand', command: 'is', args: ['visible', '@e4'], reason: 'Confirm cart link remains visible' },
     { kind: 'assertThen', stepIndex: 2, satisfied: true, reason: 'Shopping cart shows 1 item' },
     { kind: 'scenarioComplete' },
   ];
@@ -405,6 +408,7 @@ test('agent runner tells the model to return a verdict after three Then observat
       if (args[0] === 'snapshot') return { exitCode: 0, stdout: '- button "Add to Cart" @e3\n- link "Shopping cart 1" @e4', stderr: '' };
       if (args[0] === 'screenshot') return { exitCode: 0, stdout: 'Screenshot saved to /tmp/asserted-cart.png', stderr: '' };
       if (args[0] === 'get' && args[1] === 'url') return { exitCode: 0, stdout: 'http://127.0.0.1:5555/', stderr: '' };
+      if (args[0] === 'get' && args[1] === 'text') return { exitCode: 0, stdout: 'Shopping cart 1', stderr: '' };
       if (args[0] === 'is') return { exitCode: 0, stdout: 'true', stderr: '' };
       return { exitCode: 0, stdout: 'ok', stderr: '' };
     },
@@ -425,10 +429,13 @@ Scenario: Add to cart
 
   assert.equal(result.outcome, 'Passed');
   assert.deepEqual(thenContextValues, [
-    { effectiveKind: 'Then', observationOnlyActionsUsed: 0, observationOnlyActionsRemaining: 3, verdictRequiredNow: false },
-    { effectiveKind: 'Then', observationOnlyActionsUsed: 1, observationOnlyActionsRemaining: 2, verdictRequiredNow: false },
-    { effectiveKind: 'Then', observationOnlyActionsUsed: 2, observationOnlyActionsRemaining: 1, verdictRequiredNow: false },
-    { effectiveKind: 'Then', observationOnlyActionsUsed: 3, observationOnlyActionsRemaining: 0, verdictRequiredNow: true },
+    { effectiveKind: 'Then', observationOnlyActionsUsed: 0, observationOnlyActionsRemaining: 6, verdictRequiredNow: false },
+    { effectiveKind: 'Then', observationOnlyActionsUsed: 1, observationOnlyActionsRemaining: 5, verdictRequiredNow: false },
+    { effectiveKind: 'Then', observationOnlyActionsUsed: 2, observationOnlyActionsRemaining: 4, verdictRequiredNow: false },
+    { effectiveKind: 'Then', observationOnlyActionsUsed: 3, observationOnlyActionsRemaining: 3, verdictRequiredNow: false },
+    { effectiveKind: 'Then', observationOnlyActionsUsed: 4, observationOnlyActionsRemaining: 2, verdictRequiredNow: false },
+    { effectiveKind: 'Then', observationOnlyActionsUsed: 5, observationOnlyActionsRemaining: 1, verdictRequiredNow: false },
+    { effectiveKind: 'Then', observationOnlyActionsUsed: 6, observationOnlyActionsRemaining: 0, verdictRequiredNow: true },
   ]);
   assert.equal(result.thenVerdicts[0]?.satisfied, true);
 });

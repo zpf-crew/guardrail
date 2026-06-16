@@ -21,6 +21,7 @@ const testTypeSchema = z.enum([
 ]);
 
 const riskSchema = z.enum(['Low', 'Medium', 'High', 'Critical']);
+const UI_BROWSER_EXECUTION_PLAN_MAX_STEPS = 5;
 
 const repoSchema = z.object({
   name: z.string(),
@@ -143,7 +144,7 @@ const uiBrowserExecutionStepSchema = z.object({
 const uiBrowserExecutionPlanSchema = z.object({
   flowId: z.string().min(1),
   title: z.string().min(1),
-  steps: z.array(uiBrowserExecutionStepSchema).min(1).max(5),
+  steps: z.array(uiBrowserExecutionStepSchema).min(1).max(UI_BROWSER_EXECUTION_PLAN_MAX_STEPS),
 });
 
 const planSchema = z.object({

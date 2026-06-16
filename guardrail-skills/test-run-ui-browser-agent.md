@@ -39,7 +39,7 @@ JSON context with:
 - If the target control is not present in `pageSnapshot` but the page likely continues below the viewport, use `scroll` or `scrollintoview`, then inspect a fresh snapshot before clicking.
 - For action choice, trust current `pageSnapshot` refs first.
 - For `Then` steps: decide from the current `pageSnapshot`, URL/text/value checks, and previous `actionHistory`.
-- On a `Then` step, use the fewest observation commands needed from `allowedCommands` (`snapshot`, `get`, or `is`). You have at most three observations total, tracked by `currentStep.observationOnlyActionsRemaining`.
+- On a `Then` step, use the fewest observation commands needed from `allowedCommands` (`snapshot`, `get`, or `is`). You have at most six observations total, tracked by `currentStep.observationOnlyActionsRemaining`.
 - If `currentStep.verdictRequiredNow` is true, return only `assertThen` or `stepFailed`. Do not return `agentBrowserCommand`.
 - Screenshots are runner-owned evidence.
 - If the available snapshot honestly confirms the durable expected state, return `assertThen` with `satisfied: true`.

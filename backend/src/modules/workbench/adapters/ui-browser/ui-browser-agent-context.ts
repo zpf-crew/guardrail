@@ -2,7 +2,7 @@ import type { BehaviorRunConstraints, ThenVerdict } from '../../workbench.types.
 import type { GherkinStep } from './gherkin-step-parser.js';
 import type { UiBrowserAgentAction } from '../../validation/workbench-validators.js';
 
-export const MAX_THEN_OBSERVATION_ACTIONS = 3;
+export const MAX_THEN_OBSERVATION_ACTIONS = 6;
 
 export interface AgentActionHistoryEntry {
   iteration: number;
@@ -114,7 +114,7 @@ function allowedCommandsForStep(effectiveKind: string, verdictRequiredNow: boole
 function stepPositionLabel(steps: GherkinStep[], stepIndex: number): string {
   const step = steps[stepIndex];
   if (!step) return `Step ${stepIndex + 1}`;
-  return `Step ${stepIndex + 1}/${steps.length} — ${step.effectiveKind}: ${step.text}`;
+  return `Step ${stepIndex + 1} — ${step.effectiveKind}: ${step.text}`;
 }
 
 function commandLine(command: string, args: string[]): string {
