@@ -169,6 +169,8 @@ export interface DashboardPayload {
   insights: Insight[];
   structure: StructureNode[];
   coverage: ModuleCoverage[];
+  /** UI/Browser flow coverage — % of route/page components that have a UI test (distinct from line coverage). */
+  uiFlowCoverage: { percent: number | null; covered: string[]; uncovered: string[] };
   riskHeatmap: RiskHeatmap;
   activity: ActivityEvent[];
 }

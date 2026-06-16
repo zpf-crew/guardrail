@@ -519,6 +519,31 @@ export function aggregateModuleCoverage(files: FileCoverage[]): Map<string, { li
   return averaged;
 }
 
+/**
+ * UI flow coverage: how many route/page components (`src/pages/*`) have a UI/Browser test targeting
+ * them. A page is "covered" when a UI test's filename references the page's name (stem minus "Page").
+ * Distinct from vitest line coverage — it tracks whether the user-facing surface has UI tests at all.
+ */
+export function buildUiFlowCoverage(facts: RepoScanFacts): DashboardPayload['uiFlowCoverage'] {
+  const pageFiles = facts.sourceFiles.filter(file => /(^|\/)pages\//.test(file));
+  const uiTestKeys = facts.testFiles
+    .filter(file => /\.feature$/i.test(file) || /(e2e|playwright|cypress)/i.test(file))
+    .map(file => file.toLowerCase().replace(/[^a-z0-9]/g, ''));
+
+  const covered: string[] = [];
+  const uncovered: string[] = [];
+  for (const file of pageFiles) {
+    const stem = file.split('/').at(-1)?.replace(/\.[cm]?[jt]sx?$/i, '') ?? '';
+    if (!stem || /^index$/i.test(stem)) continue;
+    const key = stem.replace(/page$/i, '').toLowerCase().replace(/[^a-z0-9]/g, '');
+    const isCovered = key.length > 0 && uiTestKeys.some(testKey => testKey.includes(key));
+    (isCovered ? covered : uncovered).push(stem);
+  }
+
+  const total = covered.length + uncovered.length;
+  return { percent: total ? Math.round((covered.length / total) * 100) : null, covered, uncovered };
+}
+
 function buildDashboard(repo: RepoRecord, facts: RepoScanFacts, draft: OnboardingDraftInput, reasoning: ScanReasoningResult): { summary: ScanSummary; dashboard: DashboardPayload } {
   const automatedTestsFound = facts.testFiles.length;
   const productDocsIndexed = (draft.productDocs ?? []).length + (draft.docSources ?? []).length;
@@ -670,6 +695,7 @@ function buildDashboard(repo: RepoRecord, facts: RepoScanFacts, draft: Onboardin
       const cov = moduleCoverage.get(mod.name);
       return { module: mod.name, line: cov?.line ?? null, branch: cov?.branch ?? null };
     }),
+    uiFlowCoverage: buildUiFlowCoverage(facts),
     riskHeatmap: {
       columns: ['Failed', 'Flaky', 'Missing', 'Suspect'],
       rows: heatmapModules.map(mod => ({

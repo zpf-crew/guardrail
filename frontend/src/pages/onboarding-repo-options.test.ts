@@ -45,6 +45,7 @@ function dashboard(overrides: Partial<DashboardPayload> = {}): DashboardPayload 
     insights: [],
     structure: [],
     coverage: [],
+    uiFlowCoverage: { percent: null, covered: [], uncovered: [] },
     riskHeatmap: { columns: [], rows: [] },
     activity: [],
     ...overrides,

@@ -7,7 +7,9 @@ import { readFileCoverage } from './coverage-report-parser.js';
 import type { RepoScanFacts, ScanProgress } from './onboarding.types.js';
 
 const exec = promisify(execCallback);
-const TEST_FILE_RE = /(^|\/)(__tests__|tests?|e2e|cypress|playwright)(\/|$)|\.(test|spec)\.[cm]?[jt]sx?$/i;
+// Recognize unit/integration specs, dedicated test dirs, and Gherkin `.feature` files (the UI-flow
+// test artifact). `.feature` must be the extension so paths like `src/feature/flags.ts` stay source.
+const TEST_FILE_RE = /(^|\/)(__tests__|tests?|e2e|cypress|playwright)(\/|$)|\.(test|spec)\.[cm]?[jt]sx?$|\.feature$/i;
 const SOURCE_FILE_RE = /\.(ts|tsx|js|jsx|mjs|cjs|py|go|rs|java|kt|swift)$/i;
 const MAX_SNIPPET_BYTES = 8000;
 

@@ -9,6 +9,7 @@ import { ClonedRepoRepositoryProvider } from './cloned-repo-repository-provider.
 const emptyDashboardSections = {
   structure: [],
   coverage: [],
+  uiFlowCoverage: { percent: null, covered: [], uncovered: [] },
   riskHeatmap: { columns: ['Failed', 'Flaky', 'Missing', 'Suspect'] as DashboardPayload['riskHeatmap']['columns'], rows: [] },
   activity: [],
 };

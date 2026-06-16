@@ -119,6 +119,11 @@ export interface DashboardPayload {
     counts: Array<{ label: string; count: number; kind: 'unit' | 'integration' | 'failed' | 'flaky' | 'missing' | 'suspicious' | 'other' }>;
   }>;
   coverage: Array<{ module: string; line: number | null; branch: number | null }>;
+  /**
+   * UI/Browser flow coverage — distinct from vitest line coverage. Measures how many route/page
+   * components have at least one UI test targeting them. `percent` is null when the repo has no pages.
+   */
+  uiFlowCoverage: { percent: number | null; covered: string[]; uncovered: string[] };
   riskHeatmap: {
     columns: ('Failed' | 'Flaky' | 'Missing' | 'Suspect')[];
     rows: Array<{ module: string; values: (0 | 1 | 2 | 3)[] }>;
