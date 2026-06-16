@@ -66,6 +66,7 @@ docker compose up --build
 This starts Caddy on ports `80` and `443`, provisions HTTPS for `zpf-crew.site`, and forwards requests to the backend container on port `3000`.
 
 AgentBase should run the root `Dockerfile`, which serves only the frontend and requires `BACKEND_URL=https://zpf-crew.site`.
+Set the backend server's `FRONTEND_URL` to the deployed AgentBase frontend origin. The backend uses it for CORS, OAuth redirects, and cross-origin session cookie policy.
 
 ## Environment Setup
 
@@ -91,8 +92,8 @@ The backend reads configuration from `process.env`. Export variables from `.env`
 | `LLM_CHAT_PATH` | No | API path after base URL (`messages` for GreenNode, `chat/completions` for OpenAI) |
 | `LLM_THINKER_MODEL` | No | Thinker profile model (default: `gemma-4`) |
 | `LLM_CODER_MODEL` | No | Coder profile model (default: `qwen-3.6-coder`) |
-| `FRONTEND_URL` | No | Frontend origin for CORS / redirects |
-| `BACKEND_URL` | No | Backend public URL |
+| `FRONTEND_URL` | No | Frontend origin for CORS, redirects, and cross-origin cookie policy |
+| `BACKEND_URL` | No | Backend public URL used to decide secure session cookie behavior |
 
 **GreenNode (default in `.env.example`):**
 

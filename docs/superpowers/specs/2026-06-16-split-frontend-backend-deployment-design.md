@@ -31,6 +31,7 @@ The backend gets its own `backend/Dockerfile`. It builds the TypeScript backend,
 ## Assumptions
 
 - `BACKEND_URL` is `https://zpf-crew.site`, reachable by users' browsers when the frontend runs on AgentBase.
+- `FRONTEND_URL` is set on the backend server to the deployed AgentBase frontend origin, so CORS, OAuth redirects, and cross-origin session cookies use the correct browser origin.
 - GitHub OAuth callback points to the backend URL, not the AgentBase frontend URL.
 - Backend deployment secrets are provided by server environment or Compose `.env`.
 

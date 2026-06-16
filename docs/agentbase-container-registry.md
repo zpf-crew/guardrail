@@ -43,7 +43,7 @@ From the response, note:
 
 ## Build the Image
 
-Use `linux/amd64` for AgentBase Runtime compatibility:
+Use `linux/amd64` for AgentBase Runtime compatibility.
 
 ```bash
 REGISTRY_URL="vcr.vngcloud.vn"
@@ -51,9 +51,22 @@ REPO_NAME="111480-abp111731"
 IMAGE_NAME="guardrail"
 TAG="v$(date +%Y%m%d%H%M%S)"
 IMAGE_URL="${REGISTRY_URL}/${REPO_NAME}/${IMAGE_NAME}:${TAG}"
+```
 
+On an amd64 Docker daemon, or when the required amd64 layers are already cached locally, the legacy builder command works:
+
+```bash
 docker build --platform linux/amd64 -t "$IMAGE_URL" .
 ```
+
+For a clean cross-platform build from an ARM host, use one of these options instead:
+
+```bash
+# Option A: Buildx installed
+docker buildx build --platform linux/amd64 -t "$IMAGE_URL" --push .
+```
+
+If `docker build --platform linux/amd64 ...` fails with `does not provide the specified platform (linux/amd64)` on an ARM host, do a clean build with Buildx or an amd64 VM. The legacy builder can reuse cached amd64 layers, but it cannot reliably create fresh amd64 layers from the ARM Colima daemon.
 
 ## Login to AgentBase CR
 
@@ -63,11 +76,9 @@ The login script fetches credentials in memory and pipes the secret to Docker. I
 bash .agents/skills/agentbase/scripts/cr.sh credentials docker-login
 ```
 
-## Push the Image
+## Get the Image
 
 ```bash
-docker push "$IMAGE_URL"
-
 echo "$IMAGE_URL"
 ```
 
@@ -88,6 +99,7 @@ BACKEND_URL=https://zpf-crew.site
 ```
 
 Configure GitHub OAuth, database, LLM, and workspace secrets on the backend server, not in the AgentBase frontend runtime.
+On the backend server, set `FRONTEND_URL` to the deployed AgentBase frontend origin and `BACKEND_URL=https://zpf-crew.site`. When those origins differ over HTTPS, the backend emits the session cookie with `SameSite=None; Secure` so credentialed frontend API requests can include it.
 
 Do not include AgentBase auto-injected variables in the env file:
 

@@ -14,6 +14,7 @@ RUN pnpm --dir frontend build
 
 FROM node:20-bookworm-slim AS runtime
 
+ENV DEBIAN_FRONTEND=noninteractive
 ENV BACKEND_URL=
 
 RUN apt-get update \

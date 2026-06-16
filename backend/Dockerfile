@@ -17,6 +17,7 @@ RUN pnpm --filter guardrail-backend --prod deploy --legacy /app/backend-prod
 
 FROM node:20-bookworm-slim AS runtime
 
+ENV DEBIAN_FRONTEND=noninteractive
 ENV NODE_ENV=production
 ENV UV_USE_IO_URING=0
 ENV PORT=3000

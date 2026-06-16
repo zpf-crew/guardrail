@@ -6,15 +6,42 @@ import type { AuthUser } from './auth.types.js';
 
 export const SESSION_COOKIE = 'gr_session';
 
-function cookieSecure(): boolean {
-  return env.BACKEND_URL?.startsWith('https://') ?? false;
+export interface SessionCookiePolicyInput {
+  backendUrl?: string;
+  frontendUrl?: string;
+}
+
+function originFromUrl(url: string | undefined): string | null {
+  if (!url) return null;
+  try {
+    return new URL(url).origin;
+  } catch {
+    return null;
+  }
+}
+
+export function resolveSessionCookiePolicy(input: SessionCookiePolicyInput) {
+  const backendOrigin = originFromUrl(input.backendUrl);
+  const frontendOrigin = originFromUrl(input.frontendUrl);
+  const secure = input.backendUrl?.startsWith('https://') ?? false;
+  const crossOriginFrontend = Boolean(secure && backendOrigin && frontendOrigin && backendOrigin !== frontendOrigin);
+
+  return {
+    secure,
+    sameSite: crossOriginFrontend ? 'none' as const : 'lax' as const,
+  };
 }
 
 export function sessionCookieOptions(expires?: Date) {
+  const policy = resolveSessionCookiePolicy({
+    backendUrl: env.BACKEND_URL,
+    frontendUrl: env.FRONTEND_URL,
+  });
+
   return {
     httpOnly: true,
-    sameSite: 'lax' as const,
-    secure: cookieSecure(),
+    sameSite: policy.sameSite,
+    secure: policy.secure,
     path: '/',
     expires,
   };
