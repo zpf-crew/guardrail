@@ -337,7 +337,7 @@ test('plans UI Browser user flows', async () => {
   });
 
   assert.equal(result.acceptedFlows[0].id, 'flow-1');
-  assert.equal(capturedMaxTokens, 4000);
+  assert.equal(capturedMaxTokens, 10000);
 });
 
 test('plans UI Browser execution steps', async () => {
@@ -386,7 +386,7 @@ test('plans UI Browser execution steps', async () => {
   });
 
   assert.equal(result.steps[2].kind, 'assert');
-  assert.equal(capturedMaxTokens, 4000);
+  assert.equal(capturedMaxTokens, 10000);
 });
 
 test('plans UI Browser user flows after transient missing assistant content', async () => {

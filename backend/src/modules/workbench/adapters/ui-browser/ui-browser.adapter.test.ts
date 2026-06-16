@@ -999,13 +999,22 @@ test('executes accepted user flows instead of raw scenarios', async () => {
           { id: 'step-3', kind: 'assert', instruction: 'Verify success toast.', successCriteria: 'A success toast appears.' },
         ],
       },
+      {
+        flowId: 'flow-1',
+        title: 'Add one product to cart',
+        steps: [
+          { id: 'step-1', kind: 'setup', instruction: 'Open the homepage.', successCriteria: 'Homepage loaded.' },
+          { id: 'step-2', kind: 'action', instruction: 'Click Add to Cart.', successCriteria: 'Click completes.' },
+          { id: 'step-3', kind: 'assert', instruction: 'Verify the cart count shows one item.', successCriteria: 'The cart count shows one item.' },
+        ],
+      },
     ]),
   });
 
   const result = await adapter.run({ ...input, generation });
 
   assert.deepEqual(seenPlans.map(plan => plan.title), ['Add one product to cart']);
-  assert.equal(seenPlans[0]?.steps?.[2]?.instruction, 'Verify that the cart count shows one item.');
+  assert.equal(seenPlans[0]?.steps?.[2]?.instruction, 'Verify the cart count shows one item.');
   assert.equal(seenPlans[0]?.steps?.[2]?.successCriteria, 'The cart count shows one item.');
   assert.equal(result.matrix.some(row => row.status === 'Skipped'), true);
 });
@@ -1083,6 +1092,15 @@ test('end-to-end smoke test reduces duplicate and toast drafts before execution'
         ],
       },
       {
+        flowId: 'flow-1',
+        title: 'Add one product to cart',
+        steps: [
+          { id: 'step-1', kind: 'setup', instruction: 'Open the homepage.', successCriteria: 'Homepage loaded.' },
+          { id: 'step-2', kind: 'action', instruction: 'Click Add to Cart.', successCriteria: 'Click completes.' },
+          { id: 'step-3', kind: 'assert', instruction: 'Verify cart count is one.', successCriteria: 'Cart shows one item.' },
+        ],
+      },
+      {
         behaviorTitle: 'Search for products',
         acceptedFlows: [{
           id: 'flow-2',
@@ -1093,6 +1111,15 @@ test('end-to-end smoke test reduces duplicate and toast drafts before execution'
           priority: 'high',
         }],
         droppedScenarios: [],
+      },
+      {
+        flowId: 'flow-2',
+        title: 'Search for products',
+        steps: [
+          { id: 'step-1', kind: 'setup', instruction: 'Open the homepage.', successCriteria: 'Homepage loaded.' },
+          { id: 'step-2', kind: 'action', instruction: 'Search for shoes.', successCriteria: 'Search completes.' },
+          { id: 'step-3', kind: 'assert', instruction: 'Verify search results appear.', successCriteria: 'Results are shown.' },
+        ],
       },
       {
         flowId: 'flow-2',

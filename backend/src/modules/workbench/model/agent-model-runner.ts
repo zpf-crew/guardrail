@@ -100,7 +100,7 @@ export class AgentModelRunner {
           ),
         },
       ],
-      chatOptions: { temperature: 0, maxTokens: 4000 },
+      chatOptions: { temperature: 0, maxTokens: 10000 },
       signal: args.signal,
       validate: parsed => validateWorkbenchStepResult(schemaName, parsed) as T,
     });

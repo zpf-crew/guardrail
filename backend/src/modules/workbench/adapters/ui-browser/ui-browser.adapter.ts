@@ -881,19 +881,29 @@ export class UiBrowserAdapter implements TestTypeAdapter {
   ): Promise<UiBrowserExecutionPlan> {
     const agentModel = new AgentModelRunner({ modelConnect: input.modelConnect });
     const skill = await input.skills.load('test-plan-ui-browser-execution');
-    const plan = await agentModel.planUiBrowserExecution({
+    const baseContext = {
+      flow,
+      sourceScenarios,
+      repositoryEvidence: input.repository,
+      defaultRoute,
+      agentBrowserGuidance: await loadAgentBrowserCoreGuide(),
+    };
+    const generatedPlan = await agentModel.planUiBrowserExecution({
+      profile: 'coder',
+      skill,
+      context: baseContext,
+      signal: input.signal,
+    });
+    const repairedPlan = await agentModel.planUiBrowserExecution({
       profile: 'coder',
       skill,
       context: {
-        flow,
-        sourceScenarios,
-        repositoryEvidence: input.repository,
-        defaultRoute,
-        agentBrowserGuidance: await loadAgentBrowserCoreGuide(),
+        ...baseContext,
+        generatedPlan,
       },
       signal: input.signal,
     });
-    return sanitizeExecutionPlan(plan, flow);
+    return sanitizeExecutionPlan(repairedPlan, flow);
   }
 
   #createAgentRunner(input: AdapterInput, sessionName?: string): AgentRunnerLike {

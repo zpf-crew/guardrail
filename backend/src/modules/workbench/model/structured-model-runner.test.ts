@@ -31,7 +31,7 @@ test('parses fenced json and validates output', async () => {
   });
 
   assert.equal(result.risk.browserAutomationRequired, true);
-  assert.equal((capturedOptions as { maxTokens?: number }).maxTokens, 8000);
+  assert.equal((capturedOptions as { maxTokens?: number }).maxTokens, 10000);
 });
 
 test('fails clearly when model is unavailable', async () => {

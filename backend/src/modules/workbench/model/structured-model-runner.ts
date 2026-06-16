@@ -56,7 +56,7 @@ export class StructuredModelRunner {
           ),
         },
       ],
-      chatOptions: { temperature: 0, maxTokens: 8000 },
+      chatOptions: { temperature: 0, maxTokens: 10000 },
       signal: args.signal,
       validate: parsed => validateWorkbenchStepResult(args.schemaName, parsed),
     });
