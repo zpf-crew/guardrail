@@ -19,6 +19,8 @@ export function buildIsolationContext(intent: unknown, repository: RepositoryCon
       preferUiBrowserForPageFlows: true,
       minimumClassifications: 1,
       useRepositoryEvidenceFirst: true,
+      transientUiAsSupportingEvidenceOnly: true,
+      preferDurableStateOverTransientFeedback: true,
     },
     schemaName: 'IsolationClassifications',
   };

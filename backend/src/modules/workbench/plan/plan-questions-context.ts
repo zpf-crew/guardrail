@@ -20,6 +20,20 @@ export const GUARDRAIL_UI_TEST_DESIGN = {
     overrideField: 'runConstraintOverrides',
   },
   selectors: 'Prefer role/name and visible text; use repository snippets for labels',
+  transientUiPolicy: {
+    transientSignals: ['toast', 'snackbar', 'notification banner', 'loading spinner', 'animation'],
+    rule: 'Treat transient UI feedback as supporting evidence only, not the primary behavior or required assertion.',
+    durableAlternatives: [
+      'cart count',
+      'cart contents',
+      'route or page state',
+      'persisted field value',
+      'selected or saved state',
+      'stable validation text',
+      'table row',
+    ],
+    exception: 'Only make transient UI the target behavior when the user intent, specs, or QC cases explicitly ask to test transient feedback itself.',
+  },
   notUsed: [
     'Playwright',
     'Cypress',
@@ -90,6 +104,7 @@ export function buildPlanQuestionsContext(
         'Playwright, Cypress, Vitest, jsdom, or Testing Library',
         'Routes, homepage URL, or page component paths already listed in resolvedEvidence',
         'Cart/state/API implementation details answerable from sourceSnippets',
+        'Transient toast, snackbar, notification, loading, or animation feedback unless explicitly requested as the product behavior',
         'Whether browser automation is needed when intent includes UI / Browser',
       ],
     },

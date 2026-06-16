@@ -19,7 +19,10 @@ test('buildIsolationContext exposes guardrail UI test design and classification 
   const context = buildIsolationContext(intent, repository);
 
   assert.equal(context.guardrailUiTestDesign.runner, 'agent-browser');
+  assert.equal(context.guardrailUiTestDesign.transientUiPolicy.rule, 'Treat transient UI feedback as supporting evidence only, not the primary behavior or required assertion.');
   assert.equal(context.classificationPolicy.onePerDistinctBehavior, true);
+  assert.equal(context.classificationPolicy.transientUiAsSupportingEvidenceOnly, true);
+  assert.equal(context.classificationPolicy.preferDurableStateOverTransientFeedback, true);
   assert.equal(context.schemaName, 'IsolationClassifications');
   assert.equal(context.intent, intent);
   assert.equal(context.repository.repo.name, 'acme');

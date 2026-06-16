@@ -19,6 +19,9 @@ The backend provides JSON with:
 - Return **classifications only**. The backend fills `target`, file lists, coverage, status, and user journeys from deterministic scan data.
 - Prefer behavior-level classifications over implementation details.
 - For UI Browser requests, include browser-visible user journeys in `behavior` or `explanation` when supported by repository context.
+- For UI Browser requests, do not create behavior classifications whose primary target is a transient toast, snackbar, notification, loading spinner, animation, or temporary message unless the user intent, specs, or QC cases explicitly ask to test that transient feedback itself.
+- If repository evidence mentions transient feedback for a state-changing flow, classify the durable behavior instead. Example: use "Cart reflects added item" rather than "Success toast appears after add to cart"; mention the toast only in `explanation` if relevant.
+- Prefer durable browser-visible outcomes such as cart count, cart contents, route/page state, persisted field values, selected state, validation text that remains visible, table rows, or saved state.
 - Return JSON only. Do not wrap JSON in markdown fences.
 
 ## Required Output

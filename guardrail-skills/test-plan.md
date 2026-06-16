@@ -44,12 +44,14 @@ Context JSON includes `guardrailUiTestDesign` and `resolvedEvidence` with routes
 - Test framework, runner, or "testing environment" (Playwright/Cypress/Vitest/jsdom)
 - Routes, homepage URL, or page component paths already in `resolvedEvidence.routes` or `resolvedEvidence.sourcePages`
 - State management, API loading, cart implementation, or test IDs answerable from `sourceSnippets`
+- Transient toast, snackbar, notification, loading, animation, or temporary-message feedback unless the user explicitly asked to test that transient UI as the product behavior
 - Whether browser automation is needed when intent includes `UI / Browser`
 
 ### Quality bar
 
 - Each question must present a **real product behavior fork**, not a tooling or implementation survey.
 - Options must be **mutually exclusive behaviors**, not technology choices.
+- Do not ask users to confirm transient feedback as the required assertion for state-changing UI flows. Use durable outcomes from `guardrailUiTestDesign.transientUiPolicy.durableAlternatives` instead.
 - Return `questions: []` when scan + specs + QC are sufficient.
 
 ## Run constraint overrides
