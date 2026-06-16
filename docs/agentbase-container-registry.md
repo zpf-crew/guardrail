@@ -1,13 +1,14 @@
 # Build and Push to AgentBase Container Registry
 
-This guide builds the Guardrail single-container image and pushes it to the AgentBase managed Container Registry.
+This guide builds the Guardrail frontend image and pushes it to the AgentBase managed Container Registry.
 
 The image contains:
 
 - Nginx on port `8080`
 - Built React frontend served by Nginx
-- Fastify backend proxied behind Nginx
-- No embedded Postgres; `DATABASE_URL` points to an external database
+- Runtime frontend config pointing at the external backend through `BACKEND_URL`
+
+The image does not contain the Fastify backend or Postgres. Deploy the backend separately with `backend/Dockerfile` and `docker-compose.yml`; the Compose stack publishes nginx on port `80` and proxies to the backend on port `3000`.
 
 ## Prerequisites
 
@@ -83,26 +84,10 @@ deploy/agentbase.env.example
 Required at container startup:
 
 ```env
-DATABASE_URL=
-GITHUB_CLIENT_ID=
-GITHUB_CLIENT_SECRET=
-TOKEN_ENC_KEY=
-LLM_BASE_URL=
-LLM_API_KEY=
+BACKEND_URL=https://<backend-host>
 ```
 
-Optional override. In AgentBase Runtime, `deploy/start-container.sh` derives this from `GREENNODE_ENDPOINT_URL` when omitted:
-
-```env
-GITHUB_CALLBACK_URL=https://<agentbase-endpoint>/api/auth/github/callback
-```
-
-Optional URL overrides. In AgentBase Runtime, `deploy/start-container.sh` derives both from `GREENNODE_ENDPOINT_URL` when omitted:
-
-```env
-FRONTEND_URL=https://<agentbase-endpoint>
-BACKEND_URL=https://<agentbase-endpoint>
-```
+Configure GitHub OAuth, database, LLM, and workspace secrets on the backend server, not in the AgentBase frontend runtime.
 
 Do not include AgentBase auto-injected variables in the env file:
 
@@ -137,4 +122,4 @@ For this app, keep replicas at `1` unless repo workspaces, workbench jobs, and a
 - Docker cannot connect: start Docker Desktop or `colima start`.
 - Push unauthorized: rerun `cr.sh credentials docker-login`.
 - Push denied: confirm the image path is exactly `{registryUrl}/{repoName}/guardrail:{tag}` from `cr.sh repo get`.
-- Runtime does not become active: check that the container listens on `8080` and `GET /health` returns 200.
+- Runtime does not become active: check that the container listens on `8080`, `GET /health` returns 200, and `BACKEND_URL` is set.

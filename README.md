@@ -41,8 +41,8 @@ pnpm install
 cp .env.example .env
 # Edit .env — set GitHub OAuth values for auth/repo clone, and LLM_API_KEY for LLM calls
 
-# 3. Start Postgres with pgvector
-docker compose up -d
+# 3. Start Postgres with pgvector for local development
+docker compose up -d postgres
 
 # 4. Run DB migrations
 set -a && source .env && set +a && CI=true pnpm migrate:backend
@@ -56,6 +56,16 @@ VITE_API_BASE_URL=http://localhost:3000 CI=true pnpm dev:frontend
 
 Frontend: http://localhost:5173  
 Backend: http://localhost:3000
+
+To run the backend and Postgres together in Docker on a backend server:
+
+```bash
+docker compose up --build
+```
+
+This starts nginx on `http://localhost`, forwarding requests to the backend container on port `3000`.
+
+AgentBase should run the root `Dockerfile`, which serves only the frontend and requires `BACKEND_URL` to point at the deployed backend nginx URL.
 
 ## Environment Setup
 
@@ -72,7 +82,7 @@ The backend reads configuration from `process.env`. Export variables from `.env`
 | `DATABASE_URL` | For DB features | Postgres connection string |
 | `GITHUB_CLIENT_ID` | For OAuth | GitHub OAuth app client ID |
 | `GITHUB_CLIENT_SECRET` | For OAuth | GitHub OAuth app secret |
-| `GITHUB_CALLBACK_URL` | For OAuth | OAuth callback URL (`http://localhost:3000/api/auth/github/callback` locally) |
+| `GITHUB_CALLBACK_URL` | For OAuth | OAuth callback URL (`http://localhost:3000/api/auth/github/callback` for local dev, `http://<backend-host>/api/auth/github/callback` for Compose/nginx) |
 | `WORKSPACE_DIR` | For repo clone | Local directory where backend stores shallow clones |
 | `TOKEN_ENC_KEY` | For OAuth | 32-byte key used to encrypt GitHub tokens at rest |
 | `SESSION_TTL_DAYS` | No | Session lifetime in days |
