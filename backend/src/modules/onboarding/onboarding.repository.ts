@@ -38,4 +38,11 @@ export class OnboardingRepository {
     );
     return result.rows[0]?.dashboard_payload as DashboardPayload | undefined ?? null;
   }
+
+  async deleteForRepo(repoId: string, userId: string): Promise<void> {
+    await this.db.query(
+      'DELETE FROM onboarding_scan_results WHERE repo_id = $1 AND user_id = $2',
+      [repoId, userId],
+    );
+  }
 }

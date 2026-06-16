@@ -1,8 +1,11 @@
 import type { FastifyInstance } from 'fastify';
-import { stat } from 'node:fs/promises';
+import { rm, stat } from 'node:fs/promises';
+import path from 'node:path';
+import { env } from '../../config/env.js';
 import { AuthRepository } from '../auth/auth.repository.js';
 import { requireAuth } from '../auth/session.service.js';
 import { decryptToken } from '../auth/token-crypto.js';
+import { OnboardingRepository } from '../onboarding/onboarding.repository.js';
 import { cloneRepository } from './git-clone.service.js';
 import { listGithubRepos } from './github-api.service.js';
 import { listRepoFiles, readRepoFile } from './repo-files.service.js';
@@ -25,6 +28,13 @@ function publicRepo(repo: GitHubRepoSummary): GitHubRepoSummary {
 async function cloneExists(clonePath: string | null): Promise<boolean> {
   if (!clonePath) return false;
   return stat(clonePath).then(info => info.isDirectory()).catch(() => false);
+}
+
+function isManagedClonePath(clonePath: string): boolean {
+  const workspaceRoot = path.resolve(process.cwd(), env.WORKSPACE_DIR);
+  const resolvedClonePath = path.resolve(clonePath);
+  const relative = path.relative(workspaceRoot, resolvedClonePath);
+  return relative !== '' && !relative.startsWith('..') && !path.isAbsolute(relative);
 }
 
 async function getAccessToken(app: FastifyInstance, userId: string): Promise<string> {
@@ -95,6 +105,30 @@ export async function reposRoutes(app: FastifyInstance) {
       request.log.warn({ repoId: repo.id }, 'Repository clone failed');
       return reply.code(422).send({ error: 'Repository clone failed' });
     }
+  });
+
+  app.post('/:repoId/reset', async (request, reply) => {
+    const user = request.user!;
+    const { repoId } = request.params as { repoId: string };
+    const repository = new ReposRepository(app.db);
+    const repo = await repository.getForUser(repoId, user.id);
+    if (!repo) {
+      return reply.code(404).send({ error: 'Repository not found' });
+    }
+
+    const clonePath = repo.clonePath;
+    await new OnboardingRepository(app.db).deleteForRepo(repoId, user.id);
+    await repository.resetClone(repoId, user.id);
+
+    if (clonePath) {
+      if (isManagedClonePath(clonePath)) {
+        await rm(clonePath, { recursive: true, force: true });
+      } else {
+        request.log.warn({ repoId, clonePath }, 'Skipping reset disk cleanup outside managed workspace');
+      }
+    }
+
+    return { ok: true };
   });
 
   app.get('/:repoId/files', async (request, reply) => {

@@ -32,6 +32,7 @@ import {
 } from '../../validation/workbench-validators.js';
 import { DevServerOrchestrator, type DevServerLease, type DevServerLogEvent } from '../../dev-server/dev-server-orchestrator.js';
 import {
+  diagnoseDevServerResolution,
   resolveDevServerTarget,
   type DevServerTarget,
 } from '../../dev-server/dev-server-resolver.js';
@@ -115,6 +116,10 @@ function sanitizeLogChunk(text: string): string {
 function shortLogChunk(text: string): string {
   const compact = sanitizeLogChunk(text).trim().replace(/\s+/g, ' ');
   return compact.length > 220 ? `${compact.slice(0, 220)}…` : compact;
+}
+
+function logRunDiagnostic(message: string): void {
+  console.log(`[workbench-ui-run] ${message}`);
 }
 
 function resolveManualTarget(manualBaseUrl: string | undefined, defaultRoute: string): { baseUrl: string; route: string; targetUrl: string } | null {
@@ -505,21 +510,21 @@ export class UiBrowserAdapter implements TestTypeAdapter {
     const isolation = input.session.isolation;
     if (!isolation) throw new Error('Cannot run UI Browser tests without isolation result.');
 
-    const failedMatrix = (errorMessage: string): UiRunOutcome => ({
+    const notRunMatrix = (reason: string): UiRunOutcome => ({
       result: {
-        outcome: 'Failed',
+        outcome: 'Skipped',
         durationMs: 0,
         evidence: [],
-        errorMessage,
+        errorMessage: reason,
       },
       targetUrl: null,
       matrix: uiChanges.map(change => ({
         title: change.title,
         type: 'UI / Browser',
-        status: 'Failed',
+        status: 'Skipped',
         duration: null,
         evidence: null,
-        reason: errorMessage,
+        reason,
         file: change.file,
       })),
     });
@@ -550,9 +555,19 @@ export class UiBrowserAdapter implements TestTypeAdapter {
         };
         targetUrl = manualTarget.targetUrl;
       } else {
+        const diagnostics = await diagnoseDevServerResolution(clonePath);
+        for (const diagnostic of diagnostics) {
+          logRunDiagnostic(diagnostic);
+          await input.emit({
+            type: 'progress',
+            message: `[dev-server:resolve] ${diagnostic}`,
+            percent: 75,
+          });
+        }
+
         const target = await this.#devServer.resolve(clonePath, sessionId);
         if (!target) {
-          return failedMatrix('No dev server could be resolved for this repository. Provide a running app URL to continue UI Browser tests.');
+          return notRunMatrix('No dev server could be resolved for this repository. Choose a running app URL to run UI Browser tests.');
         }
 
         await input.emit({ type: 'progress', message: 'Installing target repository dependencies.', percent: 75 });
@@ -560,6 +575,7 @@ export class UiBrowserAdapter implements TestTypeAdapter {
         lease = await this.#devServer.start(target, input.signal, defaultRoute, event => {
           const chunk = shortLogChunk(event.text);
           if (!chunk) return;
+          logRunDiagnostic(`[dev-server:${event.source}:${event.stream}] ${chunk}`);
           void input.emit({
             type: 'progress',
             message: `[dev-server:${event.source}:${event.stream}] ${chunk}`,
@@ -692,14 +708,18 @@ export class UiBrowserAdapter implements TestTypeAdapter {
         percent: 80,
       });
       const rawErrorMessage = error instanceof Error ? error.message : String(error);
-      const errorMessage = input.runOptions?.manualBaseUrl
+      const setupFailed = !targetUrl && !input.runOptions?.manualBaseUrl;
+      const errorMessage = setupFailed
+        ? `Could not start dev server: ${rawErrorMessage}`
+        : input.runOptions?.manualBaseUrl
         ? rawErrorMessage
         : `${rawErrorMessage} Provide a running app URL to continue UI Browser tests.`;
+      const rowStatus: RunOutcome = setupFailed ? 'Skipped' : 'Failed';
       for (const pending of pendingFlowRuns.slice(completedFlowRunCount)) {
         matrix.push({
           title: pending.flow.title,
           type: 'UI / Browser',
-          status: 'Failed',
+          status: rowStatus,
           duration: null,
           evidence: null,
           reason: errorMessage,
@@ -710,7 +730,7 @@ export class UiBrowserAdapter implements TestTypeAdapter {
         matrix.push(...uiChanges.map(change => ({
           title: change.title,
           type: 'UI / Browser' as const,
-          status: 'Failed' as const,
+          status: rowStatus,
           duration: null,
           evidence: null,
           reason: errorMessage,
@@ -721,7 +741,7 @@ export class UiBrowserAdapter implements TestTypeAdapter {
       if (runTrace) allEvidence.push(runTrace);
       return {
         result: {
-          outcome: 'Failed',
+          outcome: setupFailed ? 'Skipped' : 'Failed',
           durationMs: totalDuration,
           evidence: allEvidence,
           errorMessage,

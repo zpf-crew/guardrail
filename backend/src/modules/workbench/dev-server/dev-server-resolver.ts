@@ -19,6 +19,7 @@ type PackageManager = 'pnpm' | 'yarn' | 'npm';
 
 const COMPOSE_FILE_NAMES = ['docker-compose.yml', 'docker-compose.yaml', 'compose.yml', 'compose.yaml'] as const;
 const WEB_SERVICE_NAMES = ['frontend', 'web', 'app', 'nginx'] as const;
+const APP_PACKAGE_DIRS = ['frontend', 'app', 'web', 'client'] as const;
 
 async function fileExists(filePath: string): Promise<boolean> {
   return stat(filePath).then(info => info.isFile()).catch(() => false);
@@ -45,6 +46,56 @@ async function detectPackageManager(clonePath: string): Promise<PackageManager> 
   if (files.includes('pnpm-lock.yaml')) return 'pnpm';
   if (files.includes('yarn.lock')) return 'yarn';
   return 'npm';
+}
+
+async function readPackageScripts(filePath: string): Promise<Record<string, string> | null> {
+  if (!(await fileExists(filePath))) return null;
+  try {
+    const payload = JSON.parse(await readFile(filePath, 'utf8')) as { scripts?: Record<string, string> };
+    return payload.scripts ?? {};
+  } catch {
+    return null;
+  }
+}
+
+async function hasRootNodeWorkspace(clonePath: string): Promise<boolean> {
+  const files = await readdir(clonePath).catch(() => [] as string[]);
+  return files.some(file => (
+    file === 'package.json'
+    || file === 'pnpm-lock.yaml'
+    || file === 'pnpm-workspace.yaml'
+    || file === 'yarn.lock'
+    || file === 'package-lock.json'
+  ));
+}
+
+function formatScripts(scripts: Record<string, string> | null): string {
+  if (!scripts) return 'package.json not found';
+  const names = Object.keys(scripts).sort();
+  return names.length > 0 ? names.join(', ') : 'no scripts';
+}
+
+export async function diagnoseDevServerResolution(clonePath: string): Promise<string[]> {
+  const files = await readdir(clonePath).catch(() => [] as string[]);
+  const packageManager = await detectPackageManager(clonePath);
+  const appPackageDiagnostics = await Promise.all(APP_PACKAGE_DIRS.map(async dir => {
+    const scripts = await readPackageScripts(join(clonePath, dir, 'package.json'));
+    return `${dir}PackageScripts=${formatScripts(scripts)}`;
+  }));
+  const rootScripts = await readPackageScripts(join(clonePath, 'package.json'));
+  const composeFile = await findComposeFile(clonePath);
+  const composeService = composeFile ? await detectWebService(composeFile) : null;
+
+  return [
+    `clonePath=${clonePath}`,
+    `topLevelFiles=${files.slice(0, 40).join(', ') || '<empty>'}`,
+    `packageManager=${packageManager}`,
+    ...appPackageDiagnostics,
+    `rootPackageScripts=${formatScripts(rootScripts)}`,
+    `composeFile=${composeFile ?? '<none>'}`,
+    `composeWebService=${composeService ?? '<none>'}`,
+    'resolverPolicy=known app package dev script, root package dev script, root package start script, then docker compose web service',
+  ];
 }
 
 function buildDevArgs(packageManager: PackageManager, packageDir: string | null, port: number): string[] {
@@ -82,6 +133,33 @@ function subprocessCommand(packageManager: PackageManager, packageDir: string | 
   return packageManager;
 }
 
+async function subprocessTarget(
+  clonePath: string,
+  packageDir: string | null,
+  script: 'dev' | 'start',
+  port: number,
+): Promise<Extract<DevServerTarget, { kind: 'subprocess' }>> {
+  const runFromRoot = packageDir === null || await hasRootNodeWorkspace(clonePath);
+  const cwd = runFromRoot ? clonePath : join(clonePath, packageDir);
+  const commandPackageDir = runFromRoot ? packageDir : null;
+  const packageManager = await detectPackageManager(cwd);
+  const hasPackageLock = await fileExists(join(cwd, 'package-lock.json'));
+  const args = script === 'dev'
+    ? buildDevArgs(packageManager, commandPackageDir, port)
+    : ['start'];
+
+  return {
+    kind: 'subprocess',
+    command: script === 'dev' ? subprocessCommand(packageManager, commandPackageDir) : packageManager,
+    args,
+    cwd,
+    port,
+    healthPath: '/',
+    installCommand: packageManager,
+    installArgs: buildInstallArgs(packageManager, hasPackageLock),
+  };
+}
+
 async function findComposeFile(clonePath: string): Promise<string | null> {
   for (const fileName of COMPOSE_FILE_NAMES) {
     const filePath = join(clonePath, fileName);
@@ -117,23 +195,14 @@ export async function resolveDevServerTarget(
   options?: { sessionId?: string },
 ): Promise<DevServerTarget | null> {
   const port = await pickEphemeralPort();
-  const packageManager = await detectPackageManager(clonePath);
-  const hasPackageLock = await fileExists(join(clonePath, 'package-lock.json'));
 
-  const frontendPackageJson = join(clonePath, 'frontend', 'package.json');
-  if (await fileExists(frontendPackageJson)) {
-    const scripts = JSON.parse(await readFile(frontendPackageJson, 'utf8')).scripts ?? {};
-    if (scripts.dev) {
-      return {
-        kind: 'subprocess',
-        command: subprocessCommand(packageManager, 'frontend'),
-        args: buildDevArgs(packageManager, 'frontend', port),
-        cwd: clonePath,
-        port,
-        healthPath: '/',
-        installCommand: packageManager,
-        installArgs: buildInstallArgs(packageManager, hasPackageLock),
-      };
+  for (const packageDir of APP_PACKAGE_DIRS) {
+    const packageJson = join(clonePath, packageDir, 'package.json');
+    if (await fileExists(packageJson)) {
+      const scripts = JSON.parse(await readFile(packageJson, 'utf8')).scripts ?? {};
+      if (scripts.dev) {
+        return subprocessTarget(clonePath, packageDir, 'dev', port);
+      }
     }
   }
 
@@ -141,29 +210,10 @@ export async function resolveDevServerTarget(
   if (await fileExists(rootPackageJson)) {
     const scripts = JSON.parse(await readFile(rootPackageJson, 'utf8')).scripts ?? {};
     if (scripts.dev) {
-      return {
-        kind: 'subprocess',
-        command: subprocessCommand(packageManager, null),
-        args: buildDevArgs(packageManager, null, port),
-        cwd: clonePath,
-        port,
-        healthPath: '/',
-        installCommand: packageManager,
-        installArgs: buildInstallArgs(packageManager, hasPackageLock),
-      };
+      return subprocessTarget(clonePath, null, 'dev', port);
     }
     if (scripts.start) {
-      const startArgs = packageManager === 'npm' ? ['start'] : ['start'];
-      return {
-        kind: 'subprocess',
-        command: packageManager,
-        args: startArgs,
-        cwd: clonePath,
-        port,
-        healthPath: '/',
-        installCommand: packageManager,
-        installArgs: buildInstallArgs(packageManager, hasPackageLock),
-      };
+      return subprocessTarget(clonePath, null, 'start', port);
     }
   }
 

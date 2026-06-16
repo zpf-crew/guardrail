@@ -78,6 +78,21 @@ export class ReposRepository {
     await this.db.query("UPDATE repos SET status = 'clone_failed', updated_at = now() WHERE id = $1", [repoId]);
   }
 
+  async resetClone(repoId: string, userId: string): Promise<boolean> {
+    const result = await this.db.query(
+      `UPDATE repos
+       SET clone_path = null,
+           current_branch = null,
+           commit_sha = null,
+           status = 'pending',
+           last_cloned_at = null,
+           updated_at = now()
+       WHERE id = $1 AND user_id = $2`,
+      [repoId, userId],
+    );
+    return (result.rowCount ?? 0) > 0;
+  }
+
   async getForUser(repoId: string, userId: string): Promise<RepoRecord | null> {
     const result = await this.db.query('SELECT * FROM repos WHERE id = $1 AND user_id = $2', [repoId, userId]);
     return result.rows[0] ? mapRepo(result.rows[0]) : null;

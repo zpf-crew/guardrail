@@ -251,6 +251,9 @@ export function useWorkbench(initialIntent?: Partial<IntentInput>, options?: Use
 
   const runTests = React.useCallback((options: RunOptions = {}) => {
     if (!session) return;
+    const runOptions = typeof options.manualBaseUrl === 'string'
+      ? { manualBaseUrl: options.manualBaseUrl }
+      : {};
     const runId = runIdRef.current + 1;
     runIdRef.current = runId;
     const isCurrentRun = () => runIdRef.current === runId;
@@ -262,16 +265,22 @@ export function useWorkbench(initialIntent?: Partial<IntentInput>, options?: Use
     setPending('run');
     setRanTests(0);
     setRunEvents([]);
+    setSession(s => (s ? { ...s, run: undefined, review: undefined } : s));
 
     void (async () => {
       try {
         const run = await runSession(session.id, event => {
           if (!isCurrentRun()) return;
           setRunEvents(events => [...events, event]);
-        }, options);
+        }, runOptions);
         if (!isCurrentRun()) return;
 
         setSession(s => (s ? { ...s, run } : s));
+        if (run.ui.outcome === 'Skipped') {
+          setRanTests(0);
+          setPending(null);
+          return;
+        }
         const activeType = primaryTestType(session.intent.testTypes);
         const matrixCount = run.matrix.filter(row => row.type === activeType).length;
         const animation = startRunAnimation(matrixCount);

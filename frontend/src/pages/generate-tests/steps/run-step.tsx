@@ -22,16 +22,43 @@ interface RunStepProps {
   progress: RunProgressEvent[];
   evidence: Evidence[];
   onBack: () => void;
+  onRunDevServer: () => void;
   onRunWithUrl: (manualBaseUrl: string) => void;
   onReview: () => void;
 }
 
-export function RunStep({ run, activeTestType, ranTests, running, progress, evidence, onBack, onRunWithUrl, onReview }: RunStepProps) {
+export function RunStep({ run, activeTestType, ranTests, running, progress, evidence, onBack, onRunDevServer, onRunWithUrl, onReview }: RunStepProps) {
   const [expandedReasons, setExpandedReasons] = useState<Set<string>>(() => new Set());
   const [manualUrl, setManualUrl] = useState('');
-  const failedAutoRun = Boolean(run && !running && run.ui.outcome === 'Failed');
 
-  // Real API: results not back yet — show an honest running placeholder.
+  if (!run && !running) {
+    return (
+      <div>
+        <StepHeader
+          eyebrow="Step 5 — Run Tests"
+          title="Choose test target"
+          description="Guardrail can try to start the cloned app inside AgentBase, or run the UI Browser flow against an app URL you already have running."
+        />
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-[12px] mb-[18px]">
+          <button
+            type="button"
+            onClick={onRunDevServer}
+            className="text-left bg-[#11141c] border border-[rgba(255,255,255,0.08)] rounded-[8px] p-[15px] hover:border-[rgba(129,140,248,0.5)] transition-colors"
+          >
+            <div className="text-[14px] font-semibold text-[#e8ebf2] mb-[5px]">Start dev server</div>
+            <div className="text-[12px] leading-[1.45] text-[#98a1b3]">Install dependencies, start the repo's dev script, then run browser tests against localhost.</div>
+          </button>
+          <div className="bg-[#11141c] border border-[rgba(255,255,255,0.08)] rounded-[8px] p-[15px]">
+            <div className="text-[14px] font-semibold text-[#e8ebf2] mb-[5px]">Use app URL</div>
+            <div className="text-[12px] leading-[1.45] text-[#98a1b3] mb-[10px]">Run against a preview, staging, or manually started URL.</div>
+            <ManualUrlForm manualUrl={manualUrl} setManualUrl={setManualUrl} onRunWithUrl={onRunWithUrl} />
+          </div>
+        </div>
+        <Button variant="ghost" onClick={onBack}>Back</Button>
+      </div>
+    );
+  }
+
   if (!run) {
     return (
       <div>
@@ -53,6 +80,43 @@ export function RunStep({ run, activeTestType, ranTests, running, progress, evid
   const progressPercent = total ? Math.round((ranTests / total) * 100) : 100;
   const matrixRows = run.matrix.filter(row => row.type === activeTestType);
   const revealed = complete ? matrixRows : matrixRows.slice(0, ranTests);
+  const notRun = complete && run.ui.outcome === 'Skipped';
+
+  if (notRun) {
+    return (
+      <div>
+        <StepHeader
+          eyebrow="Step 5 — Run Tests"
+          title="App was not started"
+          description="Guardrail could not resolve or start a runnable app for this repository inside AgentBase."
+        />
+        <div className="mb-[18px] rounded-[8px] border border-[rgba(251,191,36,0.22)] bg-[rgba(251,191,36,0.07)] p-[14px]">
+          <BlockHeader label="Setup diagnostics" />
+          <div className="flex flex-col gap-[8px] max-h-[260px] overflow-y-auto pr-[4px]">
+            {progress.length > 0 ? progress.map((event, index) => (
+              <div key={`${event.type}-${index}`} className="text-[12px] leading-[1.45] text-[#c8ceda] break-words">
+                {'percent' in event && <span className="font-mono text-[10.5px] text-[#6b7488] mr-[8px]">{event.percent}%</span>}
+                {'message' in event ? event.message : event.type}
+              </div>
+            )) : (
+              <div className="text-[12px] text-[#98a1b3]">No setup diagnostics were captured.</div>
+            )}
+          </div>
+        </div>
+        <div className="mb-[18px] rounded-[8px] border border-[rgba(129,140,248,0.22)] bg-[rgba(129,140,248,0.07)] p-[14px]">
+          <BlockHeader label="Run against existing app URL" />
+          <div className="text-[12px] leading-[1.45] text-[#aeb8ca] mb-[10px]">
+            Provide a running preview or staging URL and run the UI Browser flow there.
+          </div>
+          <ManualUrlForm manualUrl={manualUrl} setManualUrl={setManualUrl} onRunWithUrl={onRunWithUrl} />
+        </div>
+        <div className="flex gap-[10px] mt-[18px]">
+          <Button variant="ghost" onClick={onBack}>Back</Button>
+          <Button variant="primary" size="lg" onClick={onRunDevServer}>Try Dev Server Again</Button>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div>
@@ -77,30 +141,6 @@ export function RunStep({ run, activeTestType, ranTests, running, progress, evid
               )}
             </div>
           )}
-        </div>
-      )}
-
-      {complete && showsUiRunSuite(activeTestType) && failedAutoRun && (
-        <div className="mb-[18px] rounded-[8px] border border-[rgba(129,140,248,0.22)] bg-[rgba(129,140,248,0.07)] p-[14px]">
-          <BlockHeader label="Run against existing app URL" />
-          <div className="text-[12px] leading-[1.45] text-[#aeb8ca] mb-[10px]">
-            If Guardrail cannot start this repo inside AgentBase, provide a running preview or staging URL and rerun the UI Browser flow there.
-          </div>
-          <div className="flex gap-[8px]">
-            <input
-              value={manualUrl}
-              onChange={event => setManualUrl(event.target.value)}
-              placeholder="https://preview.example.com"
-              className="min-w-0 flex-1 rounded-[7px] border border-[rgba(255,255,255,0.11)] bg-[#0b0d13] px-[10px] py-[8px] text-[12.5px] text-[#e8ebf2] outline-none focus:border-[#818cf8]"
-            />
-            <Button
-              variant="primary"
-              disabled={!manualUrl.trim()}
-              onClick={() => onRunWithUrl(manualUrl.trim())}
-            >
-              Run URL
-            </Button>
-          </div>
         </div>
       )}
 
@@ -170,6 +210,34 @@ export function RunStep({ run, activeTestType, ranTests, running, progress, evid
           ? <Button variant="primary" size="lg" onClick={onReview}>Review &amp; Apply</Button>
           : <Button variant="primary" size="lg" disabled><LoaderIcon className="w-[15px] h-[15px] mr-[6px] animate-spin" />Running…</Button>}
       </div>
+    </div>
+  );
+}
+
+function ManualUrlForm({
+  manualUrl,
+  setManualUrl,
+  onRunWithUrl,
+}: {
+  manualUrl: string;
+  setManualUrl: (value: string) => void;
+  onRunWithUrl: (manualBaseUrl: string) => void;
+}) {
+  return (
+    <div className="flex gap-[8px]">
+      <input
+        value={manualUrl}
+        onChange={event => setManualUrl(event.target.value)}
+        placeholder="https://preview.example.com"
+        className="min-w-0 flex-1 rounded-[7px] border border-[rgba(255,255,255,0.11)] bg-[#0b0d13] px-[10px] py-[8px] text-[12.5px] text-[#e8ebf2] outline-none focus:border-[#818cf8]"
+      />
+      <Button
+        variant="primary"
+        disabled={!manualUrl.trim()}
+        onClick={() => onRunWithUrl(manualUrl.trim())}
+      >
+        Run URL
+      </Button>
     </div>
   );
 }

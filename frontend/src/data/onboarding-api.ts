@@ -47,6 +47,15 @@ export function getLatestDashboard(repoId: string | null): DashboardPayload | nu
   }
 }
 
+export function clearLatestDashboard(repoId: string | null) {
+  if (!repoId) return;
+  try {
+    localStorage.removeItem(`${LATEST_DASHBOARD_PREFIX}${repoId}`);
+  } catch {
+    // Local cache cleanup is best effort; the server reset is authoritative.
+  }
+}
+
 export async function commitOnboardingScan(
   repoId: string,
   draft: Partial<OnboardingDraft>,

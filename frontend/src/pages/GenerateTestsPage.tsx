@@ -256,7 +256,7 @@ function GenerateTestsWorkbench({
               genStep={wb.genStep}
               genComplete={wb.genComplete}
               onBack={() => wb.setStep(2)}
-              onRunTests={wb.runTests}
+              onRunTests={() => wb.setStep(4)}
             />
           )}
           {currentStep === 4 && (
@@ -268,6 +268,7 @@ function GenerateTestsWorkbench({
               progress={wb.runProgress}
               evidence={runEvidence}
               onBack={() => wb.setStep(3)}
+              onRunDevServer={() => wb.runTests()}
               onRunWithUrl={manualBaseUrl => wb.runTests({ manualBaseUrl })}
               onReview={() => wb.setStep(5)}
             />
