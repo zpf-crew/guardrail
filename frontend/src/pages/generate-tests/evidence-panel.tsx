@@ -15,6 +15,9 @@ export function EvidencePanel({ title = 'Evidence', running = false, progress, e
   const screenshotItems = evidence.filter((item): item is Evidence & { href: string } =>
     item.kind === 'screenshot' && Boolean(item.href),
   );
+  const debugItems = evidence.filter((item): item is Evidence & { href: string } =>
+    item.kind !== 'screenshot' && Boolean(item.href),
+  );
   const progressItems = progress
     .map(formatProgressEvent)
     .filter((item): item is DisplayProgressItem => item !== null);
@@ -155,6 +158,27 @@ export function EvidencePanel({ title = 'Evidence', running = false, progress, e
             <div className="h-[150px] rounded-[8px] border border-dashed border-[rgba(255,255,255,0.1)] bg-[#0d0f16] grid place-items-center text-[12.5px] text-[#6b7488]">
               No screenshot captured yet.
             </div>
+          )}
+          {debugItems.length > 0 && (
+            <details className="mt-[12px] border border-[rgba(255,255,255,0.08)] rounded-[8px] bg-[#0d0f16]">
+              <summary className="cursor-pointer select-none px-[10px] py-[8px] text-[11.5px] font-semibold text-[#98a1b3]">
+                Debug artifacts ({debugItems.length})
+              </summary>
+              <div className="border-t border-[rgba(255,255,255,0.07)] px-[10px] py-[8px] flex flex-col gap-[6px]">
+                {debugItems.map((item, index) => (
+                  <a
+                    key={`${item.href}-${index}`}
+                    href={item.href}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="inline-flex min-w-0 items-center gap-[6px] text-[11.5px] text-[#818cf8] hover:underline"
+                  >
+                    <EyeIcon className="w-[12px] h-[12px] flex-shrink-0" />
+                    <span className="truncate">{item.label || item.kind}</span>
+                  </a>
+                ))}
+              </div>
+            </details>
           )}
         </div>
       </div>

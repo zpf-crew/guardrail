@@ -327,25 +327,48 @@ function reasonTone(status: RunOutcome): {
 
 function MatrixEvidenceCell({ row }: { row: TestResultRow }) {
   const items = row.evidenceItems?.filter(item => item.href) ?? [];
+  const screenshotItems = items.filter(item => item.kind === 'screenshot');
+  const debugItems = items.filter(item => item.kind !== 'screenshot');
   if (items.length === 0) {
     if (!row.evidence) return null;
     return <span className="text-[#6b7488] text-[11.5px]">{row.evidence}</span>;
   }
 
   return (
-    <div className="flex flex-wrap gap-x-[10px] gap-y-[4px]">
-      {items.map((item, index) => (
-        <a
-          key={`${row.title}-${item.href}-${index}`}
-          href={item.href}
-          target="_blank"
-          rel="noreferrer"
-          className="text-[#818cf8] text-[11.5px] inline-flex items-center gap-[5px] hover:underline"
-        >
-          <EyeIcon className="w-[12px] h-[12px] flex-shrink-0" />
-          <span>{item.label || `Screenshot ${index + 1}`}</span>
-        </a>
-      ))}
+    <div className="flex flex-col gap-[5px]">
+      <div className="flex flex-wrap gap-x-[10px] gap-y-[4px]">
+        {screenshotItems.map((item, index) => (
+          <a
+            key={`${row.title}-${item.href}-${index}`}
+            href={item.href}
+            target="_blank"
+            rel="noreferrer"
+            className="text-[#818cf8] text-[11.5px] inline-flex items-center gap-[5px] hover:underline"
+          >
+            <EyeIcon className="w-[12px] h-[12px] flex-shrink-0" />
+            <span>{item.label || `Screenshot ${index + 1}`}</span>
+          </a>
+        ))}
+      </div>
+      {debugItems.length > 0 && (
+        <details className="text-[11.5px] text-[#6b7488]">
+          <summary className="cursor-pointer select-none hover:text-[#98a1b3]">Debug artifacts ({debugItems.length})</summary>
+          <div className="mt-[4px] flex flex-col gap-[4px]">
+            {debugItems.map((item, index) => (
+              <a
+                key={`${row.title}-${item.href}-${index}`}
+                href={item.href}
+                target="_blank"
+                rel="noreferrer"
+                className="text-[#818cf8] inline-flex items-center gap-[5px] hover:underline"
+              >
+                <EyeIcon className="w-[12px] h-[12px] flex-shrink-0" />
+                <span>{item.label || item.kind}</span>
+              </a>
+            ))}
+          </div>
+        </details>
+      )}
     </div>
   );
 }

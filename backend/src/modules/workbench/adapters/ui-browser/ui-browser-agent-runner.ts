@@ -133,6 +133,13 @@ export class UiBrowserAgentRunner {
         type: 'failure',
         reason,
       });
+      const diagnostics = await captureBrowserDiagnostics(
+        this.#execute,
+        args.signal,
+        `failure diagnostics — ${truncateDetail(reason, 80)}`,
+        args.onDebug,
+      );
+      if (diagnostics) evidence.push(diagnostics);
       const screenshot = await captureScreenshotEvidence(
         this.#execute,
         args.signal,
@@ -166,6 +173,9 @@ export class UiBrowserAgentRunner {
       const snapshot = await captureSnapshot(this.#execute, args.signal);
       currentStepActiveMs += Date.now() - snapshotStartedAt;
       args.onDebug?.(`snapshot iteration=${iterationsUsed + 1} step=${currentStepIndex} exit=${snapshot.exitCode} stdoutChars=${snapshot.stdout.length} stderr=${debugExcerpt(snapshot.stderr)}`);
+      if (iterationsUsed === 0) {
+        await captureBrowserDiagnostics(this.#execute, args.signal, 'after initial snapshot', args.onDebug);
+      }
       trace.push({
         atMs: Date.now() - startedAt,
         type: 'snapshot',
@@ -614,6 +624,53 @@ async function captureScreenshotEvidence(
   }
 }
 
+async function captureBrowserDiagnostics(
+  execute: AgentExecutor,
+  signal: AbortSignal,
+  label: string,
+  debug?: (message: string) => void,
+): Promise<Evidence | null> {
+  try {
+    const [url, consoleOutput, errors, networkRequests] = await Promise.all([
+      execute(['get', 'url'], signal).catch(errorResult),
+      execute(['console'], signal).catch(errorResult),
+      execute(['errors'], signal).catch(errorResult),
+      execute(['network', 'requests'], signal).catch(errorResult),
+    ]);
+
+    debug?.(`diagnostics ${label} url=${debugExcerpt(url.stdout || url.stderr)} console=${diagnosticSummary(consoleOutput)} errors=${diagnosticSummary(errors)} network=${diagnosticSummary(networkRequests)}`);
+
+    const dir = path.join(os.tmpdir(), 'guardrail-ui-browser-diagnostics');
+    await mkdir(dir, { recursive: true });
+    const filePath = path.join(dir, `${randomUUID()}.json`);
+    await writeFile(
+      filePath,
+      `${JSON.stringify({
+        kind: 'ui-browser-diagnostics',
+        label,
+        capturedAt: new Date().toISOString(),
+        url,
+        console: consoleOutput,
+        errors,
+        networkRequests,
+      }, null, 2)}\n`,
+      'utf8',
+    );
+    return { kind: 'trace', label: `UI Browser ${label}`, href: filePath };
+  } catch (error) {
+    debug?.(`diagnostics ${label} error=${error instanceof Error ? error.message : String(error)}`);
+    return null;
+  }
+}
+
+function errorResult(error: unknown): { exitCode: number; stdout: string; stderr: string } {
+  return {
+    exitCode: 1,
+    stdout: '',
+    stderr: error instanceof Error ? error.message : String(error),
+  };
+}
+
 async function emitScreenshot(
   evidence: Evidence,
   onScreenshot: RunScenarioArgs['onScreenshot'],
@@ -681,6 +738,12 @@ function commandDebugLine(
   result: { exitCode: number; stdout: string; stderr: string },
 ): string {
   return `${phase} command=${command.join(' ')} exit=${result.exitCode} stdout=${debugExcerpt(result.stdout)} stderr=${debugExcerpt(result.stderr)}`;
+}
+
+function diagnosticSummary(result: { exitCode: number; stdout: string; stderr: string }): string {
+  const content = result.stdout || result.stderr;
+  const lineCount = content.trim() ? content.trim().split(/\r?\n/).length : 0;
+  return `exit=${result.exitCode} lines=${lineCount} ${debugExcerpt(content, 140)}`;
 }
 
 function shouldKeepCommandOutput(action: UiBrowserAgentAction): boolean {

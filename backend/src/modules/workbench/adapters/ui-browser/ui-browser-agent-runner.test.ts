@@ -632,10 +632,44 @@ test('agent runner writes raw trace evidence with decisions commands and snapsho
     signal: new AbortController().signal,
   });
 
-  const trace = result.evidence.find(item => item.kind === 'trace');
+  const trace = result.evidence.find(item => item.kind === 'trace' && item.label === 'UI Browser raw trace');
   assert.ok(trace);
   assert.match(trace.href ?? '', /guardrail-ui-browser-traces\/.+\.json$/);
   assert.equal(trace.label, 'UI Browser raw trace');
+});
+
+test('agent runner captures browser diagnostics on failure', async () => {
+  const calls: string[][] = [];
+  const debug: string[] = [];
+  const runner = new UiBrowserAgentRunner({
+    decideNext: async () => ({ kind: 'stepFailed', stepIndex: 0, reason: 'React app stayed blank' }),
+    execute: async args => {
+      calls.push(args);
+      if (args[0] === 'snapshot') return { exitCode: 0, stdout: '(no interactive elements)', stderr: '' };
+      if (args[0] === 'screenshot') return { exitCode: 0, stdout: 'Screenshot saved to /tmp/blank.png', stderr: '' };
+      if (args[0] === 'get' && args[1] === 'url') return { exitCode: 0, stdout: 'http://127.0.0.1:5555/products', stderr: '' };
+      if (args[0] === 'console') return { exitCode: 0, stdout: '[error] render failed', stderr: '' };
+      if (args[0] === 'errors') return { exitCode: 0, stdout: 'TypeError: Cannot read properties of undefined', stderr: '' };
+      if (args[0] === 'network') return { exitCode: 0, stdout: 'GET /src/App.tsx 200', stderr: '' };
+      return { exitCode: 0, stdout: 'ok', stderr: '' };
+    },
+  });
+
+  const result = await runner.runScenario({
+    baseUrl: 'http://127.0.0.1:5555',
+    gherkinText: scenario,
+    constraints: { behavior: 'Shop now', maxStepDurationMs: 20_000, maxSteps: 15 },
+    defaultRoute: '/products',
+    signal: new AbortController().signal,
+    onDebug: message => debug.push(message),
+  });
+
+  assert.equal(result.outcome, 'Failed');
+  assert.ok(calls.some(call => call.join(' ') === 'console'));
+  assert.ok(calls.some(call => call.join(' ') === 'errors'));
+  assert.ok(calls.some(call => call.join(' ') === 'network requests'));
+  assert.ok(result.evidence.some(item => item.kind === 'trace' && /failure diagnostics/i.test(item.label)));
+  assert.ok(debug.some(message => /diagnostics failure diagnostics/i.test(message)));
 });
 
 test('agent runner allows total scenario duration to exceed one step budget after progress', async () => {
