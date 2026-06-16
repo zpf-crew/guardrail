@@ -41,10 +41,13 @@ export interface DevServerOrchestratorOptions {
   fetchImpl?: FetchImpl;
   healthTimeoutMs?: number;
   healthPollMs?: number;
+  stopTimeoutMs?: number;
 }
 
 const DEFAULT_HEALTH_TIMEOUT_MS = Number(process.env.WORKBENCH_DEV_SERVER_TIMEOUT_MS) || 60_000;
 const DEFAULT_HEALTH_POLL_MS = 500;
+const DEFAULT_STOP_TIMEOUT_MS = Number(process.env.WORKBENCH_DEV_SERVER_STOP_TIMEOUT_MS) || 6_000;
+const DEFAULT_KILL_GRACE_MS = 5_000;
 const MAX_CAPTURED_OUTPUT_CHARS = 8_000;
 
 function appendBounded(current: string, chunk: string): string {
@@ -78,6 +81,25 @@ function sleep(ms: number, signal: AbortSignal): Promise<void> {
   });
 }
 
+async function waitForCleanup(
+  cleanup: () => Promise<void>,
+  timeoutMs: number,
+): Promise<'completed' | 'timeout'> {
+  let timer: NodeJS.Timeout | undefined;
+  const completion = cleanup().then(
+    () => ({ type: 'completed' as const }),
+    error => ({ type: 'failed' as const, error }),
+  );
+  const timeout = new Promise<{ type: 'timeout' }>(resolve => {
+    timer = setTimeout(() => resolve({ type: 'timeout' }), timeoutMs);
+  });
+
+  const result = await Promise.race([completion, timeout]);
+  if (timer) clearTimeout(timer);
+  if (result.type === 'failed') throw result.error;
+  return result.type === 'timeout' ? 'timeout' : 'completed';
+}
+
 function defaultSpawnImpl(
   command: string,
   args: string[],
@@ -108,17 +130,24 @@ function defaultSpawnImpl(
       pid: child.pid ?? 0,
       output: () => ({ stdout, stderr }),
       kill: async (signal = 'SIGTERM') => {
-        if (child.exitCode !== null) return;
+        if (child.exitCode !== null || child.signalCode !== null) return;
 
         await new Promise<void>(killResolve => {
+          let resolved = false;
+          const done = () => {
+            if (resolved) return;
+            resolved = true;
+            clearTimeout(forceTimer);
+            clearTimeout(fallbackTimer);
+            killResolve();
+          };
           const forceTimer = setTimeout(() => {
             if (child.exitCode === null) child.kill('SIGKILL');
-          }, 5_000);
-          child.once('close', () => {
-            clearTimeout(forceTimer);
-            killResolve();
-          });
-          child.kill(signal);
+          }, DEFAULT_KILL_GRACE_MS);
+          const fallbackTimer = setTimeout(done, DEFAULT_KILL_GRACE_MS + 1_000);
+          child.once('close', done);
+          const signaled = child.kill(signal);
+          if (!signaled && child.exitCode !== null) done();
         });
       },
     };
@@ -174,6 +203,7 @@ export class DevServerOrchestrator {
   readonly #fetchImpl: FetchImpl;
   readonly #healthTimeoutMs: number;
   readonly #healthPollMs: number;
+  readonly #stopTimeoutMs: number;
 
   constructor(options: DevServerOrchestratorOptions = {}) {
     this.#spawnImpl = options.spawnImpl ?? defaultSpawnImpl;
@@ -183,6 +213,7 @@ export class DevServerOrchestrator {
     });
     this.#healthTimeoutMs = options.healthTimeoutMs ?? DEFAULT_HEALTH_TIMEOUT_MS;
     this.#healthPollMs = options.healthPollMs ?? DEFAULT_HEALTH_POLL_MS;
+    this.#stopTimeoutMs = options.stopTimeoutMs ?? DEFAULT_STOP_TIMEOUT_MS;
   }
 
   async start(
@@ -199,7 +230,15 @@ export class DevServerOrchestrator {
     const runCleanup = async () => {
       if (stopped) return;
       stopped = true;
-      await cleanup?.();
+      if (!cleanup) return;
+      const result = await waitForCleanup(cleanup, this.#stopTimeoutMs);
+      if (result === 'timeout') {
+        onLog?.({
+          source: target.kind === 'docker' ? 'docker' : 'server',
+          stream: 'stderr',
+          text: `Dev server cleanup timed out after ${this.#stopTimeoutMs}ms\n`,
+        });
+      }
     };
 
     const onAbort = () => {

@@ -30,8 +30,9 @@ test('agent runner opens the managed default route before first snapshot', async
     signal: new AbortController().signal,
   });
 
-  assert.deepEqual(calls.slice(0, 2), [
+  assert.deepEqual(calls.slice(0, 3), [
     ['open', 'http://127.0.0.1:5555/products'],
+    ['screenshot'],
     ['snapshot', '-i'],
   ]);
 });
@@ -78,7 +79,7 @@ test('agent runner passes when model completes all Then steps', async () => {
   assert.equal(result.outcome, 'Passed');
   assert.equal(result.thenVerdicts.length, 1);
   assert.equal(result.thenVerdicts[0]?.satisfied, true);
-  assert.deepEqual(streamedLabels, ['Verified — the products page is displayed']);
+  assert.deepEqual(streamedLabels, ['Loaded page — /', 'Verified — the products page is displayed']);
   assert.equal(result.evidence[0]?.href, '/api/workbench/wb-test/artifacts/1.png');
 });
 

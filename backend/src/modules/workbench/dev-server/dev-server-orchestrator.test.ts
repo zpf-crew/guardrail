@@ -49,6 +49,30 @@ test('runs build command before starting preview server', async () => {
   await orchestrator.stop(lease);
 });
 
+test('does not hang forever when subprocess cleanup does not resolve', async () => {
+  const events: string[] = [];
+  const orchestrator = new DevServerOrchestrator({
+    spawnImpl: async () => ({ pid: 123, kill: async () => new Promise<void>(() => {}) }),
+    fetchImpl: async () => ({ ok: true, status: 200 }),
+    stopTimeoutMs: 10,
+  });
+
+  const lease = await orchestrator.start({
+    kind: 'subprocess',
+    command: 'npm',
+    args: ['run', 'preview'],
+    cwd: '/tmp',
+    port: 5557,
+    healthPath: '/',
+  }, new AbortController().signal, '/', event => {
+    events.push(event.text.trim());
+  });
+
+  await orchestrator.stop(lease);
+
+  assert.equal(events.some(event => event.includes('cleanup timed out after 10ms')), true);
+});
+
 test('throws when health check times out', async () => {
   const orchestrator = new DevServerOrchestrator({
     spawnImpl: async () => ({ pid: 123, kill: async () => {} }),

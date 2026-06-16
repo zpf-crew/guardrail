@@ -122,6 +122,15 @@ export class UiBrowserAgentRunner {
         constraintsApplied: args.constraints,
       }, trace, evidence);
     }
+    const initialScreenshot = await captureScreenshotEvidence(
+      this.#execute,
+      args.signal,
+      `Loaded page — ${args.defaultRoute || '/'}`,
+      args.onDebug,
+    );
+    if (initialScreenshot) {
+      evidence.push(await emitScreenshot(initialScreenshot, args.onScreenshot));
+    }
 
     const fail = async (
       reason: string,
