@@ -744,6 +744,7 @@ export class UiBrowserAdapter implements TestTypeAdapter {
             duration: durationLabel(scenarioResult.durationMs),
             evidence: matrixEvidenceLabelFromItems(changeEvidence),
             evidenceItems: changeEvidence.length > 0 ? changeEvidence : undefined,
+            scenario: scenarioDetails(flow, sourceScenarios, executionPlan),
             reason: scenarioResult.reason,
             file: change.file,
           });
@@ -926,4 +927,26 @@ export class UiBrowserAdapter implements TestTypeAdapter {
 
 function uiBrowserSessionName(sessionId: string, scenarioRunIndex: number): string {
   return `guardrail-${sessionId}-${scenarioRunIndex + 1}`;
+}
+
+function scenarioDetails(
+  flow: UiBrowserAcceptedFlow,
+  sourceScenarios: IndexedUiScenario[],
+  executionPlan: UiBrowserExecutionPlan,
+): TestResultRow['scenario'] {
+  return {
+    flowTitle: flow.title,
+    userGoal: flow.userGoal,
+    durableOutcome: flow.durableOutcome,
+    sourceGherkin: sourceScenarios.map(item => item.text).join('\n\n'),
+    executionPlan: {
+      title: executionPlan.title,
+      steps: executionPlan.steps.map(step => ({
+        id: step.id,
+        kind: step.kind,
+        instruction: step.instruction,
+        successCriteria: step.successCriteria,
+      })),
+    },
+  };
 }

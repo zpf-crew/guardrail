@@ -276,9 +276,26 @@ export interface TestResultRow {
   duration: string | null;
   evidence: string | null;
   evidenceItems?: Evidence[];
+  scenario?: TestResultScenario;
   /** Why the test failed or was flaky; null when passed/skipped. */
   reason: string | null;
   file: string;
+}
+
+export interface TestResultScenario {
+  flowTitle?: string;
+  userGoal?: string;
+  durableOutcome?: string;
+  sourceGherkin?: string;
+  executionPlan?: {
+    title: string;
+    steps: Array<{
+      id: string;
+      kind: 'setup' | 'action' | 'assert';
+      instruction: string;
+      successCriteria: string;
+    }>;
+  };
 }
 
 export interface FailureCard {

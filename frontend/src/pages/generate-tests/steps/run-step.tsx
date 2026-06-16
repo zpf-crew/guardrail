@@ -31,6 +31,7 @@ interface RunStepProps {
 
 export function RunStep({ run, activeTestType, ranTests, running, stopped, progress, evidence, onStop, onNew, onRunDevServer, onRunWithUrl, onReview }: RunStepProps) {
   const [expandedReasons, setExpandedReasons] = useState<Set<string>>(() => new Set());
+  const [expandedScenarioRows, setExpandedScenarioRows] = useState<Set<string>>(() => new Set());
   const [manualUrl, setManualUrl] = useState('');
 
   if (stopped) {
@@ -175,26 +176,67 @@ export function RunStep({ run, activeTestType, ranTests, running, stopped, progr
               const style = RUN_OUTCOME_STYLE[row.status];
               const rowKey = `${row.title}-${row.file}-${index}`;
               const reasonExpanded = expandedReasons.has(rowKey);
+              const scenarioExpanded = expandedScenarioRows.has(rowKey);
+              const hasScenarioDetails = hasScenario(row);
+              const hasDetailBelow = row.reason || scenarioExpanded;
+              const toggleScenario = () => {
+                if (!hasScenarioDetails) return;
+                setExpandedScenarioRows(current => {
+                  const next = new Set(current);
+                  if (next.has(rowKey)) next.delete(rowKey);
+                  else next.add(rowKey);
+                  return next;
+                });
+              };
               return (
                 <Fragment key={rowKey}>
-                  <tr className="hover:bg-[rgba(255,255,255,0.018)]">
-                    <td className={`p-[11px_12px] ${row.reason ? 'border-b-0' : 'border-b'} border-[rgba(255,255,255,0.07)] text-[#e8ebf2] font-medium`}>
-                      <div>{row.title}</div>
-                      <div className="mt-[5px]">
+                  <tr
+                    role={hasScenarioDetails ? 'button' : undefined}
+                    tabIndex={hasScenarioDetails ? 0 : undefined}
+                    aria-expanded={hasScenarioDetails ? scenarioExpanded : undefined}
+                    onClick={toggleScenario}
+                    onKeyDown={event => {
+                      if (!hasScenarioDetails) return;
+                      if (event.key === 'Enter' || event.key === ' ') {
+                        event.preventDefault();
+                        toggleScenario();
+                      }
+                    }}
+                    className={[
+                      'hover:bg-[rgba(255,255,255,0.018)]',
+                      hasScenarioDetails ? 'cursor-pointer focus:outline-none focus:bg-[rgba(129,140,248,0.08)]' : '',
+                    ].join(' ')}
+                  >
+                    <td className={`p-[11px_12px] ${hasDetailBelow ? 'border-b-0' : 'border-b'} border-[rgba(255,255,255,0.07)] text-[#e8ebf2] font-medium`}>
+                      <div className="flex items-center gap-[8px] min-w-0">
+                        {hasScenarioDetails && (
+                          <span className="font-mono text-[12px] text-[#818cf8] w-[12px] flex-shrink-0">{scenarioExpanded ? '-' : '+'}</span>
+                        )}
+                        <span className="min-w-0 break-words">{row.title}</span>
+                      </div>
+                      <div className="mt-[5px] flex items-center gap-[6px] flex-wrap">
                         <span className="font-mono text-[10.5px] bg-[#1b2030] border border-[rgba(255,255,255,0.07)] text-[#98a1b3] px-[8px] py-[2px] rounded-[6px]">{row.type}</span>
+                        {hasScenarioDetails && <span className="text-[10.5px] text-[#6b7488]">Click to review scenario</span>}
                       </div>
                     </td>
-                    <td className={`p-[11px_12px] ${row.reason ? 'border-b-0' : 'border-b'} border-[rgba(255,255,255,0.07)]`}>
+                    <td className={`p-[11px_12px] ${hasDetailBelow ? 'border-b-0' : 'border-b'} border-[rgba(255,255,255,0.07)]`}>
                       <span className="inline-flex items-center gap-[6px] text-[12px] font-semibold px-[10px] py-[3px] rounded-[7px]" style={{ background: style.bg, color: style.color }}>
                         <RunResultIcon status={ICON_STATUS[row.status]} />{row.status}
                       </span>
                     </td>
-                    <td className={`p-[11px_12px] ${row.reason ? 'border-b-0' : 'border-b'} border-[rgba(255,255,255,0.07)] text-[#98a1b3] whitespace-nowrap`}>{row.duration ?? '—'}</td>
-                    <td className={`p-[11px_12px] ${row.reason ? 'border-b-0' : 'border-b'} border-[rgba(255,255,255,0.07)] min-w-[150px]`}>
+                    <td className={`p-[11px_12px] ${hasDetailBelow ? 'border-b-0' : 'border-b'} border-[rgba(255,255,255,0.07)] text-[#98a1b3] whitespace-nowrap`}>{row.duration ?? '—'}</td>
+                    <td className={`p-[11px_12px] ${hasDetailBelow ? 'border-b-0' : 'border-b'} border-[rgba(255,255,255,0.07)] min-w-[150px]`}>
                       <MatrixEvidenceCell row={row} />
                     </td>
-                    <td className={`p-[11px_12px] ${row.reason ? 'border-b-0' : 'border-b'} border-[rgba(255,255,255,0.07)] font-mono text-[11px] text-[#6b7488] max-w-[260px] break-all`}>{row.file}</td>
+                    <td className={`p-[11px_12px] ${hasDetailBelow ? 'border-b-0' : 'border-b'} border-[rgba(255,255,255,0.07)] font-mono text-[11px] text-[#6b7488] max-w-[260px] break-all`}>{row.file}</td>
                   </tr>
+                  {scenarioExpanded && (
+                    <tr className="hover:bg-[rgba(255,255,255,0.012)]">
+                      <td colSpan={5} className={`p-[0_12px_12px_12px] ${row.reason ? 'border-b-0' : 'border-b'} border-[rgba(255,255,255,0.07)]`}>
+                        <ScenarioDetail row={row} />
+                      </td>
+                    </tr>
+                  )}
                   {row.reason && (
                     <tr className="hover:bg-[rgba(255,255,255,0.012)]">
                       <td colSpan={5} className="p-[0_12px_12px_12px] border-b border-[rgba(255,255,255,0.07)]">
@@ -357,7 +399,7 @@ function MatrixEvidenceCell({ row }: { row: TestResultRow }) {
   }
 
   return (
-    <div className="flex flex-col gap-[5px]">
+    <div className="flex flex-col gap-[5px]" onClick={event => event.stopPropagation()}>
       <div className="flex flex-wrap gap-x-[10px] gap-y-[4px]">
         {screenshotItems.map((item, index) => (
           <a
@@ -393,6 +435,79 @@ function MatrixEvidenceCell({ row }: { row: TestResultRow }) {
       )}
     </div>
   );
+}
+
+function ScenarioDetail({ row }: { row: TestResultRow }) {
+  const scenario = row.scenario;
+  if (!scenario) return null;
+  const planText = scenario.executionPlan ? executionPlanAsGherkin(scenario.executionPlan) : null;
+
+  return (
+    <div className="rounded-[8px] border border-[rgba(129,140,248,0.16)] bg-[rgba(129,140,248,0.06)] p-[12px]">
+      <div className="flex flex-col gap-[10px]">
+        {(scenario.userGoal || scenario.durableOutcome) && (
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-[10px]">
+            {scenario.userGoal && (
+              <ScenarioMeta label="User flow" value={scenario.userGoal} />
+            )}
+            {scenario.durableOutcome && (
+              <ScenarioMeta label="Expected outcome" value={scenario.durableOutcome} />
+            )}
+          </div>
+        )}
+        {planText && (
+          <ScenarioCodeBlock label="Repaired execution flow" text={planText} />
+        )}
+        {scenario.sourceGherkin && (
+          <ScenarioCodeBlock label="Source Gherkin" text={scenario.sourceGherkin} />
+        )}
+      </div>
+    </div>
+  );
+}
+
+function ScenarioMeta({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="rounded-[7px] border border-[rgba(255,255,255,0.07)] bg-[#11141c] p-[10px]">
+      <div className="text-[10.5px] uppercase tracking-[0.5px] text-[#6b7488] font-semibold mb-[4px]">{label}</div>
+      <div className="text-[12.5px] leading-[1.45] text-[#c8ceda]">{value}</div>
+    </div>
+  );
+}
+
+function ScenarioCodeBlock({ label, text }: { label: string; text: string }) {
+  return (
+    <div>
+      <div className="text-[10.5px] uppercase tracking-[0.5px] text-[#818cf8] font-semibold mb-[5px]">{label}</div>
+      <pre className="max-h-[260px] overflow-auto whitespace-pre-wrap rounded-[7px] border border-[rgba(255,255,255,0.07)] bg-[#0b0d13] p-[10px] font-mono text-[11.5px] leading-[1.5] text-[#d8deea]">
+        {text}
+      </pre>
+    </div>
+  );
+}
+
+function hasScenario(row: TestResultRow): boolean {
+  return Boolean(row.scenario?.executionPlan || row.scenario?.sourceGherkin || row.scenario?.userGoal || row.scenario?.durableOutcome);
+}
+
+function executionPlanAsGherkin(plan: NonNullable<NonNullable<TestResultRow['scenario']>['executionPlan']>): string {
+  const lines = [`Scenario: ${plan.title}`];
+  let previousKind: string | null = null;
+
+  for (const step of plan.steps) {
+    const keyword = previousKind === step.kind ? 'And' : keywordForPlanStep(step.kind);
+    previousKind = step.kind;
+    lines.push(`${keyword} ${step.instruction}`);
+    lines.push(`  # ${step.successCriteria}`);
+  }
+
+  return lines.join('\n');
+}
+
+function keywordForPlanStep(kind: 'setup' | 'action' | 'assert'): 'Given' | 'When' | 'Then' {
+  if (kind === 'setup') return 'Given';
+  if (kind === 'action') return 'When';
+  return 'Then';
 }
 
 function evidenceWithScreenshotFallback(evidence: Evidence[], run: TestRunResult): Evidence[] {

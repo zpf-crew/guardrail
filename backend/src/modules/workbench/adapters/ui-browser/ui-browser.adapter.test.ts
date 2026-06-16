@@ -1016,6 +1016,9 @@ test('executes accepted user flows instead of raw scenarios', async () => {
   assert.deepEqual(seenPlans.map(plan => plan.title), ['Add one product to cart']);
   assert.equal(seenPlans[0]?.steps?.[2]?.instruction, 'Verify the cart count shows one item.');
   assert.equal(seenPlans[0]?.steps?.[2]?.successCriteria, 'The cart count shows one item.');
+  const passedRow = result.matrix.find(row => row.status === 'Passed');
+  assert.equal(passedRow?.scenario?.executionPlan?.steps[2]?.instruction, 'Verify the cart count shows one item.');
+  assert.match(passedRow?.scenario?.sourceGherkin ?? '', /Scenario: Add product/);
   assert.equal(result.matrix.some(row => row.status === 'Skipped'), true);
 });
 

@@ -82,7 +82,7 @@ test('buildAgentIterationContext marks Then turns as observation-allowed before 
   assert.equal(context.currentStep.observationOnlyActionsRemaining, 3);
   assert.equal(context.currentStep.verdictRequiredNow, false);
   assert.deepEqual(context.allowedActionKinds, ['agentBrowserCommand', 'assertThen', 'stepFailed']);
-  assert.deepEqual(context.allowedCommands, ['snapshot', 'get', 'is', 'scroll']);
+  assert.deepEqual(context.allowedCommands, ['snapshot', 'get', 'is', 'scroll', 'click']);
 });
 
 test('buildAgentIterationContext allows up to three Then observations before requiring verdict', () => {
@@ -103,7 +103,7 @@ test('buildAgentIterationContext allows up to three Then observations before req
   assert.equal(context.currentStep.observationOnlyActionsRemaining, 1);
   assert.equal(context.currentStep.verdictRequiredNow, false);
   assert.deepEqual(context.allowedActionKinds, ['agentBrowserCommand', 'assertThen', 'stepFailed']);
-  assert.deepEqual(context.allowedCommands, ['snapshot', 'get', 'is', 'scroll']);
+  assert.deepEqual(context.allowedCommands, ['snapshot', 'get', 'is', 'scroll', 'click']);
 });
 
 test('buildAgentIterationContext requires verdict after three Then observations', () => {

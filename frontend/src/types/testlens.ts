@@ -693,9 +693,27 @@ export interface TestResultRow {
   evidence: string | null;
   /** Clickable artifacts captured for this test row. */
   evidenceItems?: Evidence[];
+  /** Optional scenario details for row expansion and review. */
+  scenario?: TestResultScenario;
   /** Why the test failed or was flaky; null when passed/skipped. */
   reason: string | null;
   file: string;
+}
+
+export interface TestResultScenario {
+  flowTitle?: string;
+  userGoal?: string;
+  durableOutcome?: string;
+  sourceGherkin?: string;
+  executionPlan?: {
+    title: string;
+    steps: Array<{
+      id: string;
+      kind: 'setup' | 'action' | 'assert';
+      instruction: string;
+      successCriteria: string;
+    }>;
+  };
 }
 
 /** Shown when a generated test fails or is flaky. Drives the 3 action buttons. */

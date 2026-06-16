@@ -152,6 +152,7 @@ export function buildDroppedScenarioRows(
       status: 'Skipped',
       duration: null,
       evidence: null,
+      scenario: scenario ? { sourceGherkin: scenario.text } : undefined,
       reason: `Dropped before execution: ${dropped.reason}`,
       file: change.file,
     };
