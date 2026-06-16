@@ -4,6 +4,7 @@ import type {
   ChatOptions,
   ModelClientConfig,
 } from './model-connect.types.js';
+import { withModelCallLimit } from './model-call-limiter.js';
 import { ModelClientError, normalizeModelError } from './model-errors.js';
 
 function joinUrl(baseUrl: string, path: string): string {
@@ -103,15 +104,17 @@ export class ModelClient {
 
     let response: Response;
     try {
-      response = await fetchImpl(joinUrl(baseUrl, chatPath), {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${apiKey}`,
-        },
-        body: JSON.stringify(body),
-        signal: options.signal,
-      });
+      response = await withModelCallLimit(options.signal, () =>
+        fetchImpl(joinUrl(baseUrl, chatPath), {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: `Bearer ${apiKey}`,
+          },
+          body: JSON.stringify(body),
+          signal: options.signal,
+        }),
+      );
     } catch (error) {
       throw normalizeModelError(error);
     }

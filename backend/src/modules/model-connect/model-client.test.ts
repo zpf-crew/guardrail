@@ -23,6 +23,15 @@ function response(status: number, body: unknown, statusText = 'status'): Respons
   } as Response;
 }
 
+async function waitUntil(assertion: () => boolean): Promise<void> {
+  const deadline = Date.now() + 200;
+  while (Date.now() < deadline) {
+    if (assertion()) return;
+    await new Promise(resolve => setTimeout(resolve, 5));
+  }
+  assert.equal(assertion(), true);
+}
+
 test('model client classifies missing assistant content as retryable content error', async () => {
   const client = clientWithFetch(async () => response(200, { choices: [{ message: {} }] }) as never);
 
@@ -36,6 +45,35 @@ test('model client classifies missing assistant content as retryable content err
       return true;
     },
   );
+});
+
+test('model client limits concurrent LLM fetches to five', async () => {
+  let active = 0;
+  let maxActive = 0;
+  let started = 0;
+  const releases: Array<() => void> = [];
+  const client = clientWithFetch(async () => {
+    active += 1;
+    maxActive = Math.max(maxActive, active);
+    started += 1;
+    await new Promise<void>(resolve => releases.push(resolve));
+    active -= 1;
+    return response(200, { choices: [{ message: { content: 'ok' } }] }) as never;
+  });
+
+  const calls = Array.from({ length: 8 }, () => client.chat([{ role: 'user', content: 'Return text.' }]));
+  await waitUntil(() => started === 5);
+
+  assert.equal(maxActive, 5);
+  assert.equal(active, 5);
+
+  releases.splice(0).forEach(resolve => resolve());
+  await waitUntil(() => started === 8);
+  releases.splice(0).forEach(resolve => resolve());
+  await Promise.all(calls);
+
+  assert.equal(maxActive, 5);
+  assert.equal(active, 0);
 });
 
 test('model client classifies 429 as retryable HTTP error', async () => {

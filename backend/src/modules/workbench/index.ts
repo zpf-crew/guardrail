@@ -15,7 +15,7 @@ export { buildWorkbenchRoutes } from './workbench.routes.js';
 export function createWorkbenchService(db: Pool): WorkbenchService {
   return new WorkbenchService(
     new WorkbenchJobStore(),
-    new WorkbenchJobQueue({ concurrency: 1 }),
+    new WorkbenchJobQueue({ concurrency: 50 }),
     new WorkbenchJobEventBus(),
     new WorkbenchArtifactStore(),
     ClonedRepoRepositoryProvider.fromDb(db),
