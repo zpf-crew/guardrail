@@ -11,11 +11,13 @@ interface WorkflowSidebarProps {
   currentStep: number;
   /** When true the workflow is finished — every step renders as done. */
   applied?: boolean;
+  /** When true, only the current step remains selectable. */
+  lockBackNavigation?: boolean;
   onSelect: (i: number) => void;
 }
 
 /** Left rail showing the 6 workflow steps; completed steps are clickable. */
-export function WorkflowSidebar({ currentStep, applied = false, onSelect }: WorkflowSidebarProps) {
+export function WorkflowSidebar({ currentStep, applied = false, lockBackNavigation = false, onSelect }: WorkflowSidebarProps) {
   return (
     <div className="w-[218px] min-h-screen border-r border-[rgba(255,255,255,0.07)] p-[22px_16px] flex-shrink-0">
       <div className="text-[11px] uppercase tracking-[0.8px] text-[#6b7488] font-semibold mb-[16px] mx-[6px]">Workflow</div>
@@ -23,15 +25,18 @@ export function WorkflowSidebar({ currentStep, applied = false, onSelect }: Work
         {WORKFLOW_STEPS.map((step, i) => {
           const done = applied || i < currentStep;
           const active = !applied && i === currentStep;
+          const selectable = i <= currentStep && (!lockBackNavigation || i === currentStep);
           return (
             <div
               key={step.title}
-              className={`relative flex gap-[12px] p-[10px_11px] rounded-[11px] cursor-pointer text-[13px] transition-all border border-transparent mb-[2px] ${
+              className={`relative flex gap-[12px] p-[10px_11px] rounded-[11px] text-[13px] transition-all border border-transparent mb-[2px] ${
                 active ? 'bg-[rgba(129,140,248,0.14)] border-[rgba(129,140,248,0.25)] shadow-[0_0_0_1px_rgba(129,140,248,0.12)]' :
-                done ? 'text-[#3ddc97] hover:bg-[rgba(255,255,255,0.025)]' :
-                'text-[#6b7488] hover:bg-[rgba(255,255,255,0.025)]'
+                done ? 'text-[#3ddc97]' :
+                'text-[#6b7488]'
+              } ${
+                selectable ? 'cursor-pointer hover:bg-[rgba(255,255,255,0.025)]' : 'cursor-default'
               }`}
-              onClick={() => { if (i <= currentStep) onSelect(i); }}
+              onClick={() => { if (selectable) onSelect(i); }}
             >
               <span className={`w-[26px] h-[26px] rounded-full flex-shrink-0 grid place-items-center text-[12px] font-mono font-semibold transition-all relative ${
                 done ? 'bg-[rgba(61,220,151,0.13)] border-[rgba(61,220,151,0.5)] text-[#3ddc97]' :

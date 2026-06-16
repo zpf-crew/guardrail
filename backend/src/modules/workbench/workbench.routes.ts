@@ -169,6 +169,10 @@ export function buildWorkbenchRoutes(service: WorkbenchService) {
       return snapshot(reply, () => service.getJobSnapshot(request.params.sessionId, request.params.jobId));
     });
 
+    app.post('/:sessionId/jobs/:jobId/stop', async (request: FastifyRequest<{ Params: JobParams }>, reply) => {
+      return snapshot(reply, () => service.stopJob(request.params.sessionId, request.params.jobId));
+    });
+
     app.get(
       '/:sessionId/jobs/:jobId/events',
       async (request: FastifyRequest<{ Params: JobParams }>, reply) => {

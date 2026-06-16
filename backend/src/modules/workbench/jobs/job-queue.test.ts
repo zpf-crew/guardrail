@@ -101,6 +101,74 @@ test('job queue fails new jobs when pending queue is full', async () => {
   assert.equal(events.includes('third:run'), false);
 });
 
+test('job queue cancels a queued job before it starts', async () => {
+  const events: string[] = [];
+  const queue = new WorkbenchJobQueue({ concurrency: 1 });
+  let releaseFirst!: () => void;
+
+  const firstJob = queue.enqueue({
+    id: 'first',
+    timeoutMs: 0,
+    onStatus: status => events.push(`first:${status}`),
+    onError: message => events.push(`first:${message}`),
+    run: async () => {
+      await new Promise<void>(resolve => {
+        releaseFirst = resolve;
+      });
+    },
+  });
+  const secondJob = queue.enqueue({
+    id: 'second',
+    timeoutMs: 0,
+    onStatus: status => events.push(`second:${status}`),
+    onError: message => events.push(`second:${message}`),
+    run: async () => {
+      events.push('second:run');
+    },
+  });
+
+  assert.equal(queue.cancel('second'), true);
+  releaseFirst();
+  await Promise.all([firstJob, secondJob]);
+
+  assert.deepEqual(events, [
+    'first:queued',
+    'first:running',
+    'second:queued',
+    'second:failed',
+    'second:Job stopped by user.',
+    'first:succeeded',
+  ]);
+});
+
+test('job queue cancels an active job by aborting its signal', async () => {
+  const events: string[] = [];
+  const queue = new WorkbenchJobQueue({ concurrency: 1 });
+
+  const activeJob = queue.enqueue({
+    id: 'active',
+    timeoutMs: 0,
+    onStatus: status => events.push(`active:${status}`),
+    onError: message => events.push(`active:${message}`),
+    run: async signal => {
+      await new Promise<void>((resolve, reject) => {
+        signal.addEventListener('abort', () => reject(signal.reason), { once: true });
+      });
+    },
+  });
+
+  await new Promise<void>(resolve => setTimeout(resolve, 0));
+  assert.equal(queue.cancel('active'), true);
+  await activeJob;
+
+  assert.deepEqual(events, [
+    'active:queued',
+    'active:running',
+    'active:failed',
+    'active:Job stopped by user.',
+  ]);
+});
+
 test('job queue frees concurrency before a late cooperative abort error is emitted', async () => {
   const events: string[] = [];
   const queue = new WorkbenchJobQueue({ concurrency: 1 });

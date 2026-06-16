@@ -1,4 +1,5 @@
 export interface QueueJob {
+  id?: string;
   timeoutMs: number;
   onStatus: (status: 'queued' | 'running' | 'succeeded' | 'failed' | 'timeout') => void;
   onError: (message: string) => void;
@@ -17,6 +18,9 @@ export class WorkbenchJobQueue {
   private readonly concurrency: number;
   private readonly maxPendingJobs: number;
   private readonly pending: PendingQueueJob[] = [];
+  private readonly activeAbortControllers = new Map<string, AbortController>();
+  private readonly activeJobs = new Map<string, QueueJob>();
+  private readonly cancelledJobMessages = new Map<string, string>();
   private active = 0;
 
   constructor(options: { concurrency: number; maxPendingJobs?: number }) {
@@ -36,6 +40,29 @@ export class WorkbenchJobQueue {
       this.pending.push({ job, resolve, settled: false });
       this.drain();
     });
+  }
+
+  cancel(jobId: string): boolean {
+    const pendingIndex = this.pending.findIndex(pendingJob => pendingJob.job.id === jobId);
+    if (pendingIndex !== -1) {
+      const [pendingJob] = this.pending.splice(pendingIndex, 1);
+      if (!pendingJob) return false;
+      safeStatus(pendingJob.job, 'failed');
+      safeError(pendingJob.job, 'Job stopped by user.');
+      this.resolvePending(pendingJob);
+      return true;
+    }
+
+    const abortController = this.activeAbortControllers.get(jobId);
+    if (!abortController) return false;
+    const activeJob = this.activeJobs.get(jobId);
+    if (activeJob) {
+      this.cancelledJobMessages.set(jobId, 'Job stopped by user.');
+      safeStatus(activeJob, 'failed');
+      safeError(activeJob, 'Job stopped by user.');
+    }
+    abortController.abort(new Error('Job stopped by user.'));
+    return true;
   }
 
   private drain(): void {
@@ -63,6 +90,10 @@ export class WorkbenchJobQueue {
     };
 
     safeStatus(job, 'running');
+    if (job.id) {
+      this.activeAbortControllers.set(job.id, abortController);
+      this.activeJobs.set(job.id, job);
+    }
 
     try {
       const runPromise = job.run(abortController.signal);
@@ -92,8 +123,11 @@ export class WorkbenchJobQueue {
       }
 
       if (result.type === 'failed') {
-        safeStatus(job, 'failed');
-        emitError(errorMessage(result.error));
+        const cancelledMessage = job.id ? this.cancelledJobMessages.get(job.id) : undefined;
+        if (!cancelledMessage) {
+          safeStatus(job, 'failed');
+          emitError(errorMessage(result.error));
+        }
         this.settle(pendingJob);
         return;
       }
@@ -120,10 +154,18 @@ export class WorkbenchJobQueue {
 
       this.settle(pendingJob);
     } catch (error) {
-      if (!timedOut) safeStatus(job, 'failed');
-      emitError(errorMessage(error));
+      const cancelledMessage = job.id ? this.cancelledJobMessages.get(job.id) : undefined;
+      if (!cancelledMessage) {
+        if (!timedOut) safeStatus(job, 'failed');
+        emitError(errorMessage(error));
+      }
       this.settle(pendingJob);
     } finally {
+      if (job.id) {
+        this.activeAbortControllers.delete(job.id);
+        this.activeJobs.delete(job.id);
+        this.cancelledJobMessages.delete(job.id);
+      }
       if (timeoutTimer) clearTimeout(timeoutTimer);
       this.settle(pendingJob);
     }
@@ -136,6 +178,13 @@ export class WorkbenchJobQueue {
     this.active -= 1;
     pendingJob.resolve();
     this.drain();
+  }
+
+  private resolvePending(pendingJob: PendingQueueJob): void {
+    if (pendingJob.settled) return;
+
+    pendingJob.settled = true;
+    pendingJob.resolve();
   }
 }
 

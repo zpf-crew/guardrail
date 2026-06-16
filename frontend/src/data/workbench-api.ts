@@ -189,29 +189,43 @@ async function runJob<T extends JobResult>(
   step: JobStep,
   onEvent?: (event: JobEvent) => void,
   body?: unknown,
+  signal?: AbortSignal,
+  onStart?: (job: JobStartResponse) => void,
 ): Promise<T> {
   const endpoint = JOB_ENDPOINT_BY_STEP[step];
   const start = await post<JobStartResponse>(
     `/api/workbench/${sessionId}/${endpoint}/jobs`,
     body,
   );
+  onStart?.(start);
 
   return new Promise<T>((resolve, reject) => {
     const abortController = new AbortController();
     let settled = false;
+    const handleAbort = () => {
+      settleReject(new WorkbenchApiError('Job stopped by user.'));
+    };
 
     const settleResolve = (value: T) => {
       if (settled) return;
       settled = true;
+      signal?.removeEventListener('abort', handleAbort);
       abortController.abort();
       resolve(value);
     };
     const settleReject = (error: Error) => {
       if (settled) return;
       settled = true;
+      signal?.removeEventListener('abort', handleAbort);
       abortController.abort();
       reject(error);
     };
+
+    if (signal?.aborted) {
+      settleReject(new WorkbenchApiError('Job stopped by user.'));
+      return;
+    }
+    signal?.addEventListener('abort', handleAbort, { once: true });
 
     const handleSseEvent = (eventType: string, data: string) => {
       const parsed = normalizeJobEvent(JSON.parse(data) as JobEvent);
@@ -289,15 +303,31 @@ export async function generateSession(
 }
 
 /** S5 — run the generated tests. */
-export async function runSession(id: string, onEvent?: (event: JobEvent) => void, options: RunOptions = {}): Promise<TestRunResult> {
+export async function runSession(
+  id: string,
+  onEvent?: (event: JobEvent) => void,
+  options: RunOptions = {},
+  signal?: AbortSignal,
+  onStart?: (job: JobStartResponse) => void,
+): Promise<TestRunResult> {
   if (isMockMode()) { await mockStream(onEvent, 'run', ['Starting dev server…', 'Running UI flows…', 'Summarizing evidence…']); return mockRun(); }
-  return runJob<TestRunResult>(id, 'run', onEvent, options);
+  return runJob<TestRunResult>(id, 'run', onEvent, options, signal, onStart);
 }
 
 /** S6 — summarize the generated changes and remaining risk. */
-export async function reviewSession(id: string, onEvent?: (event: JobEvent) => void): Promise<ReviewSummary> {
+export async function reviewSession(
+  id: string,
+  onEvent?: (event: JobEvent) => void,
+  signal?: AbortSignal,
+  onStart?: (job: JobStartResponse) => void,
+): Promise<ReviewSummary> {
   if (isMockMode()) { await mockStream(onEvent, 'review', ['Summarizing review…']); return mockReview(); }
-  return runJob<ReviewSummary>(id, 'review', onEvent);
+  return runJob<ReviewSummary>(id, 'review', onEvent, undefined, signal, onStart);
+}
+
+export async function stopWorkbenchJob(sessionId: string, jobId: string): Promise<void> {
+  if (isMockMode()) return;
+  await post(`/api/workbench/${sessionId}/jobs/${jobId}/stop`);
 }
 
 export interface CreatePullRequestResult {

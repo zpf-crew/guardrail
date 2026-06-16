@@ -88,6 +88,7 @@ export class WorkbenchService {
     const job = this.store.createJob(session.id, step);
 
     void this.queue.enqueue({
+      id: job.id,
       timeoutMs: WORKBENCH_STEP_TIMEOUT_MS[step],
       onStatus: status => this.onStatus(session.id, job.id, status),
       onError: message => this.onError(session.id, job.id, message),
@@ -137,6 +138,15 @@ export class WorkbenchService {
     });
 
     return job;
+  }
+
+  stopJob(sessionId: string, jobId: string): WorkbenchJob {
+    this.requireSession(sessionId);
+    const job = this.requireJob(sessionId, jobId);
+    if (!this.queue.cancel(jobId)) {
+      throw new Error(`Workbench job is not running or queued: ${jobId}`);
+    }
+    return this.requireJob(sessionId, jobId);
   }
 
   getJobSnapshot(

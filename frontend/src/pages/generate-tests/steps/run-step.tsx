@@ -19,17 +19,37 @@ interface RunStepProps {
   activeTestType: TestType;
   ranTests: number;
   running: boolean;
+  stopped: boolean;
   progress: RunProgressEvent[];
   evidence: Evidence[];
-  onBack: () => void;
+  onStop: () => void;
+  onNew: () => void;
   onRunDevServer: () => void;
   onRunWithUrl: (manualBaseUrl: string) => void;
   onReview: () => void;
 }
 
-export function RunStep({ run, activeTestType, ranTests, running, progress, evidence, onBack, onRunDevServer, onRunWithUrl, onReview }: RunStepProps) {
+export function RunStep({ run, activeTestType, ranTests, running, stopped, progress, evidence, onStop, onNew, onRunDevServer, onRunWithUrl, onReview }: RunStepProps) {
   const [expandedReasons, setExpandedReasons] = useState<Set<string>>(() => new Set());
   const [manualUrl, setManualUrl] = useState('');
+
+  if (stopped) {
+    return (
+      <div>
+        <StepHeader
+          eyebrow="Step 5 — Run Tests"
+          title="Run stopped"
+          description="This test run was stopped. Start a new session to enter a fresh intent and run a clean workflow."
+        />
+        <div className="mt-[18px]">
+          <EvidencePanel progress={progress} evidence={evidence} />
+        </div>
+        <div className="mt-[18px]">
+          <Button variant="primary" size="lg" onClick={onNew}>New</Button>
+        </div>
+      </div>
+    );
+  }
 
   if (!run && !running) {
     return (
@@ -54,7 +74,6 @@ export function RunStep({ run, activeTestType, ranTests, running, progress, evid
             <ManualUrlForm manualUrl={manualUrl} setManualUrl={setManualUrl} onRunWithUrl={onRunWithUrl} />
           </div>
         </div>
-        <Button variant="ghost" onClick={onBack}>Back</Button>
       </div>
     );
   }
@@ -70,15 +89,15 @@ export function RunStep({ run, activeTestType, ranTests, running, progress, evid
         <div className="mt-[18px]">
           <EvidencePanel running progress={progress} evidence={evidence} />
         </div>
-        <div className="mt-[18px]"><Button variant="ghost" onClick={onBack}>Back</Button></div>
+        <div className="mt-[18px]"><Button variant="outline" onClick={onStop}>Stop</Button></div>
       </div>
     );
   }
 
-  const total = run.matrix.filter(row => row.type === activeTestType).length;
+  const matrixRows = run.matrix.filter(row => row.type === activeTestType && row.status !== 'Skipped');
+  const total = matrixRows.length;
   const complete = !running;
   const progressPercent = total ? Math.round((ranTests / total) * 100) : 100;
-  const matrixRows = run.matrix.filter(row => row.type === activeTestType);
   const revealed = complete ? matrixRows : matrixRows.slice(0, ranTests);
   const notRun = complete && run.ui.outcome === 'Skipped';
 
@@ -111,7 +130,6 @@ export function RunStep({ run, activeTestType, ranTests, running, progress, evid
           <ManualUrlForm manualUrl={manualUrl} setManualUrl={setManualUrl} onRunWithUrl={onRunWithUrl} />
         </div>
         <div className="flex gap-[10px] mt-[18px]">
-          <Button variant="ghost" onClick={onBack}>Back</Button>
           <Button variant="primary" size="lg" onClick={onRunDevServer}>Try Dev Server Again</Button>
         </div>
       </div>
@@ -205,10 +223,14 @@ export function RunStep({ run, activeTestType, ranTests, running, progress, evid
       </div>
 
       <div className="flex gap-[10px] mt-[18px]">
-        <Button variant="ghost" onClick={onBack}>Back</Button>
         {complete
           ? <Button variant="primary" size="lg" onClick={onReview}>Review &amp; Apply</Button>
-          : <Button variant="primary" size="lg" disabled><LoaderIcon className="w-[15px] h-[15px] mr-[6px] animate-spin" />Running…</Button>}
+          : (
+            <>
+              <Button variant="outline" onClick={onStop}>Stop</Button>
+              <Button variant="primary" size="lg" disabled><LoaderIcon className="w-[15px] h-[15px] mr-[6px] animate-spin" />Running…</Button>
+            </>
+          )}
       </div>
     </div>
   );

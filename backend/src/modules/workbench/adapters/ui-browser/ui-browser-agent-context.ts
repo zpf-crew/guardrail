@@ -106,7 +106,7 @@ function allowedActionKindsForStep(
 
 function allowedCommandsForStep(effectiveKind: string, verdictRequiredNow: boolean): string[] {
   if (effectiveKind === 'Then') {
-    return verdictRequiredNow ? [] : ['snapshot', 'get', 'is'];
+    return verdictRequiredNow ? [] : ['snapshot', 'get', 'is', 'scroll'];
   }
   return ['open', 'snapshot', 'click', 'find', 'fill', 'press', 'scroll', 'scrollintoview', 'get', 'is', 'wait'];
 }

@@ -65,7 +65,7 @@ export function GenerateTestsPage() {
   const restoreSessionId = useMemo(
     () => new URLSearchParams(location.search).get('session'),
     // Re-read the URL only when explicitly starting a fresh workbench instance.
-    [workbenchKey],
+    [location.search, workbenchKey],
   );
 
   const [quickActions, setQuickActions] = useState<QuickAction[]>([]);
@@ -145,6 +145,10 @@ function GenerateTestsWorkbench({
   });
   const { status, error, session, currentStep, pending } = wb;
   const runEvidence = evidenceWithScreenshotFallback(wb.runEvidence, session?.run);
+  const startNewSession = useCallback(() => {
+    navigate('/tests', { replace: true, state: null });
+    onStartNewSession();
+  }, [navigate, onStartNewSession]);
 
   // Create-PR state: opens the PR in a new tab on success and marks the workflow complete.
   const [creatingPr, setCreatingPr] = useState(false);
@@ -203,7 +207,12 @@ function GenerateTestsWorkbench({
         }
       />
       <div className="mx-auto flex w-full max-w-[1118px]">
-        <WorkflowSidebar currentStep={currentStep} applied={prUrl !== null} onSelect={wb.setStep} />
+        <WorkflowSidebar
+          currentStep={currentStep}
+          applied={prUrl !== null}
+          lockBackNavigation={currentStep === 4}
+          onSelect={wb.setStep}
+        />
 
         <div className="w-full max-w-[900px] p-[26px_28px_70px] min-w-0">
           {error && (
@@ -265,9 +274,11 @@ function GenerateTestsWorkbench({
               activeTestType={activeTestType}
               ranTests={wb.ranTests}
               running={wb.running}
+              stopped={wb.runStopped}
               progress={wb.runProgress}
               evidence={runEvidence}
-              onBack={() => wb.setStep(3)}
+              onStop={wb.stopRun}
+              onNew={startNewSession}
               onRunDevServer={() => wb.runTests()}
               onRunWithUrl={manualBaseUrl => wb.runTests({ manualBaseUrl })}
               onReview={() => wb.setStep(5)}

@@ -10,8 +10,9 @@ import {
   generateSession,
   runSession,
   reviewSession,
+  stopWorkbenchJob,
 } from '@/data/workbench-api';
-import type { JobEvent, RunOptions } from '@/data/workbench-api';
+import type { JobEvent, JobStartResponse, RunOptions } from '@/data/workbench-api';
 
 export type WorkbenchStatus = 'loading' | 'error' | 'ready';
 export type PendingTransition = null | 'analyze' | 'plan' | 'generate' | 'run' | 'review';
@@ -29,6 +30,8 @@ export interface UseWorkbenchResult {
   ranTests: number;
   /** True while the run is in flight. */
   running: boolean;
+  /** True after the user stopped the current run. */
+  runStopped: boolean;
   /** Generation timeline items completed (S4 animation). */
   genStep: number;
   /** True once the generation animation has finished. */
@@ -57,6 +60,7 @@ export interface UseWorkbenchResult {
   generatePlan: () => Promise<void>;
   approvePlan: (approval: PlanApproval) => void;
   runTests: (options?: RunOptions) => void;
+  stopRun: () => void;
 }
 
 export interface UseWorkbenchOptions {
@@ -95,12 +99,15 @@ export function useWorkbench(initialIntent?: Partial<IntentInput>, options?: Use
   const [genStep, setGenStep] = React.useState(0);
   const [applied, setApplied] = React.useState(false);
   const [runEvents, setRunEvents] = React.useState<JobEvent[]>([]);
+  const [runStopped, setRunStopped] = React.useState(false);
   const [analyzeEvents, setAnalyzeEvents] = React.useState<JobEvent[]>([]);
   const [planEvents, setPlanEvents] = React.useState<JobEvent[]>([]);
   const [generateEvents, setGenerateEvents] = React.useState<JobEvent[]>([]);
   const intervalRef = React.useRef<ReturnType<typeof setInterval> | null>(null);
   const genIntervalRef = React.useRef<ReturnType<typeof setInterval> | null>(null);
   const runIdRef = React.useRef(0);
+  const runAbortControllerRef = React.useRef<AbortController | null>(null);
+  const activeRunJobRef = React.useRef<JobStartResponse | null>(null);
   const onSessionIdRef = React.useRef(options?.onSessionId);
   onSessionIdRef.current = options?.onSessionId;
   const restoredSessionId = options?.sessionId;
@@ -116,6 +123,7 @@ export function useWorkbench(initialIntent?: Partial<IntentInput>, options?: Use
     setGenStep(0);
     setApplied(false);
     setRunEvents([]);
+    setRunStopped(false);
     setAnalyzeEvents([]);
     setPlanEvents([]);
     setGenerateEvents([]);
@@ -132,7 +140,7 @@ export function useWorkbench(initialIntent?: Partial<IntentInput>, options?: Use
         if (s.generation) setGenStep(s.generation.timeline.length);
         if (s.run) {
           const activeType = primaryTestType(s.intent.testTypes);
-          setRanTests(s.run.matrix.filter(row => row.type === activeType).length);
+          setRanTests(s.run.matrix.filter(row => row.type === activeType && row.status !== 'Skipped').length);
         }
         if (!restoredSessionId) onSessionIdRef.current?.(s.id);
         setStatus('ready');
@@ -146,6 +154,9 @@ export function useWorkbench(initialIntent?: Partial<IntentInput>, options?: Use
       });
     return () => {
       cancelled = true;
+      runAbortControllerRef.current?.abort();
+      runAbortControllerRef.current = null;
+      activeRunJobRef.current = null;
       if (intervalRef.current) clearInterval(intervalRef.current);
       if (genIntervalRef.current) clearInterval(genIntervalRef.current);
     };
@@ -256,7 +267,13 @@ export function useWorkbench(initialIntent?: Partial<IntentInput>, options?: Use
       : {};
     const runId = runIdRef.current + 1;
     runIdRef.current = runId;
+    const abortController = new AbortController();
+    runAbortControllerRef.current?.abort();
+    runAbortControllerRef.current = abortController;
     const isCurrentRun = () => runIdRef.current === runId;
+    const rememberActiveJob = (job: JobStartResponse) => {
+      if (isCurrentRun()) activeRunJobRef.current = job;
+    };
 
     // Clear any in-flight run so a re-trigger never leaves an orphaned interval.
     if (intervalRef.current) clearInterval(intervalRef.current);
@@ -264,7 +281,9 @@ export function useWorkbench(initialIntent?: Partial<IntentInput>, options?: Use
     setError(null);
     setPending('run');
     setRanTests(0);
+    setRunStopped(false);
     setRunEvents([]);
+    activeRunJobRef.current = null;
     setSession(s => (s ? { ...s, run: undefined, review: undefined } : s));
 
     void (async () => {
@@ -272,7 +291,7 @@ export function useWorkbench(initialIntent?: Partial<IntentInput>, options?: Use
         const run = await runSession(session.id, event => {
           if (!isCurrentRun()) return;
           setRunEvents(events => [...events, event]);
-        }, runOptions);
+        }, runOptions, abortController.signal, rememberActiveJob);
         if (!isCurrentRun()) return;
 
         setSession(s => (s ? { ...s, run } : s));
@@ -282,14 +301,14 @@ export function useWorkbench(initialIntent?: Partial<IntentInput>, options?: Use
           return;
         }
         const activeType = primaryTestType(session.intent.testTypes);
-        const matrixCount = run.matrix.filter(row => row.type === activeType).length;
+        const matrixCount = run.matrix.filter(row => row.type === activeType && row.status !== 'Skipped').length;
         const animation = startRunAnimation(matrixCount);
         setPending('review');
         const [review] = await Promise.all([
           reviewSession(session.id, event => {
             if (!isCurrentRun()) return;
             setRunEvents(events => [...events, event]);
-          }),
+          }, abortController.signal, rememberActiveJob),
           animation,
         ]);
         if (!isCurrentRun()) return;
@@ -303,10 +322,39 @@ export function useWorkbench(initialIntent?: Partial<IntentInput>, options?: Use
           intervalRef.current = null;
         }
         setPending(null);
-        setError(describeWorkbenchError(e, 'Run failed.'));
+        if (!abortController.signal.aborted) {
+          setError(describeWorkbenchError(e, 'Run failed.'));
+        }
+      } finally {
+        if (runAbortControllerRef.current === abortController) {
+          runAbortControllerRef.current = null;
+        }
+        if (isCurrentRun()) activeRunJobRef.current = null;
       }
     })();
   }, [session, startRunAnimation]);
+
+  const stopRun = React.useCallback(() => {
+    const job = activeRunJobRef.current;
+    const sessionId = session?.id;
+    runIdRef.current += 1;
+    runAbortControllerRef.current?.abort();
+    runAbortControllerRef.current = null;
+    activeRunJobRef.current = null;
+    if (sessionId && job) {
+      void stopWorkbenchJob(sessionId, job.jobId).catch(() => undefined);
+    }
+    if (intervalRef.current) {
+      clearInterval(intervalRef.current);
+      intervalRef.current = null;
+    }
+    setPending(null);
+    setRanTests(0);
+    setRunStopped(true);
+    setError(null);
+    setCurrentStep(4);
+    setSession(s => (s ? { ...s, run: undefined, review: undefined } : s));
+  }, [session?.id]);
 
   const genComplete = session?.generation ? genStep >= session.generation.timeline.length : false;
   const apply = React.useCallback(() => setApplied(true), []);
@@ -350,8 +398,8 @@ export function useWorkbench(initialIntent?: Partial<IntentInput>, options?: Use
   }, [session?.run?.mobile?.evidence, session?.run?.ui?.evidence, streamedRunEvidence]);
 
   return {
-    status, error, session, currentStep, pending, ranTests, running: pending === 'run' || pending === 'review', genStep, genComplete,
+    status, error, session, currentStep, pending, ranTests, running: pending === 'run' || pending === 'review', runStopped, genStep, genComplete,
     applied, analyzeEvents, analyzeProgress, planProgress, generateProgress, runEvents, runProgress, runEvidence, apply, clearError,
-    setStep: setCurrentStep, updateIntent, analyze, generatePlan, approvePlan, runTests,
+    setStep: setCurrentStep, updateIntent, analyze, generatePlan, approvePlan, runTests, stopRun,
   };
 }
