@@ -136,6 +136,9 @@ function describeDevServerTarget(target: DevServerTarget): string {
       target.installCommand && target.installArgs
         ? `install=${target.installCommand} ${target.installArgs.join(' ')}`
         : 'install=<none>',
+      target.buildCommand && target.buildArgs
+        ? `build=${target.buildCommand} ${target.buildArgs.join(' ')}`
+        : 'build=<none>',
     ].join(' ');
   }
 

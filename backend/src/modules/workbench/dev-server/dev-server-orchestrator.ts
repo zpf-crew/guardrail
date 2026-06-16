@@ -20,7 +20,7 @@ export interface ProcessOutput {
 }
 
 export interface DevServerLogEvent {
-  source: 'install' | 'server' | 'docker';
+  source: 'install' | 'build' | 'server' | 'docker';
   stream: 'stdout' | 'stderr';
   text: string;
 }
@@ -217,6 +217,16 @@ export class DevServerOrchestrator {
             signal,
             onOutput: onLog,
             source: 'install',
+          });
+        }
+        if (target.buildCommand && target.buildArgs) {
+          onLog?.({ source: 'build', stream: 'stdout', text: `$ ${target.buildCommand} ${target.buildArgs.join(' ')}\n` });
+          await runCommand(target.buildCommand, target.buildArgs, {
+            cwd: target.cwd,
+            env: {},
+            signal,
+            onOutput: onLog,
+            source: 'build',
           });
         }
         onLog?.({ source: 'server', stream: 'stdout', text: `$ ${target.command} ${target.args.join(' ')}\n` });

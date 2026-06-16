@@ -13,6 +13,8 @@ export type DevServerTarget =
       healthPath: string;
       installCommand?: string;
       installArgs?: string[];
+      buildCommand?: string;
+      buildArgs?: string[];
     }
   | { kind: 'docker'; composeFile: string; service: string; port: number; healthPath: string; projectName: string };
 
@@ -95,35 +97,41 @@ export async function diagnoseDevServerResolution(clonePath: string): Promise<st
     `rootPackageScripts=${formatScripts(rootScripts)}`,
     `composeFile=${composeFile ?? '<none>'}`,
     `composeWebService=${composeService ?? '<none>'}`,
-    'resolverPolicy=known app package dev script, root package dev script, root package start script, then docker compose web service',
+    'resolverPolicy=known app package build+preview scripts, app package dev script, root build+preview scripts, root dev script, root start script, then docker compose web service',
   ];
 }
 
-function buildDevArgs(packageManager: PackageManager, packageDir: string | null, port: number): string[] {
+function buildScriptArgs(
+  packageManager: PackageManager,
+  packageDir: string | null,
+  script: 'build' | 'dev' | 'preview',
+  port?: number,
+): string[] {
   const portArgs = ['--host', '127.0.0.1', '--port', String(port)];
+  const extraArgs = script === 'build' ? [] : portArgs;
 
   if (packageManager === 'pnpm') {
     return packageDir
-      ? ['--dir', packageDir, 'dev', ...portArgs]
-      : ['dev', ...portArgs];
+      ? ['--dir', packageDir, script, ...extraArgs]
+      : [script, ...extraArgs];
   }
 
   if (packageManager === 'yarn') {
     return packageDir
-      ? ['workspace', packageDir, 'dev', ...portArgs]
-      : ['dev', ...portArgs];
+      ? ['workspace', packageDir, script, ...extraArgs]
+      : [script, ...extraArgs];
   }
 
   return packageDir
-    ? ['run', 'dev', '--prefix', packageDir, '--', ...portArgs]
-    : ['run', 'dev', '--', ...portArgs];
+    ? ['run', script, '--prefix', packageDir, ...(extraArgs.length ? ['--', ...extraArgs] : [])]
+    : ['run', script, ...(extraArgs.length ? ['--', ...extraArgs] : [])];
 }
 
-function subprocessCommand(packageManager: PackageManager, packageDir: string | null): string {
+function subprocessCommand(packageManager: PackageManager, packageDir: string | null, script: 'dev' | 'preview'): string {
   if (packageDir) {
     if (packageManager === 'pnpm') return `${packageManager} --dir ${packageDir}`;
     if (packageManager === 'yarn') return `${packageManager} workspace ${packageDir}`;
-    return `${packageManager} run dev --prefix ${packageDir}`;
+    return `${packageManager} run ${script} --prefix ${packageDir}`;
   }
   return packageManager;
 }
@@ -131,7 +139,7 @@ function subprocessCommand(packageManager: PackageManager, packageDir: string | 
 async function subprocessTarget(
   clonePath: string,
   packageDir: string | null,
-  script: 'dev' | 'start',
+  script: 'dev' | 'preview' | 'start',
   port: number,
 ): Promise<Extract<DevServerTarget, { kind: 'subprocess' }>> {
   const runFromRoot = packageDir === null || await hasRootNodeWorkspace(clonePath);
@@ -139,19 +147,24 @@ async function subprocessTarget(
   const commandPackageDir = runFromRoot ? packageDir : null;
   const packageManager = await detectPackageManager(cwd);
   const installCommand = buildPackageInstallCommand(packageManager);
-  const args = script === 'dev'
-    ? buildDevArgs(packageManager, commandPackageDir, port)
-    : ['start'];
+  const args = script === 'start'
+    ? ['start']
+    : buildScriptArgs(packageManager, commandPackageDir, script, port);
+  const buildArgs = script === 'preview'
+    ? buildScriptArgs(packageManager, commandPackageDir, 'build')
+    : undefined;
 
   return {
     kind: 'subprocess',
-    command: script === 'dev' ? subprocessCommand(packageManager, commandPackageDir) : packageManager,
+    command: script === 'start' ? packageManager : subprocessCommand(packageManager, commandPackageDir, script),
     args,
     cwd,
     port,
     healthPath: '/',
     installCommand: installCommand.command,
     installArgs: installCommand.args,
+    buildCommand: script === 'preview' ? packageManager : undefined,
+    buildArgs,
   };
 }
 
@@ -195,6 +208,9 @@ export async function resolveDevServerTarget(
     const packageJson = join(clonePath, packageDir, 'package.json');
     if (await fileExists(packageJson)) {
       const scripts = JSON.parse(await readFile(packageJson, 'utf8')).scripts ?? {};
+      if (scripts.build && scripts.preview) {
+        return subprocessTarget(clonePath, packageDir, 'preview', port);
+      }
       if (scripts.dev) {
         return subprocessTarget(clonePath, packageDir, 'dev', port);
       }
@@ -204,6 +220,9 @@ export async function resolveDevServerTarget(
   const rootPackageJson = join(clonePath, 'package.json');
   if (await fileExists(rootPackageJson)) {
     const scripts = JSON.parse(await readFile(rootPackageJson, 'utf8')).scripts ?? {};
+    if (scripts.build && scripts.preview) {
+      return subprocessTarget(clonePath, null, 'preview', port);
+    }
     if (scripts.dev) {
       return subprocessTarget(clonePath, null, 'dev', port);
     }

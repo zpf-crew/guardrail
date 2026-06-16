@@ -19,6 +19,19 @@ test('resolves frontend package dev script', async () => {
   assert.deepEqual(target?.kind === 'subprocess' ? target.installArgs : undefined, ['install', '--frozen-lockfile', '--prod=false']);
 });
 
+test('prefers build and preview scripts over vite dev', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'dev-resolve-'));
+  await writeFile(join(root, 'package.json'), JSON.stringify({ scripts: { build: 'vite build', preview: 'vite preview', dev: 'vite' } }));
+  await writeFile(join(root, 'package-lock.json'), '');
+
+  const target = await resolveDevServerTarget(root);
+  assert.equal(target?.kind, 'subprocess');
+  assert.equal(target?.command, 'npm');
+  assert.deepEqual(target?.args, ['run', 'preview', '--', '--host', '127.0.0.1', '--port', String(target?.port)]);
+  assert.equal(target?.kind === 'subprocess' ? target.buildCommand : undefined, 'npm');
+  assert.deepEqual(target?.kind === 'subprocess' ? target.buildArgs : undefined, ['run', 'build']);
+});
+
 test('resolves standalone nested frontend package from its own directory', async () => {
   const root = await mkdtemp(join(tmpdir(), 'dev-resolve-'));
   await mkdir(join(root, 'frontend'), { recursive: true });
