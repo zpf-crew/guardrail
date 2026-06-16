@@ -8,7 +8,7 @@ The image contains:
 - Built React frontend served by Nginx
 - Runtime frontend config pointing at the external backend through `BACKEND_URL`
 
-The image does not contain the Fastify backend or Postgres. Deploy the backend separately with `backend/Dockerfile` and `docker-compose.yml`; the Compose stack publishes nginx on port `80` and proxies to the backend on port `3000`.
+The image does not contain the Fastify backend or Postgres. Deploy the backend separately with `backend/Dockerfile` and `docker-compose.yml`; the Compose stack publishes Caddy on ports `80` and `443`, provisions HTTPS for `zpf-crew.site`, and proxies to the backend on port `3000`.
 
 ## Prerequisites
 
@@ -84,7 +84,7 @@ deploy/agentbase.env.example
 Required at container startup:
 
 ```env
-BACKEND_URL=https://<backend-host>
+BACKEND_URL=https://zpf-crew.site
 ```
 
 Configure GitHub OAuth, database, LLM, and workspace secrets on the backend server, not in the AgentBase frontend runtime.

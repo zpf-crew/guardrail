@@ -10,7 +10,7 @@ The root `Dockerfile` becomes a frontend-only image. It builds `frontend/dist`, 
 
 The backend gets its own `backend/Dockerfile`. It builds the TypeScript backend, deploys production dependencies, includes `git`, `pnpm`, `yarn`, `agent-browser`, Chromium runtime dependencies, and `guardrail-skills`, then runs database migrations before starting `node dist/server.js`.
 
-`docker-compose.yml` runs `postgres` and `backend` on the backend server. The backend service connects to Postgres through the Compose network with `DATABASE_URL=postgres://guardrail:guardrail@postgres:5432/guardrail`.
+`docker-compose.yml` runs `postgres`, `backend`, and Caddy on the backend server. Caddy listens on ports `80` and `443`, provisions HTTPS for `zpf-crew.site`, and forwards requests to the backend service on port `3000`. The backend service connects to Postgres through the Compose network with `DATABASE_URL=postgres://guardrail:guardrail@postgres:5432/guardrail`.
 
 ## Components
 
@@ -18,7 +18,7 @@ The backend gets its own `backend/Dockerfile`. It builds the TypeScript backend,
 - `deploy/start-frontend.sh`: validates and writes frontend runtime API configuration, then starts nginx.
 - `backend/Dockerfile`: backend runtime with repository and UI-browser tooling.
 - `backend/start-backend.sh`: validates required backend environment, runs migrations, and starts the backend API.
-- `docker-compose.yml`: backend plus Postgres local/server deployment.
+- `docker-compose.yml`: backend plus Postgres plus Caddy server deployment.
 - `deploy/agentbase.env.example`: frontend-only AgentBase environment example.
 
 ## Runtime Flow
@@ -30,7 +30,7 @@ The backend gets its own `backend/Dockerfile`. It builds the TypeScript backend,
 
 ## Assumptions
 
-- `BACKEND_URL` is a public HTTPS URL reachable by users' browsers when the frontend runs on AgentBase.
+- `BACKEND_URL` is `https://zpf-crew.site`, reachable by users' browsers when the frontend runs on AgentBase.
 - GitHub OAuth callback points to the backend URL, not the AgentBase frontend URL.
 - Backend deployment secrets are provided by server environment or Compose `.env`.
 

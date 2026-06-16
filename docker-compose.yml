@@ -1,13 +1,16 @@
 services:
-  nginx:
-    image: nginx:1.27-bookworm
-    container_name: guardrail-nginx
+  caddy:
+    image: caddy:2
+    container_name: guardrail-caddy
     depends_on:
       - backend
     ports:
       - "80:80"
+      - "443:443"
     volumes:
-      - ./deploy/backend-nginx.conf:/etc/nginx/conf.d/default.conf:ro
+      - ./deploy/Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
 
   backend:
     build:
@@ -22,7 +25,7 @@ services:
       DATABASE_URL: postgres://${POSTGRES_USER:-guardrail}:${POSTGRES_PASSWORD:-guardrail}@postgres:5432/guardrail
       GITHUB_CLIENT_ID: ${GITHUB_CLIENT_ID}
       GITHUB_CLIENT_SECRET: ${GITHUB_CLIENT_SECRET}
-      GITHUB_CALLBACK_URL: ${GITHUB_CALLBACK_URL:-http://localhost/api/auth/github/callback}
+      GITHUB_CALLBACK_URL: ${GITHUB_CALLBACK_URL:-https://zpf-crew.site/api/auth/github/callback}
       TOKEN_ENC_KEY: ${TOKEN_ENC_KEY}
       LLM_BASE_URL: ${LLM_BASE_URL}
       LLM_API_KEY: ${LLM_API_KEY}
@@ -30,7 +33,7 @@ services:
       LLM_THINKER_MODEL: ${LLM_THINKER_MODEL}
       LLM_CODER_MODEL: ${LLM_CODER_MODEL}
       FRONTEND_URL: ${FRONTEND_URL:-http://localhost:5173}
-      BACKEND_URL: ${BACKEND_URL:-http://localhost}
+      BACKEND_URL: ${BACKEND_URL:-https://zpf-crew.site}
       SESSION_TTL_DAYS: ${SESSION_TTL_DAYS:-30}
       WORKSPACE_DIR: /tmp/guardrail-workspaces
     expose:
@@ -53,4 +56,6 @@ services:
 
 volumes:
   backend_workspaces:
+  caddy_data:
+  caddy_config:
   postgres_data:
