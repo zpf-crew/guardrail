@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto';
-import { mkdir, writeFile } from 'node:fs/promises';
+import { mkdir, stat, writeFile } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import type {
@@ -48,6 +48,7 @@ export interface RunScenarioArgs {
   onScreenshot?: (evidence: Evidence) => Promise<Evidence>;
   onProgress?: (message: string) => void;
   onThinking?: (message: string) => void;
+  onDebug?: (message: string) => void;
 }
 
 export class UiBrowserAgentRunner {
@@ -99,11 +100,13 @@ export class UiBrowserAgentRunner {
       });
     }
 
-    const initialOpen = await this.#execute(['open', new URL(args.defaultRoute || '/', args.baseUrl).toString()], args.signal);
+    const initialOpenArgs = ['open', new URL(args.defaultRoute || '/', args.baseUrl).toString()];
+    const initialOpen = await this.#execute(initialOpenArgs, args.signal);
+    args.onDebug?.(commandDebugLine('initial-open', initialOpenArgs, initialOpen));
     trace.push({
       atMs: Date.now() - startedAt,
       type: 'command',
-      command: ['open', new URL(args.defaultRoute || '/', args.baseUrl).toString()],
+      command: initialOpenArgs,
       exitCode: initialOpen.exitCode,
       stdout: initialOpen.stdout,
       stderr: initialOpen.stderr,
@@ -134,6 +137,7 @@ export class UiBrowserAgentRunner {
         this.#execute,
         args.signal,
         screenshotLabel ?? truncateLabel(reason),
+        args.onDebug,
       );
       if (screenshot) {
         evidence.push(await emitScreenshot(screenshot, args.onScreenshot));
@@ -161,6 +165,7 @@ export class UiBrowserAgentRunner {
       const snapshotStartedAt = Date.now();
       const snapshot = await captureSnapshot(this.#execute, args.signal);
       currentStepActiveMs += Date.now() - snapshotStartedAt;
+      args.onDebug?.(`snapshot iteration=${iterationsUsed + 1} step=${currentStepIndex} exit=${snapshot.exitCode} stdoutChars=${snapshot.stdout.length} stderr=${debugExcerpt(snapshot.stderr)}`);
       trace.push({
         atMs: Date.now() - startedAt,
         type: 'snapshot',
@@ -207,6 +212,7 @@ export class UiBrowserAgentRunner {
         });
         return fail(reason);
       }
+      args.onDebug?.(`decision iteration=${iterationsUsed} step=${currentStepIndex} action=${formatActionForHistory(action)}`);
       trace.push({
         atMs: Date.now() - startedAt,
         type: 'decision',
@@ -343,6 +349,7 @@ export class UiBrowserAgentRunner {
           this.#execute,
           args.signal,
           `Verified — ${step.text}`,
+          args.onDebug,
         );
         if (screenshot) {
           evidence.push(await emitScreenshot(screenshot, args.onScreenshot));
@@ -380,6 +387,7 @@ export class UiBrowserAgentRunner {
           const scrollStartedAt = Date.now();
           const scrollResult = await this.#execute(['scrollintoview', ref], args.signal);
           currentStepActiveMs += Date.now() - scrollStartedAt;
+          args.onDebug?.(commandDebugLine('scrollintoview', ['scrollintoview', ref], scrollResult));
           trace.push({
             atMs: Date.now() - startedAt,
             type: 'command',
@@ -414,6 +422,7 @@ export class UiBrowserAgentRunner {
         return fail(reason);
       }
       if (result) {
+        args.onDebug?.(commandDebugLine('command', commandArgs ?? [], result));
         trace.push({
           atMs: Date.now() - startedAt,
           type: 'command',
@@ -445,6 +454,7 @@ export class UiBrowserAgentRunner {
         const originCheckStartedAt = Date.now();
         const originError = await verifySameOriginAfterCommand(args.baseUrl, browserAction, this.#execute, args.signal);
         currentStepActiveMs += Date.now() - originCheckStartedAt;
+        args.onDebug?.(`origin-check iteration=${iterationsUsed} step=${currentStepIndex} ok=${!originError}${originError ? ` reason=${debugExcerpt(originError)}` : ''}`);
         trace.push({
           atMs: Date.now() - startedAt,
           type: 'origin-check',
@@ -587,14 +597,18 @@ async function captureScreenshotEvidence(
   execute: AgentExecutor,
   signal: AbortSignal,
   label: string,
+  debug?: (message: string) => void,
 ): Promise<Evidence | null> {
   try {
     const result = await execute(['screenshot'], signal);
-    if (result.exitCode !== 0) return null;
     const href = screenshotPathFromStdout(result.stdout);
+    const fileSize = href ? await stat(href).then(info => info.size).catch(() => null) : null;
+    debug?.(`screenshot-capture exit=${result.exitCode} href=${href ?? '<none>'} size=${fileSize ?? '<unknown>'} stdout=${debugExcerpt(result.stdout)} stderr=${debugExcerpt(result.stderr)}`);
+    if (result.exitCode !== 0) return null;
     if (!href) return null;
     return screenshotEvidence(label, href);
-  } catch {
+  } catch (error) {
+    debug?.(`screenshot-capture error=${error instanceof Error ? error.message : String(error)}`);
     // Best-effort evidence on failure.
     return null;
   }
@@ -653,6 +667,20 @@ function stepsFromExecutionPlan(plan: UiBrowserExecutionPlan): GherkinStep[] {
 function truncateDetail(value: string, max = 180): string {
   const clean = value.replace(/\s+/g, ' ').trim();
   return clean.length <= max ? clean : `${clean.slice(0, max - 1)}…`;
+}
+
+function debugExcerpt(value: string | undefined, max = 220): string {
+  const clean = (value ?? '').replace(/\s+/g, ' ').trim();
+  if (!clean) return '<empty>';
+  return clean.length <= max ? clean : `${clean.slice(0, max - 1)}…`;
+}
+
+function commandDebugLine(
+  phase: string,
+  command: string[],
+  result: { exitCode: number; stdout: string; stderr: string },
+): string {
+  return `${phase} command=${command.join(' ')} exit=${result.exitCode} stdout=${debugExcerpt(result.stdout)} stderr=${debugExcerpt(result.stderr)}`;
 }
 
 function shouldKeepCommandOutput(action: UiBrowserAgentAction): boolean {

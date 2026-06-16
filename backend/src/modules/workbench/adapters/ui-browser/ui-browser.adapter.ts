@@ -125,6 +125,30 @@ function logRunDiagnostic(message: string): void {
   console.log(`[workbench-ui-run] ${message}`);
 }
 
+function describeDevServerTarget(target: DevServerTarget): string {
+  if (target.kind === 'subprocess') {
+    return [
+      'kind=subprocess',
+      `command=${target.command} ${target.args.join(' ')}`,
+      `cwd=${target.cwd}`,
+      `port=${target.port}`,
+      `healthPath=${target.healthPath}`,
+      target.installCommand && target.installArgs
+        ? `install=${target.installCommand} ${target.installArgs.join(' ')}`
+        : 'install=<none>',
+    ].join(' ');
+  }
+
+  return [
+    'kind=docker',
+    `composeFile=${target.composeFile}`,
+    `service=${target.service}`,
+    `port=${target.port}`,
+    `healthPath=${target.healthPath}`,
+    `projectName=${target.projectName}`,
+  ].join(' ');
+}
+
 function resolveManualTarget(manualBaseUrl: string | undefined, defaultRoute: string): { baseUrl: string; route: string; targetUrl: string } | null {
   const raw = manualBaseUrl?.trim();
   if (!raw) return null;
@@ -569,6 +593,7 @@ export class UiBrowserAdapter implements TestTypeAdapter {
           percent: 75,
         });
         await this.#checkUrlReachable(manualTarget.targetUrl, input.signal);
+        logRunDiagnostic(`manual target reachable baseUrl=${manualTarget.baseUrl} route=${manualTarget.route} targetUrl=${manualTarget.targetUrl}`);
         await input.emit({
           type: 'progress',
           message: `Using provided app URL for UI Browser run: ${manualTarget.targetUrl}`,
@@ -594,8 +619,10 @@ export class UiBrowserAdapter implements TestTypeAdapter {
 
         const target = await this.#devServer.resolve(clonePath, sessionId);
         if (!target) {
+          logRunDiagnostic('dev-server target=<none>');
           return notRunMatrix('No dev server could be resolved for this repository. Choose a running app URL to run UI Browser tests.');
         }
+        logRunDiagnostic(`dev-server target=${describeDevServerTarget(target)}`);
 
         await input.emit({ type: 'progress', message: 'Installing target repository dependencies.', percent: 75 });
         await input.emit({ type: 'progress', message: 'Starting managed dev server.', percent: 76 });
@@ -610,6 +637,7 @@ export class UiBrowserAdapter implements TestTypeAdapter {
           });
         });
         targetUrl = `${lease.baseUrl}${lease.route}`;
+        logRunDiagnostic(`dev-server ready baseUrl=${lease.baseUrl} route=${lease.route} targetUrl=${targetUrl}`);
         await input.emit({
           type: 'progress',
           message: `Dev server ready at ${targetUrl}.`,
@@ -675,6 +703,7 @@ export class UiBrowserAdapter implements TestTypeAdapter {
           const sessionName = uiBrowserSessionName(input.session.id, scenarioRunIndex);
           const agentRunner = this.#agentRunner ?? this.#createAgentRunner(input, sessionName);
           const liveScreenshotHrefs = new Set<string>();
+          logRunDiagnostic(`flow start id=${flow.id} title=${flow.title} session=${sessionName} baseUrl=${lease.baseUrl} defaultRoute=${defaultRoute}`);
           const scenarioResult = await agentRunner.runScenario({
             baseUrl: lease.baseUrl,
             gherkinText: sourceScenarios.map(item => item.text).join('\n\n'),
@@ -688,12 +717,18 @@ export class UiBrowserAdapter implements TestTypeAdapter {
               if (emitted.artifact.href) liveScreenshotHrefs.add(emitted.artifact.href);
               return emitted.artifact;
             },
-            onProgress: message => input.emit({
-              type: 'progress',
-              message: `[Flow ${flow.id}] ${message}`,
-              percent: Math.min(90, 78 + Math.round(((changeIndex + 0.5) / uiChanges.length) * 10)),
-            }),
+            onProgress: message => {
+              logRunDiagnostic(`[agent-browser:${sessionName}] ${message}`);
+              void input.emit({
+                type: 'progress',
+                message: `[Flow ${flow.id}] ${message}`,
+                percent: Math.min(90, 78 + Math.round(((changeIndex + 0.5) / uiChanges.length) * 10)),
+              });
+            },
+            onThinking: message => logRunDiagnostic(`[agent-browser:${sessionName}] ${message}`),
+            onDebug: message => logRunDiagnostic(`[agent-browser:${sessionName}] ${message}`),
           });
+          logRunDiagnostic(`flow complete id=${flow.id} outcome=${scenarioResult.outcome} durationMs=${scenarioResult.durationMs} evidence=${scenarioResult.evidence.length} reason=${scenarioResult.reason ?? '<none>'}`);
           completedFlowRunCount += 1;
 
           const changeEvidence = await collectScenarioEvidence(input, scenarioResult, liveScreenshotHrefs);
@@ -729,6 +764,7 @@ export class UiBrowserAdapter implements TestTypeAdapter {
       };
     } catch (error) {
       rethrowIfAbort(error, input.signal);
+      logRunDiagnostic(`runner error=${error instanceof Error ? error.message : String(error)}`);
       await input.emit({
         type: 'progress',
         message: `Warning: UI Browser runner failed. ${error instanceof Error ? error.message : String(error)}`,
@@ -778,7 +814,9 @@ export class UiBrowserAdapter implements TestTypeAdapter {
       };
     } finally {
       if (lease) {
+        logRunDiagnostic(`dev-server stopping baseUrl=${lease.baseUrl} route=${lease.route}`);
         await this.#devServer.stop(lease);
+        logRunDiagnostic(`dev-server stopped baseUrl=${lease.baseUrl}`);
       }
     }
   }
