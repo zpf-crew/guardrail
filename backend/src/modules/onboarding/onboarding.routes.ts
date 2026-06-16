@@ -1,4 +1,4 @@
-import type { FastifyInstance, FastifyReply } from 'fastify';
+import type { FastifyBaseLogger, FastifyInstance, FastifyReply } from 'fastify';
 import { env } from '../../config/env.js';
 import { AuthRepository } from '../auth/auth.repository.js';
 import { requireAuth } from '../auth/session.service.js';
@@ -27,6 +27,8 @@ function sseHeaders(origin: string | undefined): Record<string, string> {
 async function streamScan(
   reply: FastifyReply,
   origin: string | undefined,
+  logger: FastifyBaseLogger,
+  context: Record<string, unknown>,
   produce: (onProgress: ScanProgress) => Promise<OnboardingCommitResponse>,
 ): Promise<void> {
   reply.hijack();
@@ -34,12 +36,30 @@ async function streamScan(
   const write = (event: string, data: unknown) => {
     if (!reply.raw.writableEnded) reply.raw.write(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`);
   };
+  const progress = (event: Parameters<ScanProgress>[0]) => {
+    const stamped = { ...event, at: new Date().toISOString() };
+    const logContext = {
+      ...context,
+      percent: event.percent,
+      command: event.command,
+      detail: event.level === 'warn' ? event.detail : undefined,
+    };
+    if (event.level === 'warn') {
+      logger.warn(logContext, event.message);
+    } else {
+      logger.info(logContext, event.message);
+    }
+    write('progress', stamped);
+  };
+
   try {
-    write('progress', { message: 'Preparing scan…', percent: 2, at: new Date().toISOString() });
-    // Stamp each event with the real time it is emitted, so the client feed shows accurate per-step times.
-    const result = await produce(progress => write('progress', { ...progress, at: new Date().toISOString() }));
+    logger.info(context, 'Onboarding scan started');
+    progress({ message: 'Preparing scan...', percent: 2 });
+    const result = await produce(progress);
+    logger.info({ ...context, jobId: result.jobId, missingRecommended: result.summary.missingRecommended, suspiciousTests: result.summary.suspiciousTests }, 'Onboarding scan completed');
     write('result', { jobId: result.jobId, summary: result.summary, logs: result.logs, dashboard: result.dashboard });
   } catch (error) {
+    logger.error({ ...context, err: error }, 'Onboarding scan failed');
     write('error', { message: error instanceof Error ? error.message : 'Scan failed' });
   } finally {
     if (!reply.raw.writableEnded) reply.raw.end();
@@ -60,7 +80,7 @@ export async function onboardingRoutes(app: FastifyInstance) {
     }
 
     const origin = typeof request.headers.origin === 'string' ? request.headers.origin : undefined;
-    await streamScan(reply, origin, async onProgress => {
+    await streamScan(reply, origin, request.log, { repoId, userId: user.id, operation: 'onboarding.commit' }, async onProgress => {
       const result = await runOnboardingScan(repo, draft, onProgress);
       await new OnboardingRepository(app.db).saveScanResult({
         repoId, userId: user.id, summary: result.summary, logs: result.logs, dashboard: result.dashboard,
@@ -100,7 +120,7 @@ export async function onboardingRoutes(app: FastifyInstance) {
     }
 
     const origin = typeof request.headers.origin === 'string' ? request.headers.origin : undefined;
-    await streamScan(reply, origin, async onProgress => {
+    await streamScan(reply, origin, request.log, { repoId, userId: user.id, operation: 'dashboard.scan' }, async onProgress => {
       // Pull the latest commit into the clone before scanning. Failure is non-fatal: scan the checkout.
       try {
         const encrypted = await new AuthRepository(app.db).getEncryptedToken(user.id);

@@ -9,17 +9,13 @@ function resolveLogLevel(): LogLevel {
   return 'info';
 }
 
-/** Fastify/Pino logger config: pretty + color in dev, JSON in production, off in tests. */
+/** Fastify/Pino logger config: always pretty for runtime readability, off in tests. */
 export function buildLoggerConfig(): FastifyServerOptions['logger'] {
   if (process.env.NODE_ENV === 'test') {
     return false;
   }
 
   const level = resolveLogLevel();
-
-  if (process.env.NODE_ENV === 'production') {
-    return { level };
-  }
 
   return {
     level,

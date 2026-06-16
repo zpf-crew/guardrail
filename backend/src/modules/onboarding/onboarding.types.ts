@@ -60,6 +60,8 @@ export interface ScanProgressEvent {
   message: string;
   percent: number;
   level?: 'info' | 'ok' | 'warn';
+  detail?: string;
+  command?: string;
   /** ISO timestamp of when this step actually happened (stamped at emit time). */
   at?: string;
 }

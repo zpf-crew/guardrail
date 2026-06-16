@@ -59,9 +59,9 @@ function detectCommands(pkg: Record<string, unknown> | null, packageManager: Rep
 }
 
 function installCommand(packageManager: RepoScanFacts['packageManager']): string {
-  if (packageManager === 'pnpm') return 'pnpm install --frozen-lockfile';
-  if (packageManager === 'yarn') return 'yarn install --frozen-lockfile';
-  return 'npm install --no-audit --no-fund';
+  if (packageManager === 'pnpm') return 'pnpm install --frozen-lockfile --prod=false';
+  if (packageManager === 'yarn') return 'yarn install --frozen-lockfile --production=false';
+  return 'npm install --include=dev --no-audit --no-fund';
 }
 
 export function moduleNameFromPath(file: string): { name: string; pathPrefix: string } {
@@ -169,6 +169,17 @@ async function runCommand(cwd: string, command: string, timeout = 30_000): Promi
   }
 }
 
+function emitCommandResult(onProgress: ScanProgress | undefined, result: { command: string; ok: boolean; output: string }, percent: number, label: string): void {
+  const passed = result.ok;
+  onProgress?.({
+    message: `${label} ${passed ? 'passed' : 'failed'}: ${result.command}`,
+    percent,
+    level: passed ? 'ok' : 'warn',
+    command: result.command,
+    detail: result.output || '<no output>',
+  });
+}
+
 function parseCoverage(output: string): number | undefined {
   const matches = [...output.matchAll(/(?:All files|Statements|Lines)\s*[|:]\s*(\d+(?:\.\d+)?)/gi)];
   const value = matches.at(-1)?.[1];
@@ -218,17 +229,19 @@ export async function analyzeRepo(clonePath: string, onProgress?: ScanProgress):
   const detectedStack = detectStack(packageJson, files);
   onProgress?.({ message: detectedStack.length ? `Detected ${detectedStack.join(', ')}` : 'No known test framework detected', percent: 20, level: detectedStack.length ? 'ok' : 'warn' });
   const hasPackageJson = files.includes('package.json');
-  const hasNodeModules = await stat(path.join(clonePath, 'node_modules')).then(info => info.isDirectory()).catch(() => false);
-  const needsInstall = hasPackageJson && !hasNodeModules && (commands.test || commands.coverage);
+  const needsInstall = hasPackageJson && Boolean(commands.test || commands.coverage);
   if (needsInstall) onProgress?.({ message: 'Installing repository dependencies…', percent: 26 });
   const installRun = needsInstall
     ? await runCommand(clonePath, installCommand(packageManager), 120_000)
     : undefined;
+  if (installRun) emitCommandResult(onProgress, installRun, 34, 'Dependency install');
   const canRunCommands = !installRun || installRun.ok;
   if (commands.test && canRunCommands) onProgress?.({ message: `Running test command: ${commands.test}`, percent: 40 });
   const testRun = commands.test && canRunCommands ? await runCommand(clonePath, commands.test) : undefined;
+  if (testRun) emitCommandResult(onProgress, testRun, testRun.ok ? 48 : 45, 'Test command');
   if (commands.coverage && canRunCommands) onProgress?.({ message: `Running coverage command: ${commands.coverage}`, percent: 50 });
   const coverageRunBase = commands.coverage && canRunCommands ? await runCommand(clonePath, commands.coverage) : undefined;
+  if (coverageRunBase) emitCommandResult(onProgress, coverageRunBase, coverageRunBase.ok ? 58 : 55, 'Coverage command');
   // Read the per-file coverage report the run wrote to disk (stdout only carries the repo-level total).
   const coverageFiles = coverageRunBase ? await readFileCoverage(clonePath) : [];
   const coverageRun = coverageRunBase

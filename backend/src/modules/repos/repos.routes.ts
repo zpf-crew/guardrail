@@ -87,10 +87,12 @@ export async function reposRoutes(app: FastifyInstance) {
     const repository = new ReposRepository(app.db);
     const repo = await repository.upsertPending({ userId: user.id, ...githubRepo });
     if (repo.status === 'cloned' && await cloneExists(repo.clonePath)) {
+      request.log.info({ repoId: repo.id, githubRepoId: numericGithubRepoId, fullName: repo.fullName }, 'Repository clone reused');
       return { repoId: repo.id, repo: toRepoRef(repo), reused: true };
     }
 
     try {
+      request.log.info({ repoId: repo.id, githubRepoId: numericGithubRepoId, fullName: repo.fullName }, 'Repository clone started');
       const cloned = await cloneRepository({
         userId: user.id,
         repoId: repo.id,
@@ -99,6 +101,7 @@ export async function reposRoutes(app: FastifyInstance) {
         accessToken: token,
       });
       const clonedRepo = await repository.markCloned(repo.id, cloned.clonePath, cloned.branch, cloned.commitSha);
+      request.log.info({ repoId: repo.id, githubRepoId: numericGithubRepoId, fullName: repo.fullName, branch: cloned.branch, commitSha: cloned.commitSha }, 'Repository clone completed');
       return { repoId: clonedRepo.id, repo: toRepoRef(clonedRepo) };
     } catch {
       await repository.markFailed(repo.id);
