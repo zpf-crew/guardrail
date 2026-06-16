@@ -17,6 +17,18 @@ test('resolves frontend package dev script', async () => {
   assert.equal(target?.cwd, root);
 });
 
+test('resolves standalone nested frontend package from its own directory', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'dev-resolve-'));
+  await mkdir(join(root, 'frontend'), { recursive: true });
+  await writeFile(join(root, 'frontend', 'package.json'), JSON.stringify({ scripts: { dev: 'vite' } }));
+
+  const target = await resolveDevServerTarget(root);
+  assert.equal(target?.kind, 'subprocess');
+  assert.equal(target?.command, 'npm');
+  assert.deepEqual(target?.args.slice(0, 2), ['run', 'dev']);
+  assert.equal(target?.cwd, join(root, 'frontend'));
+});
+
 test('returns null when no dev script or compose file', async () => {
   const root = await mkdtemp(join(tmpdir(), 'dev-resolve-'));
   await writeFile(join(root, 'README.md'), '# no app');

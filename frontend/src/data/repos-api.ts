@@ -45,6 +45,14 @@ export function saveActiveRepoId(repoId: string) {
   }
 }
 
+export function clearActiveRepoId() {
+  try {
+    localStorage.removeItem(ACTIVE_REPO_KEY);
+  } catch {
+    // Ignore storage failures; backend reset has already cleared server-side state.
+  }
+}
+
 export async function listGitHubRepos(): Promise<GitHubRepoSummary[]> {
   return request<GitHubRepoSummary[]>('/api/repos');
 }
@@ -53,6 +61,10 @@ export async function connectRepo(githubRepoId: number): Promise<ConnectedRepo> 
   const connected = await request<ConnectedRepo>(`/api/repos/${githubRepoId}/connect`, { method: 'POST' });
   saveActiveRepoId(connected.repoId);
   return connected;
+}
+
+export async function resetRepo(repoId: string): Promise<void> {
+  await request<{ ok: true }>(`/api/repos/${encodeURIComponent(repoId)}/reset`, { method: 'POST' });
 }
 
 export async function listRepoFiles(repoId: string, path = ''): Promise<RepoFileNode[]> {

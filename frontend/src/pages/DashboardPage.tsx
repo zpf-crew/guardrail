@@ -5,6 +5,7 @@ import { Panel } from '@/components/ui/panel';
 import { SearchInput } from '@/components/ui/search-input';
 import { SegmentedControl } from '@/components/ui/segmented-control';
 import { Button } from '@/components/ui/button';
+import { ConfirmModal } from '@/components/ui/confirm-modal';
 import { useToast } from '@/components/ui/toast';
 import type { TestCase, Insight, TestStatus, HealthMetrics } from '@/types/testlens';
 import { useDashboard } from '@/pages/dashboard/use-dashboard';
@@ -14,6 +15,9 @@ import { formatRelativeTime } from '@/lib/format-relative-time';
 import { formatPercent } from '@/lib/format-percent';
 import { trendPresentation } from '@/lib/trend-presentation';
 import { startScan } from '@/data/scan-api';
+import { getActiveRepoId } from '@/data/dashboard-api';
+import { clearLatestDashboard } from '@/data/onboarding-api';
+import { clearActiveRepoId, resetRepo } from '@/data/repos-api';
 import { useScanProgress } from '@/components/scan/use-scan-progress';
 import { ScanProgressOverlay } from '@/components/scan/scan-progress-overlay';
 import { exportDashboardReport } from '@/lib/export-dashboard-report';
@@ -36,6 +40,7 @@ import {
   ChevronUpIcon,
   ChevronDownIcon,
   TestStatusIcon,
+  TrashIcon,
 } from '@/components/icons';
 
 function FilterSelect({ value, onChange, children }: { value: string; onChange: (e: React.ChangeEvent<HTMLSelectElement>) => void; children: React.ReactNode }) {
@@ -115,6 +120,8 @@ export function DashboardPage() {
   const [highlightedInsight, setHighlightedInsight] = React.useState<string | null>(null);
   const [highlightedTests, setHighlightedTests] = React.useState<Set<string>>(new Set());
   const [jumpTarget, setJumpTarget] = React.useState<string | null>(null);
+  const [resetOpen, setResetOpen] = React.useState(false);
+  const [resetting, setResetting] = React.useState(false);
   const runScan = React.useCallback(() => startScan(), []);
   const scan = useScanProgress(runScan);
 
@@ -203,6 +210,30 @@ export function DashboardPage() {
     toast('Report downloaded', 'success');
   };
 
+  const handleReset = async () => {
+    if (resetting) return;
+    const repoId = getActiveRepoId();
+    if (!repoId) {
+      toast('No active repository to reset', 'success');
+      setResetOpen(false);
+      return;
+    }
+
+    setResetting(true);
+    try {
+      await resetRepo(repoId);
+      clearLatestDashboard(repoId);
+      clearActiveRepoId();
+      toast('Repository reset', 'success');
+      navigate('/onboarding', { replace: true });
+    } catch (error) {
+      toast(error instanceof Error ? error.message : 'Reset failed', 'success');
+    } finally {
+      setResetting(false);
+      setResetOpen(false);
+    }
+  };
+
   // Carry the originating insight into the workbench (consumed on that surface).
   const goToGenerate = (insight?: Insight) => {
     navigate('/tests', insight
@@ -247,8 +278,24 @@ export function DashboardPage() {
               <DownloadIcon className="w-[15px] h-[15px]" />
               Export Report
             </Button>
+            <Button variant="danger" onClick={() => setResetOpen(true)} disabled={resetting}>
+              <TrashIcon className="w-[15px] h-[15px]" />
+              {resetting ? 'Resetting…' : 'Reset'}
+            </Button>
           </>
         }
+      />
+      <ConfirmModal
+        open={resetOpen}
+        title={`Reset ${repo.name}?`}
+        message="This clears the onboarding scan, dashboard data, and local clone for this repository. You will return to onboarding and run the full setup flow again."
+        confirmLabel={resetting ? 'Resetting…' : 'Reset repository'}
+        cancelLabel="Cancel"
+        confirmVariant="danger"
+        onConfirm={() => { void handleReset(); }}
+        onCancel={() => {
+          if (!resetting) setResetOpen(false);
+        }}
       />
 
       <div className="mx-auto max-w-[1640px] p-[24px_26px_70px]">
