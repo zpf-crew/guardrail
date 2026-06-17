@@ -2,7 +2,7 @@ import { Fragment, useState, type ReactNode } from 'react';
 import type { Evidence, TestRunResult, RunOutcome, TestType, TestResultRow } from '@/types/testlens';
 import { Button } from '@/components/ui/button';
 import { ProgressBar } from '@/components/ui/progress-bar';
-import { RunResultIcon, MonitorIcon, EyeIcon, LoaderIcon } from '@/components/icons';
+import { RunResultIcon, MonitorIcon, EyeIcon, LoaderIcon, WarningTriangleIcon } from '@/components/icons';
 import { StepHeader, BlockHeader } from '../shared';
 import { RUN_OUTCOME_STYLE, showsUiRunSuite } from '../workbench-presentation';
 import { EvidencePanel } from '../evidence-panel';
@@ -60,6 +60,7 @@ export function RunStep({ run, activeTestType, ranTests, running, stopped, progr
           title="Choose test target"
           description="Guardrail can try to start the cloned app inside AgentBase, or run the UI Browser flow against an app URL you already have running."
         />
+        <RunTargetWarningBanner />
         <div className="grid grid-cols-1 md:grid-cols-2 gap-[12px] mb-[18px]">
           <button
             type="button"
@@ -274,6 +275,17 @@ export function RunStep({ run, activeTestType, ranTests, running, stopped, progr
             </>
           )}
       </div>
+    </div>
+  );
+}
+
+function RunTargetWarningBanner() {
+  return (
+    <div className="mb-[18px] flex items-start gap-[10px] rounded-[8px] border border-[rgba(251,191,36,0.22)] bg-[rgba(251,191,36,0.07)] p-[12px_14px] text-[12.5px] leading-[1.5] text-[#d8c48b]">
+      <WarningTriangleIcon className="mt-[1px] h-[16px] w-[16px] flex-shrink-0 text-[#fbbf24]" />
+      <span>
+        Guardrail is experimental. If your webapp requires env or complex setup, it is better to provide your staging URL so Guardrail can run directly on it.
+      </span>
     </div>
   );
 }
