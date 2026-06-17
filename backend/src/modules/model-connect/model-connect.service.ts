@@ -52,6 +52,7 @@ export class ModelConnect {
       chatPath: args.chatPath,
       model: args.model,
       profile: args.profile,
+      providerRole: 'primary',
       fetchImpl: args.fetchImpl,
     });
 
@@ -62,6 +63,7 @@ export class ModelConnect {
         chatPath: args.fallback.chatPath ?? args.chatPath,
         model: args.profile === 'thinker' ? args.fallback.thinkerModel : args.fallback.coderModel,
         profile: args.profile,
+        providerRole: 'fallback',
         fetchImpl: args.fetchImpl,
       })
       : null;

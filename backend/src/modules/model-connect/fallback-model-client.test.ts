@@ -18,6 +18,7 @@ function clientWithFetch(
   profile: 'thinker' | 'coder',
   fetchImpl: typeof fetch,
   model = `${profile}-model`,
+  providerRole: 'primary' | 'fallback' = 'primary',
 ) {
   return new ModelClient({
     baseUrl: 'http://llm.local',
@@ -25,6 +26,7 @@ function clientWithFetch(
     chatPath: 'chat/completions',
     model,
     profile,
+    providerRole,
     fetchImpl,
   });
 }
@@ -56,7 +58,7 @@ test('fallback model client uses fallback when primary fails', async () => {
   const fallback = clientWithFetch('coder', async () => {
     fallbackCalls += 1;
     return response(200, { choices: [{ message: { content: 'fallback ok' } }] }) as never;
-  }, 'fallback-coder');
+  }, 'fallback-coder', 'fallback');
   const client = new FallbackModelClient(primary, fallback, new CircuitBreaker());
 
   const result = await client.chat([{ role: 'user', content: 'hi' }]);

@@ -1,5 +1,7 @@
 import type { ModelProfile } from '../../models/model.types.js';
 
+export type ModelProviderRole = 'primary' | 'fallback';
+
 export type ChatRole = 'system' | 'user' | 'assistant';
 
 export interface ChatMessage {
@@ -39,5 +41,6 @@ export interface ModelClientConfig {
   chatPath: string;
   model: string;
   profile: ModelProfile;
+  providerRole?: ModelProviderRole;
   fetchImpl?: typeof fetch;
 }

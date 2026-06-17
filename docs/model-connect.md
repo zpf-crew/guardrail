@@ -141,6 +141,15 @@ curl --request POST \
 
 Model Connect builds the same request shape: `POST {LLM_BASE_URL}/{LLM_CHAT_PATH}` with `Authorization: Bearer` and a `{ model, messages }` JSON body.
 
+Successful calls are logged to stdout as:
+
+```text
+[model-connect] thinker call succeeded via primary (google/gemma-4-31b-it @ maas-llm-aiplatform-hcm.api.vngcloud.vn)
+[model-connect] coder call succeeded via fallback (qwen3.6-plus @ opencode.ai)
+```
+
+Logs include profile, provider role (`primary` or `fallback`), resolved model id, and endpoint host (never the API key).
+
 ## When to use which profile
 
 **Thinker** — repository scan reasoning, spec understanding, gap classification, risk analysis, failure explanation, review summaries.

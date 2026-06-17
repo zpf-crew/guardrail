@@ -5,6 +5,7 @@ import type {
   ModelClientConfig,
 } from './model-connect.types.js';
 import { withModelCallLimit } from './model-call-limiter.js';
+import { logModelCallSuccess } from './model-call-logger.js';
 import { ModelClientError, normalizeModelError } from './model-errors.js';
 
 function joinUrl(baseUrl: string, path: string): string {
@@ -141,11 +142,20 @@ export class ModelClient {
       });
     }
 
-    return {
+    const result = {
       content: extractAssistantContent(raw),
       model,
       profile,
       raw,
     };
+
+    logModelCallSuccess({
+      profile,
+      model: result.model,
+      provider: this.config.providerRole ?? 'primary',
+      endpoint: baseUrl,
+    });
+
+    return result;
   }
 }
