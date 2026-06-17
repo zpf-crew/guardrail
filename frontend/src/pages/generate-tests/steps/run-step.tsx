@@ -284,7 +284,7 @@ function RunTargetWarningBanner() {
     <div className="mb-[18px] flex items-start gap-[10px] rounded-[8px] border border-[rgba(251,191,36,0.22)] bg-[rgba(251,191,36,0.07)] p-[12px_14px] text-[12.5px] leading-[1.5] text-[#d8c48b]">
       <WarningTriangleIcon className="mt-[1px] h-[16px] w-[16px] flex-shrink-0 text-[#fbbf24]" />
       <span>
-        Guardrail is experimental. If your webapp requires env or complex setup, it is better to provide your staging URL so Guardrail can run directly on it.
+        Guardrail is experimental. For applications that require environment-specific configuration or a complex local setup, we recommend providing a staging or preview URL so tests run against a ready environment.
       </span>
     </div>
   );

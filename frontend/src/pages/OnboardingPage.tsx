@@ -24,6 +24,7 @@ import {
   LayoutDashboardIcon,
   InfoCircleIcon,
   ScanTaskStatusIcon,
+  WarningTriangleIcon,
 } from '@/components/icons';
 import type { ConnectedRepo, GitHubRepoSummary, OnboardingDraft, QCTestCase, ScanSummary, UploadedFile } from '@/types/testlens';
 import { connectRepo, listGitHubRepos, saveActiveRepoId } from '@/data/repos-api';
@@ -75,6 +76,17 @@ function OptionalBanner({ children }: { children: React.ReactNode }) {
     <div className="flex items-center gap-[10px] p-[11px_14px] bg-[rgba(192,132,252,0.06)] border border-[rgba(192,132,252,0.2)] rounded-[11px] text-[12.5px] text-[#d9c4f5] mb-[18px] leading-[1.5]">
       <LightbulbIcon className="w-[16px] h-[16px] flex-shrink-0 text-[#c084fc]" />
       <span>{children}</span>
+    </div>
+  );
+}
+
+function OnboardingWarningBanner() {
+  return (
+    <div className="mb-[26px] flex items-start gap-[10px] rounded-[8px] border border-[rgba(251,191,36,0.22)] bg-[rgba(251,191,36,0.07)] p-[12px_14px] text-[12.5px] leading-[1.5] text-[#d8c48b]">
+      <WarningTriangleIcon className="mt-[1px] h-[16px] w-[16px] flex-shrink-0 text-[#fbbf24]" />
+      <span>
+        Guardrail is experimental. UI browser testing currently supports frontend codebases only; backend-only or non-web repositories may have limited coverage for now.
+      </span>
     </div>
   );
 }
@@ -543,6 +555,8 @@ export function OnboardingPage() {
             Connect a GitHub repository, product knowledge, and QC test cases so Guardrail can scan your repo in the cloud and generate testing insights.
           </p>
         </div>
+
+        <OnboardingWarningBanner />
 
         <div className="grid grid-cols-1 lg:grid-cols-[252px_minmax(0,1fr)] gap-[26px] items-start max-w-[1100px] mx-auto">
           <nav className="h-fit lg:sticky lg:top-[80px]">
