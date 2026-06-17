@@ -87,11 +87,16 @@ The backend reads configuration from `process.env`. Export variables from `.env`
 | `WORKSPACE_DIR` | For repo clone | Local directory where backend stores shallow clones |
 | `TOKEN_ENC_KEY` | For OAuth | 32-byte key used to encrypt GitHub tokens at rest |
 | `SESSION_TTL_DAYS` | No | Session lifetime in days |
-| `LLM_BASE_URL` | For LLM calls | OpenAI-compatible base URL |
-| `LLM_API_KEY` | For LLM calls | Bearer token for the LLM provider |
-| `LLM_CHAT_PATH` | No | API path after base URL (`messages` for GreenNode, `chat/completions` for OpenAI) |
-| `LLM_THINKER_MODEL` | No | Thinker profile model (default: `gemma-4`) |
-| `LLM_CODER_MODEL` | No | Coder profile model (default: `qwen-3.6-coder`) |
+| `LLM_BASE_URL` | For LLM calls | Primary OpenAI-compatible base URL |
+| `LLM_API_KEY` | For LLM calls | Primary provider bearer token |
+| `LLM_CHAT_PATH` | No | Primary API path after base URL (`messages` for GreenNode, `chat/completions` for OpenAI) |
+| `LLM_THINKER_MODEL` | No | Primary thinker profile model (default: `gemma-4`) |
+| `LLM_CODER_MODEL` | No | Primary coder profile model (default: `qwen-3.6-coder`) |
+| `LLM_FALLBACK_BASE_URL` | No | Fallback provider base URL (used when primary fails) |
+| `LLM_FALLBACK_API_KEY` | No | Fallback provider bearer token |
+| `LLM_FALLBACK_CHAT_PATH` | No | Fallback API path (defaults to `LLM_CHAT_PATH`) |
+| `LLM_FALLBACK_THINKER_MODEL` | No | Fallback thinker model (defaults to `LLM_THINKER_MODEL`) |
+| `LLM_FALLBACK_CODER_MODEL` | No | Fallback coder model (defaults to `LLM_CODER_MODEL`) |
 | `FRONTEND_URL` | No | Frontend origin for CORS, redirects, and cross-origin cookie policy |
 | `BACKEND_URL` | No | Backend public URL used to decide secure session cookie behavior |
 
@@ -103,6 +108,13 @@ LLM_API_KEY=<your-ai-platform-api-key>
 LLM_CHAT_PATH=messages
 LLM_THINKER_MODEL=gemma-4
 LLM_CODER_MODEL=qwen-3.6-coder
+
+# Optional fallback provider
+LLM_FALLBACK_BASE_URL=https://api.openai.com/v1
+LLM_FALLBACK_API_KEY=<fallback-api-key>
+LLM_FALLBACK_CHAT_PATH=chat/completions
+LLM_FALLBACK_THINKER_MODEL=gpt-4.1-mini
+LLM_FALLBACK_CODER_MODEL=gpt-4.1-mini
 ```
 
 See [docs/github-auth-repo-clone.md](docs/github-auth-repo-clone.md) for the GitHub OAuth and repository clone modules.

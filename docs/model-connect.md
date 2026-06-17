@@ -15,13 +15,29 @@ Call by profile in code; swap models via environment variables.
 
 Set these before starting the backend (see root [README](../README.md#environment-setup)):
 
+### Primary provider (priority)
+
 | Variable | Required | Description |
 |----------|----------|-------------|
 | `LLM_BASE_URL` | Yes (for LLM calls) | OpenAI-compatible base URL, e.g. `https://maas-llm-aiplatform-hcm.api.vngcloud.vn/v1` |
-| `LLM_API_KEY` | Yes (for LLM calls) | Bearer token for the LLM provider |
+| `LLM_API_KEY` | Yes (for LLM calls) | Bearer token for the primary LLM provider |
 | `LLM_CHAT_PATH` | No | API path segment after base URL. Default: `messages` (GreenNode). Use `chat/completions` for standard OpenAI. |
 | `LLM_THINKER_MODEL` | No | Logical name or full provider path for the thinker profile. Default: `gemma-4` |
 | `LLM_CODER_MODEL` | No | Logical name or full provider path for the coder profile. Default: `qwen-3.6-coder` |
+
+### Fallback provider (optional)
+
+Configure a second provider with its own connection settings. Guardrail tries the primary provider first and only calls the fallback when the primary request fails. A per-profile circuit breaker opens after repeated fallback failures (5 failures, 60s reset) so a dead fallback provider is not hammered on every request.
+
+| Variable | Required | Description |
+|----------|----------|-------------|
+| `LLM_FALLBACK_BASE_URL` | No | Fallback OpenAI-compatible base URL |
+| `LLM_FALLBACK_API_KEY` | No | Bearer token for the fallback provider |
+| `LLM_FALLBACK_CHAT_PATH` | No | Fallback API path. Defaults to `LLM_CHAT_PATH` |
+| `LLM_FALLBACK_THINKER_MODEL` | No | Fallback thinker model. Defaults to `LLM_THINKER_MODEL` |
+| `LLM_FALLBACK_CODER_MODEL` | No | Fallback coder model. Defaults to `LLM_CODER_MODEL` |
+
+Fallback is enabled when both `LLM_FALLBACK_BASE_URL` and `LLM_FALLBACK_API_KEY` are set.
 
 If a model value contains `/` (e.g. `qwen/qwen3-5-27b`), it is sent to the provider as-is. Otherwise it is resolved through the alias map in `backend/src/modules/model-connect/model-catalog.ts`.
 
@@ -53,8 +69,8 @@ console.log(draft.content);
 
 Pre-configured from environment via `ModelConnect.fromEnv()`.
 
-- `getThinker()` → `ModelClient` for the thinker profile
-- `getCoder()` → `ModelClient` for the coder profile
+- `getThinker()` → resilient client for the thinker profile (primary with optional fallback)
+- `getCoder()` → resilient client for the coder profile (primary with optional fallback)
 - `getClient('thinker' | 'coder')` → same clients by profile name
 
 ### `ModelClient#chat(messages, options?)`
@@ -78,7 +94,7 @@ Pre-configured from environment via `ModelConnect.fromEnv()`.
 }
 ```
 
-Throws if `LLM_BASE_URL` or `LLM_API_KEY` is missing when a request is made, or if the HTTP call fails.
+Throws if the primary provider's `LLM_BASE_URL` or `LLM_API_KEY` is missing when a request is made, if both providers fail, or if the HTTP call fails without a configured fallback.
 
 ### Custom instance (tests or overrides)
 
@@ -91,6 +107,13 @@ const connect = new ModelConnect({
   chatPath: 'messages',
   thinkerModel: 'google/gemma-3-27b-it',
   coderModel: 'qwen/qwen3-5-27b',
+  fallback: {
+    baseUrl: 'https://api.openai.com/v1',
+    apiKey: process.env.LLM_FALLBACK_API_KEY!,
+    chatPath: 'chat/completions',
+    thinkerModel: 'gpt-4.1-mini',
+    coderModel: 'gpt-4.1-mini',
+  },
 });
 
 // Or from env with partial overrides
@@ -133,6 +156,8 @@ backend/src/modules/model-connect/
   index.ts                  # exports + modelConnect singleton
   model-connect.service.ts  # ModelConnect class
   model-client.ts           # HTTP client + chat()
+  fallback-model-client.ts  # primary/fallback routing
+  circuit-breaker.ts        # fallback circuit breaker
   model-catalog.ts          # profile → model alias map
   model-connect.types.ts    # shared types
 ```

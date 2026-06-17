@@ -20,12 +20,16 @@ export interface ChatCompletionResult {
   raw: unknown;
 }
 
-export interface ModelConnectConfig {
+export interface ModelProviderConfig {
   baseUrl: string;
   apiKey: string;
   chatPath?: string;
   thinkerModel: string;
   coderModel: string;
+}
+
+export interface ModelConnectConfig extends ModelProviderConfig {
+  fallback?: ModelProviderConfig;
   fetchImpl?: typeof fetch;
 }
 
